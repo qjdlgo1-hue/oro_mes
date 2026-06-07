@@ -3,22 +3,22 @@ import type { Session } from "@supabase/supabase-js";
 import { Order } from "./lib/types";
 import { listOrders, backendName } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
+import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import Dashboard from "./components/Dashboard";
 import Login from "./components/Login";
 
-type Tab = "import" | "plan" | "coc" | "report";
+type Tab = "today" | "import" | "plan" | "coc" | "report";
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("plan");
+  const [tab, setTab] = useState<Tab>("today");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
 
-  // 인증 상태 추적 (Supabase 연결 시에만)
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true); });
@@ -43,6 +43,7 @@ export default function App() {
       <header className="app">
         <h1>ORO MES</h1>
         <nav className="tabs">
+          <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>오늘</button>
           <button className={tab === "import" ? "active" : ""} onClick={() => setTab("import")}>주문 가져오기</button>
           <button className={tab === "plan" ? "active" : ""} onClick={() => setTab("plan")}>생산계획</button>
           <button className={tab === "coc" ? "active" : ""} onClick={() => setTab("coc")}>COC 발행</button>
@@ -57,6 +58,7 @@ export default function App() {
       </header>
       <div className="wrap">
         {loading ? <div className="muted">불러오는 중…</div> :
+          tab === "today" ? <Today orders={orders} /> :
           tab === "import" ? <ImportOrders orders={orders} onChange={refresh} /> :
           tab === "plan" ? <ProductionPlan orders={orders} /> :
           tab === "coc" ? <CocIssue orders={orders} /> :

@@ -122,10 +122,11 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
         <ul className="olist">
           {rows.map(o => {
             const cp = completionDate(plans[o.id]);
+            const dn = !!plans[o.id]?.done;
             return (
               <li key={o.id} className={o.id === sel ? "sel" : ""} onClick={() => setSel(o.id)}>
                 <div className="nm">{o.name}</div>
-                <div className="meta">{o.customer} · {o.qty.toLocaleString()}g · 주문 {o.order_date.slice(5)}{cp ? ` · 완료 ${cp.slice(5)}` : ""}</div>
+                <div className="meta">{o.customer} · {o.qty.toLocaleString()}g · 주문 {o.order_date.slice(5)}{cp ? ` · 완료 ${cp.slice(5)}` : ""}{dn ? " ✅" : ""}</div>
               </li>
             );
           })}

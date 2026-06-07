@@ -138,11 +138,12 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
         {viewRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
           <div style={{ overflow: "auto", maxHeight: "60vh" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
-              <thead><tr>{["주문일", "품목구분", "품목명", "규격", "수량(g)", "거래처", "생산완료일", "COC", "적요"].map(h =>
+              <thead><tr>{["주문일", "품목구분", "품목명", "규격", "수량(g)", "거래처", "생산완료일", "상태", "COC", "적요"].map(h =>
                 <th key={h} style={{ ...cell, background: "#1f4e78", color: "#fff", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
               <tbody>
                 {viewRows.map(o => {
                   const cp = completionDate(plans[o.id]);
+                  const done = !!plans[o.id]?.done;
                   const hasCoc = !!cocs[o.id];
                   return (
                     <tr key={o.id}>
@@ -153,6 +154,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                       <td style={{ ...cell, textAlign: "right" }}>{o.qty.toLocaleString()}</td>
                       <td style={cell}>{o.customer}</td>
                       <td style={{ ...cell, textAlign: "center", color: cp ? "#1f4e78" : "#bbb", fontWeight: cp ? 700 : 400 }}>{cp || "-"}</td>
+                      <td style={{ ...cell, textAlign: "center", color: done ? "#1aa260" : (cp ? "#2f6cb0" : "#bbb"), fontWeight: done ? 700 : 400 }}>{done ? "완료" : (cp ? "진행중" : "미계획")}</td>
                       <td style={{ ...cell, textAlign: "center", color: hasCoc ? "#1aa260" : "#bbb" }}>{hasCoc ? "발행" : "-"}</td>
                       <td style={{ ...cell, color: "#888" }}>{o.note}</td>
                     </tr>
