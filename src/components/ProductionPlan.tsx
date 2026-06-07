@@ -3,6 +3,7 @@ import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan } from "../lib/db";
 import { daysInMonth, weekBuckets } from "../lib/plan";
 import { logAudit } from "../lib/db";
+import { can } from "../lib/perm";
 
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const TODAY = new Date();
@@ -25,6 +26,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [view, setView] = useState<"day" | "week">("day");
   const [anchor, setAnchor] = useState<"mon" | "first">("mon");
   const [dayw, setDayw] = useState(30);
+  const canEdit = can("plan.edit");
 
   useEffect(() => { listPlans().then(setPlans); }, []);
 
@@ -57,6 +59,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
 
   // --- drag (day view) ---
   function startMove(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
+    if (!canEdit) return;
     e.preventDefault();
     const p = planOf(o); const startX = e.clientX; const origLeft = (dayOf(p.start_date) - 1) * DAYW;
     function mv(ev: PointerEvent) { let nl = origLeft + (ev.clientX - startX); nl = Math.max(0, Math.min(nl, (nDays - p.span) * DAYW)); barEl.style.left = nl + "px"; }
@@ -68,6 +71,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
   }
   function startResize(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
+    if (!canEdit) return;
     e.preventDefault(); e.stopPropagation();
     const p = planOf(o); const startX = e.clientX; const origSpan = p.span;
     function mv(ev: PointerEvent) { let span = origSpan + Math.round((ev.clientX - startX) / DAYW); span = Math.max(1, Math.min(span, nDays - dayOf(p.start_date) + 1)); barEl.style.width = (span * DAYW - 3) + "px"; }
@@ -107,7 +111,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
             <button className="btn ghost" style={{ padding: "4px 10px" }} onClick={() => setDayw(w => Math.max(18, w - 4))}>－</button>
             <button className="btn ghost" style={{ padding: "4px 10px" }} onClick={() => setDayw(w => Math.min(48, w + 4))}>＋</button>
           </div>}
-        <span className="muted">· {rows.length}개 주문 {view === "day" ? "· 막대 드래그=이동 / 오른쪽끝=기간 / 더블클릭=완료" : "· 주별은 합계 보기(편집은 일별에서)"}</span>
+        <span className="muted">· {rows.length}개 주문 {view === "day" ? "· 막대 드래그=이동 / 오른쪽끝=기간 / 더블클릭=완료" : "· 주별은 합계 보기(편집은 일별에서)"}{!canEdit ? " · 보기 전용(편집 권한 없음)" : ""}</span>
       </div>
 
       {rows.length === 0 ? <div className="card nodata">이 달에는 주문이 없습니다. '주문 가져오기' 탭에서 데이터를 넣으세요.</div> :
@@ -149,7 +153,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                           })}
                           <div className="ordermark" style={{ left: (dayOf(o.order_date) - 1) * DAYW }} title="주문일" />
                           <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} per={Math.round(o.qty / p.span)}
-                            onMove={startMove} onResize={startResize} onToggle={() => { const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }} />
+                            onMove={startMove} onResize={startResize} onToggle={() => { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }} />
                         </div>
                       </td>
                     ) : (

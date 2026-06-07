@@ -6,8 +6,10 @@ import { appendOrders, dupKey, updateOrder, deleteOrder, logAudit, listPlans, li
 import { completionDate } from "../lib/plan";
 import { sampleOrders } from "../lib/sampleOrders";
 import { toast } from "../lib/toast";
+import { can } from "../lib/perm";
 
-export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Order[]; onChange: () => void; isAdmin: boolean }) {
+export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
+  const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
   const [pasteText, setPasteText] = useState("");
   const [preview, setPreview] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
@@ -93,7 +95,7 @@ export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Or
     setBusy(false);
   }
   async function removeOrder(o: Order) {
-    if (!isAdmin) { toast.error("삭제는 관리자만 가능합니다."); return; }
+    if (!canDelete) { toast.error("삭제 권한이 없습니다."); return; }
     if (!confirm(`주문 삭제: ${o.name} ${o.qty}g (${o.order_date})\n연결된 생산계획·COC도 함께 삭제됩니다. 계속할까요?`)) return;
     setBusy(true);
     try {
@@ -127,7 +129,7 @@ export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Or
               <div style={{ fontSize: 13, marginBottom: 8 }}>
                 <b style={{ color: "#1aa260" }}>신규 {newCount}건</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}건</b>
               </div>
-              <button className="btn green" onClick={syncNew} disabled={busy}>동기화 — 신규 {newCount}건 추가</button>
+              <button className="btn green" onClick={syncNew} disabled={busy || !canImport}>동기화 — 신규 {newCount}건 추가</button>
               <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
                 동기화는 신규만 추가하고 기존 주문·생산계획·COC는 그대로 둡니다. (전체 교체 없음)
               </p>
@@ -138,7 +140,7 @@ export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Or
                     {orphans.map(o => (
                       <div key={o.id} style={{ fontSize: 11, display: "flex", justifyContent: "space-between", gap: 8, padding: "2px 0" }}>
                         <span>{o.order_date.slice(5)} {o.name} {o.qty}g {o.customer}</span>
-                        {isAdmin && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11 }} onClick={() => removeOrder(o)}>삭제</button>}
+                        {canDelete && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11 }} onClick={() => removeOrder(o)}>삭제</button>}
                       </div>
                     ))}
                   </div>
@@ -153,7 +155,7 @@ export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Or
               <thead><tr><th style={{ textAlign: "left", padding: 4 }}>월</th><th style={{ padding: 4 }}>건수</th></tr></thead>
               <tbody>{byMonth.map(([ym, n]) => <tr key={ym}><td style={{ padding: 4 }}>{ym}</td><td style={{ padding: 4, textAlign: "center" }}>{n}</td></tr>)}</tbody>
             </table>}
-          {!isAdmin && <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>※ 삭제는 관리자만 가능합니다(수정은 가능).</p>}
+          {!canDelete && <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>※ 삭제 권한이 없습니다.</p>}
         </div>
       </div>
 
@@ -195,8 +197,8 @@ export default function ImportOrders({ orders, onChange, isAdmin }: { orders: Or
                           </>
                         ) : (
                           <>
-                            <button className="btn ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => startEdit(o)}>수정</button>{" "}
-                            {isAdmin && <button className="btn" style={{ padding: "2px 8px", fontSize: 11, background: "#c0392b" }} onClick={() => removeOrder(o)}>삭제</button>}
+                            {canEdit && <button className="btn ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => startEdit(o)}>수정</button>}{" "}
+                            {canDelete && <button className="btn" style={{ padding: "2px 8px", fontSize: 11, background: "#c0392b" }} onClick={() => removeOrder(o)}>삭제</button>}
                           </>
                         )}
                       </td>

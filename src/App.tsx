@@ -1,18 +1,20 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Order } from "./lib/types";
-import { listOrders, backendName, getMyRole } from "./lib/db";
+import { listOrders, backendName } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
+import { loadPerms, useCaps } from "./lib/perm";
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import Dashboard from "./components/Dashboard";
 import Audit from "./components/Audit";
+import Admin from "./components/Admin";
 import Login from "./components/Login";
 
-type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit";
+type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "admin";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
@@ -20,8 +22,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
-  const [role, setRole] = useState<string>("user");
-  const isAdmin = role === "admin";
+  const { can, role, loaded: permLoaded } = useCaps();
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -37,26 +38,31 @@ export default function App() {
   }, []);
 
   const signedIn = !hasSupabase || !!session;
-  useEffect(() => { if (signedIn) { refresh(); getMyRole().then(setRole); } }, [signedIn, refresh]);
+  useEffect(() => { if (signedIn) { refresh(); loadPerms(); } }, [signedIn, refresh]);
 
   if (!authReady) return <div className="wrap muted">불러오는 중…</div>;
   if (hasSupabase && !session) return <Login />;
+  if (hasSupabase && !permLoaded) return <div className="wrap muted">권한 확인 중…</div>;
+
+  const T = (key: Tab, label: string, show = true) =>
+    show ? <button className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{label}</button> : null;
 
   return (
     <>
       <header className="app">
         <h1>ORO MES</h1>
         <nav className="tabs">
-          <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>POP</button>
-          <button className={tab === "import" ? "active" : ""} onClick={() => setTab("import")}>주문 가져오기</button>
-          <button className={tab === "plan" ? "active" : ""} onClick={() => setTab("plan")}>생산계획</button>
-          <button className={tab === "coc" ? "active" : ""} onClick={() => setTab("coc")}>COC 발행</button>
-          <button className={tab === "report" ? "active" : ""} onClick={() => setTab("report")}>리포트</button>
-          <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}>기록</button>
+          {T("today", "POP")}
+          {T("import", "주문 가져오기")}
+          {T("plan", "생산계획")}
+          {T("coc", "COC 발행", can("coc.issue"))}
+          {T("report", "리포트", can("report.view"))}
+          {T("audit", "기록", can("audit.view"))}
+          {T("admin", "관리자", role === "master")}
         </nav>
         <span className="badge">
           {backendName} · 주문 {orders.length}건
-          {session?.user?.email && <> · {session.user.email}{isAdmin ? " (관리자)" : ""}</>}
+          {session?.user?.email && <> · {session.user.email} ({role})</>}
           {supabase && session && <button className="btn ghost" style={{ marginLeft: 10, padding: "3px 10px", fontSize: 12 }}
             onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
         </span>
@@ -64,11 +70,12 @@ export default function App() {
       <div className="wrap">
         {loading ? <div className="muted">불러오는 중…</div> :
           tab === "today" ? <Today orders={orders} /> :
-          tab === "import" ? <ImportOrders orders={orders} onChange={refresh} isAdmin={isAdmin} /> :
+          tab === "import" ? <ImportOrders orders={orders} onChange={refresh} /> :
           tab === "plan" ? <ProductionPlan orders={orders} /> :
           tab === "coc" ? <CocIssue orders={orders} /> :
           tab === "report" ? <Dashboard orders={orders} /> :
-          <Audit />}
+          tab === "audit" ? <Audit /> :
+          <Admin onRoleChange={loadPerms} />}
       </div>
       <ToastHost />
     </>

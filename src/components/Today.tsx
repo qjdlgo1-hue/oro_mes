@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
+import { can } from "../lib/perm";
 
 const p = (n: number) => String(n).padStart(2, "0");
 function todayIso() { const t = new Date(); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; }
@@ -12,6 +13,7 @@ export default function Today({ orders }: { orders: Order[] }) {
   const [tick, setTick] = useState(0);
   useEffect(() => { listPlans().then(setPlans); listCocs().then(setCocs); }, []);
 
+  const canEdit = can("plan.edit");
   const T = todayIso();
   const oMap = useMemo(() => { const m: Record<string, Order> = {}; orders.forEach(o => m[o.id] = o); return m; }, [orders]);
 
@@ -47,7 +49,7 @@ export default function Today({ orders }: { orders: Order[] }) {
         <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
         <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {o.qty.toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
       </div>
-      <button className="btn green" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => markDone(pl)}>완료</button>
+      {canEdit && <button className="btn green" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => markDone(pl)}>완료</button>}
     </div>
   );
 
