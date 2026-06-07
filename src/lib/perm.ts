@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { supabase, hasSupabase } from "./supabase";
 
+export const MENUS: { key: string; label: string }[] = [
+  { key: "menu.pop", label: "POP" },
+  { key: "menu.import", label: "주문 가져오기" },
+  { key: "menu.plan", label: "생산계획" },
+  { key: "menu.coc", label: "COC 발행" },
+  { key: "menu.report", label: "리포트" },
+  { key: "menu.audit", label: "기록" },
+];
+
 export const CAPS: { key: string; label: string }[] = [
   { key: "order.import", label: "주문 가져오기/동기화" },
   { key: "order.edit", label: "주문 수정" },

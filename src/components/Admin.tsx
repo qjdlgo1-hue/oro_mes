@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CAPS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
+import { CAPS, MENUS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 
@@ -93,31 +93,41 @@ export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>계정은 즉시 생성되고 이메일 인증 없이 바로 로그인 가능합니다. 비밀번호는 서버에서 암호화 저장됩니다.</p>
       </div>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>권한 매트릭스 <span className="muted">(Master는 항상 전체 허용)</span></h3>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
-          <thead><tr>
-            <th style={TH}>기능</th>
-            <th style={{ ...TH, textAlign: "center" }}>Master</th>
-            <th style={{ ...TH, textAlign: "center" }}>Manager</th>
-            <th style={{ ...TH, textAlign: "center" }}>User</th>
-          </tr></thead>
-          <tbody>
-            {CAPS.map(c => (
-              <tr key={c.key}>
-                <td style={TD}>{c.label} <span className="muted" style={{ fontSize: 10 }}>({c.key})</span></td>
-                <td style={{ ...TD, textAlign: "center", color: "#1aa260" }}>✓</td>
-                {["manager", "user"].map(role => (
-                  <td key={role} style={{ ...TD, textAlign: "center" }}>
-                    <input type="checkbox" checked={!!matrix[`${role}:${c.key}`]} onChange={e => toggle(role, c.key, e.target.checked)} />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>변경은 즉시 저장됩니다. 사용자는 다음 로그인/새로고침 때 반영됩니다. (삭제 등 핵심 작업은 서버에서도 강제)</p>
-      </div>
+      <Matrix title="권한 매트릭스 (작업 허용)" items={CAPS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} />
+      <Matrix title="메뉴 표시 (탭 보이기)" items={MENUS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} note="권한이 없으면 자동으로 숨겨지고, 여기서 추가로 수동 숨김도 됩니다." />
+    </div>
+  );
+}
+
+function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
+  title: string; items: { key: string; label: string }[]; matrix: Record<string, boolean>;
+  TH: React.CSSProperties; TD: React.CSSProperties; toggle: (role: string, cap: string, val: boolean) => void; note?: string;
+}) {
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>{title} <span className="muted">(Master는 항상 전체)</span></h3>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead><tr>
+          <th style={TH}>항목</th>
+          <th style={{ ...TH, textAlign: "center" }}>Master</th>
+          <th style={{ ...TH, textAlign: "center" }}>Manager</th>
+          <th style={{ ...TH, textAlign: "center" }}>User</th>
+        </tr></thead>
+        <tbody>
+          {items.map(c => (
+            <tr key={c.key}>
+              <td style={TD}>{c.label} <span className="muted" style={{ fontSize: 10 }}>({c.key})</span></td>
+              <td style={{ ...TD, textAlign: "center", color: "#1aa260" }}>\u2713</td>
+              {["manager", "user"].map(role => (
+                <td key={role} style={{ ...TD, textAlign: "center" }}>
+                  <input type="checkbox" checked={!!matrix[`${role}:${c.key}`]} onChange={e => toggle(role, c.key, e.target.checked)} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {note && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{note}</p>}
     </div>
   );
 }

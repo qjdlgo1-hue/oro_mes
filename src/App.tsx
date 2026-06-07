@@ -52,12 +52,12 @@ export default function App() {
       <header className="app">
         <h1>ORO MES</h1>
         <nav className="tabs">
-          {T("today", "POP")}
-          {T("import", "주문 가져오기")}
-          {T("plan", "생산계획")}
-          {T("coc", "COC 발행", can("coc.issue"))}
-          {T("report", "리포트", can("report.view"))}
-          {T("audit", "기록", can("audit.view"))}
+          {T("today", "POP", can("menu.pop"))}
+          {T("import", "주문 가져오기", can("menu.import"))}
+          {T("plan", "생산계획", can("menu.plan"))}
+          {T("coc", "COC 발행", can("coc.issue") && can("menu.coc"))}
+          {T("report", "리포트", can("report.view") && can("menu.report"))}
+          {T("audit", "기록", can("audit.view") && can("menu.audit"))}
           {T("admin", "관리자", role === "master")}
         </nav>
         <span className="badge">

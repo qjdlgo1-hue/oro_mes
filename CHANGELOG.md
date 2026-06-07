@@ -4,6 +4,10 @@
 
 ## 2026-06-07
 
+### 메뉴 표시(보이기) 제어
+- 관리자 페이지에 **'메뉴 표시' 매트릭스** 추가: Master가 Manager·User에게 탭(POP/주문가져오기/생산계획/COC/리포트/기록)을 보이기/숨기기.
+- 탭 표시 규칙: **권한 없으면 자동 숨김 + 메뉴 표시 설정으로 수동 숨김** 둘 다 적용.
+
 ### 관리자 페이지 / 3단 역할 / 계정 생성
 - 역할 **Master / Manager / User** (기존 admin→master). Master=dwlee@orocorp.kr.
 - **권한 매트릭스**(role_permissions): Master가 Manager·User의 기능(가져오기/수정/삭제/계획편집/COC/리포트/기록)을 개별 on/off. `can()` 기반 **RLS 서버 강제**.
