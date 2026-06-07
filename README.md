@@ -1,68 +1,79 @@
 # ORO MES (웹앱)
 
-이카운트 주문 → 생산계획(드래그 스케줄러) → COC 발행을 한 곳에서.
-React + Vite + TypeScript. 데이터는 **Supabase(클라우드)**, 미설정 시 **브라우저 로컬**로 자동 동작.
+이카운트 주문 → 생산계획(드래그 스케줄러) → COC 발행 → 리포트를 한 곳에서.
+**React + Vite + TypeScript**, 데이터는 **Supabase(클라우드)**, 미설정 시 브라우저 로컬로 자동 동작.
+
+> 변경 이력은 [CHANGELOG.md](./CHANGELOG.md), 배포 방법은 [DEPLOY.md](./DEPLOY.md) 참고.
 
 ---
 
-## 0) 필요한 것 (처음 1회)
-- **Node.js LTS** 설치: https://nodejs.org 에서 LTS 버전 다운로드 → 설치
-- 설치 확인: 터미널(명령 프롬프트)에서 `node -v` 입력 → 버전이 나오면 OK
+## 기능 (탭 4개 + 로그인)
+- **로그인**: 이메일+비밀번호(Supabase Auth). 계정은 관리자가 발급(공개 가입 차단).
+- **주문 가져오기**: 이카운트 [주문서현황]을 ① 엑셀 업로드 ② 화면 복사–붙여넣기.
+  - **중복 구분**: 일자·품목·규격·수량·거래처 기준으로 신규/중복 자동 표시 →
+    "신규만 추가" 또는 "이 달 전체 교체" 선택.
+  - "데모 데이터 불러오기"로 2026 1~6월 샘플 주입 가능.
+- **생산계획**: 막대를 좌우로 끌어 생산일 이동, 오른쪽 끝을 끌면 여러 날로 확장,
+  더블클릭=완료(회색), 날짜별 일계(g) 자동 집계, 월 이동 ◀▶, 제품/무형상품 필터.
+- **COC 발행**: 주문 선택 시 자동 채움(거래처·모델·Size·조성·생산일·유효기간+1년·중량) →
+  QC 값 입력 → 현미경 이미지 첨부 → **로고·도장 자동 적용** → 인쇄/PDF.
+- **리포트**: 월별 발주량/완료량/달성률(막대) + 행 클릭 시 품목별 상세.
 
-## 1) 실행 (로컬에서 바로 보기)
-이 `oro-mes` 폴더에서 터미널을 열고:
+## 실행 (로컬)
 ```
 npm install
 npm run dev
 ```
-→ 안내되는 주소(예: http://localhost:5173)를 브라우저에서 엽니다.
-처음엔 데이터가 없으니, **[주문 가져오기] 탭 → "데모 데이터 불러오기"** 를 누르면 2026년 1~6월 주문이 들어갑니다.
+→ 안내 주소(예: http://localhost:5173) 접속. (Node.js LTS 필요)
+로컬 개발 시 .env가 없으면 브라우저 저장 모드로 동작하고 로그인은 생략됩니다.
 
-## 2) 사용법
-- **주문 가져오기**: 이카운트 [주문서현황]을 ① 엑셀로 받아 업로드 하거나 ② 화면을 복사해 붙여넣기. 미리보기 확인 후 저장(해당 월 교체).
-- **생산계획**: 막대를 좌우로 끌어 생산일 이동, 오른쪽 끝을 끌면 여러 날로 확장, 더블클릭=완료. 월 이동 ◀▶.
-- **COC 발행**: 주문 선택 → 자동 채움, QC 값 입력, 이미지 추가, 🖨 인쇄/PDF.
+## 로그인 / 계정 관리
+- 사용자는 **Supabase 대시보드 → Authentication → Users → Add user** 에서 발급
+  (비밀번호 입력 + "Auto Confirm User" 켜기).
+- 외부 가입 차단: **Authentication → Sign In / Providers → Email →
+  "Allow new users to sign up" 끄기**.
 
-## 3) 클라우드(Supabase) 연결 — 어디서나 접속·공유
-1. https://supabase.com 가입 → New project 생성 (DB 비밀번호 메모)
-2. 좌측 **SQL Editor** → `supabase/schema.sql` 내용 붙여넣고 **Run**
-3. **Project Settings → API** 에서 **Project URL** 과 **anon public key** 복사
-4. 이 폴더의 `.env.example` 을 복사해 **`.env`** 파일로 만들고 값 입력:
-   ```
-   VITE_SUPABASE_URL=https://xxxx.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGci...
-   ```
-5. `npm run dev` 재실행 → 헤더 배지가 "저장: Supabase(클라우드)" 로 바뀌면 연결 완료.
+## Supabase
+- 프로젝트: **oro-mes** (ap-northeast-2 / 서울)
+- URL: https://fzoombsxvscndzrhzmwb.supabase.co
+- 테이블: `orders`, `plans`, `cocs`, `app_settings` (스키마: `supabase/schema.sql`)
+- 키: 공개 anon 키를 `src/lib/supabase.ts`에 기본값으로 내장(.env로 덮어쓰기 가능).
 
-## 4) 배포(Vercel) — 인터넷 주소로 공유
-1. 이 프로젝트를 GitHub 저장소에 올립니다.
-2. https://vercel.com 가입 → **Add New → Project** → 해당 GitHub 저장소 선택
-3. Framework: **Vite** 자동 인식. **Environment Variables** 에 위 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` 추가
-4. **Deploy** → 발급된 주소로 접속.
+## 보안(RLS) 상태
+- 모든 테이블 RLS 활성화.
+- 정책: **로그인 사용자(authenticated)만 읽기/쓰기** (2026-06-07 적용 완료).
+  익명 접근은 읽기·쓰기 모두 차단됨(검증 완료).
 
----
+## 배포 (Vercel)
+- GitHub 저장소: https://github.com/qjdlgo1-hue/oro_mes
+- Vercel(Pro)에 연결되어 `git push` 시 자동 재배포. 환경변수 없이 동작(키 내장).
+- 자세한 절차: [DEPLOY.md](./DEPLOY.md)
 
 ## 폴더 구조
 ```
 oro-mes/
   index.html
   src/
-    App.tsx                앱 셸 + 탭
+    App.tsx                앱 셸 + 탭 + 인증 게이트
     main.tsx, index.css
     lib/
-      types.ts             데이터 타입
-      supabase.ts          Supabase 클라이언트(키 있으면 활성)
-      db.ts                데이터 계층(클라우드/로컬 자동 전환)
+      types.ts             데이터 타입(Order/PlanEntry/CocData/Settings)
+      supabase.ts          Supabase 클라이언트(+공개키 기본값)
+      db.ts                데이터 계층(클라우드/로컬 자동) + 중복판별 + 설정
       parseOrders.ts       엑셀/붙여넣기 파서
       sampleOrders.ts      데모 주문 83건
     components/
-      ImportOrders.tsx     주문 가져오기
+      Login.tsx            로그인 화면
+      ImportOrders.tsx     주문 가져오기(중복 구분)
       ProductionPlan.tsx   생산계획 드래그 스케줄러
-      CocIssue.tsx         COC 발행
+      CocIssue.tsx         COC 발행(로고·도장)
+      Dashboard.tsx        월별 리포트
   supabase/schema.sql      DB 스키마
-  .env.example             환경변수 예시
+  .env.example
 ```
 
-## 참고
+## 참고 / 제약
 - 이카운트는 주문서 "조회" API가 없어, 주문은 엑셀 업로드/붙여넣기로 가져옵니다.
-- 재import 시 해당 월 주문이 교체되며, 그 달의 기존 생산계획/COC는 초기화됩니다.
+  (매월 화면 수집은 Claude in Chrome으로 보조 가능)
+- 재import 시 "이 달 교체"는 해당 월 주문을 교체하며 그 달 생산계획/COC가 초기화됩니다.
+- COC 이미지는 현재 DB(base64)에 저장 — 양이 많아지면 Supabase Storage로 이전 권장(예정).
