@@ -58,8 +58,10 @@ export default function Today({ orders }: { orders: Order[] }) {
   );
 
   return (
-    <div style={{ display: "grid", gap: 14, maxWidth: 820 }}>
-      <div style={{ fontSize: 13, color: "#6b7280" }}>오늘: <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획에서 일정을 잡은 주문 기준입니다.</div>
+    <div style={{ display: "grid", gap: 14, maxWidth: 1040, gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
+      <div style={{ gridColumn: "1 / -1", fontSize: 13, color: "#6b7280" }}>
+        <b style={{ color: "#1f4e78", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획에서 일정을 잡은 주문 기준입니다.
+      </div>
 
       <Section title="🔴 지연 (완료일 지났는데 미완료)" color="#c0392b" count={groups.late.length}>
         {groups.late.map(g => <Row key={g.o.id} {...g} pl={g.p} late />)}

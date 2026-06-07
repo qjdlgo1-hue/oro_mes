@@ -43,7 +43,7 @@ export default function App() {
       <header className="app">
         <h1>ORO MES</h1>
         <nav className="tabs">
-          <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>오늘</button>
+          <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}>POP</button>
           <button className={tab === "import" ? "active" : ""} onClick={() => setTab("import")}>주문 가져오기</button>
           <button className={tab === "plan" ? "active" : ""} onClick={() => setTab("plan")}>생산계획</button>
           <button className={tab === "coc" ? "active" : ""} onClick={() => setTab("coc")}>COC 발행</button>
