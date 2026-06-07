@@ -1,31 +1,16 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan } from "../lib/db";
+import { daysInMonth, weekBuckets } from "../lib/plan";
+import { logAudit } from "../lib/db";
 
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const TODAY = new Date();
 
-function daysInMonth(y: number, m: number) { return new Date(y, m, 0).getDate(); }
 function dayOf(iso: string) { return parseInt(iso.slice(8, 10), 10); }
 function isoFor(y: number, m: number, d: number) {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${y}-${p(m)}-${p(d)}`;
-}
-function weekBuckets(y: number, m: number, anchor: "mon" | "first") {
-  const n = daysInMonth(y, m); const out: { s: number; e: number; label: string }[] = [];
-  if (anchor === "first") {
-    for (let s = 1; s <= n; s += 7) { const e = Math.min(s + 6, n); out.push({ s, e, label: `${s}~${e}` }); }
-  } else {
-    let s = 1;
-    while (s <= n) {
-      const dow = new Date(y, m - 1, s).getDay();
-      let e = dow === 0 ? s : s + (7 - dow);
-      e = Math.min(e, n);
-      out.push({ s, e, label: `${s}~${e}` });
-      s = e + 1;
-    }
-  }
-  return out;
 }
 
 export default function ProductionPlan({ orders }: { orders: Order[] }) {
@@ -164,7 +149,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                           })}
                           <div className="ordermark" style={{ left: (dayOf(o.order_date) - 1) * DAYW }} title="주문일" />
                           <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} per={Math.round(o.qty / p.span)}
-                            onMove={startMove} onResize={startResize} onToggle={() => commit({ ...p, done: !p.done })} />
+                            onMove={startMove} onResize={startResize} onToggle={() => { const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }} />
                         </div>
                       </td>
                     ) : (

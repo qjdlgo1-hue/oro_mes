@@ -115,3 +115,39 @@ export async function saveSettings(s: Settings): Promise<void> {
   }
   lsSet(LS_SETTINGS, s);
 }
+
+// ---- 주문 수정/삭제 ----
+export async function updateOrder(id: string, patch: Partial<Order>): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("orders").update(patch).eq("id", id); if (error) throw error; return; }
+  const all = lsGet<Order[]>(LS.orders, []); const i = all.findIndex(o => o.id === id);
+  if (i >= 0) { all[i] = { ...all[i], ...patch }; lsSet(LS.orders, all); }
+}
+export async function deleteOrder(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("orders").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS.orders, lsGet<Order[]>(LS.orders, []).filter(o => o.id !== id));
+  const pl = lsGet<Record<string, any>>(LS.plans, {}); delete pl[id]; lsSet(LS.plans, pl);
+  const cc = lsGet<Record<string, any>>(LS.cocs, {}); delete cc[id]; lsSet(LS.cocs, cc);
+}
+
+// ---- 역할 ----
+export async function getMyRole(): Promise<string> {
+  if (!supabase) return "admin";
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u.user?.id; if (!uid) return "user";
+  const { data } = await supabase.from("profiles").select("role").eq("id", uid).maybeSingle();
+  return (data as any)?.role || "user";
+}
+
+// ---- 감사 로그 ----
+export async function logAudit(action: string, entity: string, entity_id: string, detail?: any): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    await supabase.from("audit_log").insert({ user_email: u.user?.email, action, entity, entity_id, detail });
+  } catch { /* best-effort */ }
+}
+export async function listAudit(limit = 200): Promise<any[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(limit);
+  if (error) throw error; return data || [];
+}

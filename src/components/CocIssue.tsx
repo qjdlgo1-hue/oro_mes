@@ -1,29 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Order, CocData, Settings, PlanEntry } from "../lib/types";
-import { listCocs, upsertCoc, getSettings, saveSettings, listPlans } from "../lib/db";
+import { listCocs, upsertCoc, getSettings, saveSettings, listPlans, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
+import { parseSpec, gravitySpec, addYear } from "../lib/coc";
 
 const TODAY = new Date();
 
-function parseSpec(s: string) {
-  let size = "", comp = "";
-  if (s.includes(":")) { const p = s.split(":"); size = p[0].trim(); comp = p.slice(1).join(":").trim(); }
-  else size = s.trim();
-  size = size.replace(/^(MSL_|Metco_|SNP_|SNP |Metco )/i, "").trim();
-  return { size, comp };
-}
-function gravitySpec(size: string) {
-  if (/16-25/.test(size)) return "9.6 ± 0.05";
-  if (/25-32/.test(size)) return "9.5 ± 0.05";
-  if (/32-45/.test(size)) return "9.3 ± 0.05";
-  return "9.x ± 0.05";
-}
-function addYear(iso: string) {
-  if (!iso) return "";
-  const d = new Date(iso); const e = new Date(d.getFullYear() + 1, d.getMonth(), d.getDate() - 1);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${e.getFullYear()}-${p(e.getMonth() + 1)}-${p(e.getDate())}`;
-}
 // prod/exp 는 생산계획에서 자동 계산하므로 defaults 에서 제외
 function defaults(o: Order): Record<string, string> {
   const { size, comp } = parseSpec(o.spec);
@@ -138,7 +120,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
         {!order ? <div className="card nodata">왼쪽에서 주문을 선택하세요.</div> :
           <div>
             <div className="no-print" style={{ marginBottom: 8, textAlign: "right" }}>
-              <button className="btn green" onClick={() => window.print()}>🖨 인쇄 / PDF 저장</button>
+              <button className="btn green" onClick={() => { logAudit("COC 발행(인쇄)", "coc", order.id, { name: order.name }); window.print(); }}>🖨 인쇄 / PDF 저장</button>
             </div>
             <div className="cert">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
-import { listPlans, listCocs, upsertPlan } from "../lib/db";
+import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
 
 const p = (n: number) => String(n).padStart(2, "0");
@@ -38,6 +38,7 @@ export default function Today({ orders }: { orders: Order[] }) {
     const np = { ...pl, done: true };
     setPlans(prev => ({ ...prev, [pl.order_id]: np })); setTick(t => t + 1);
     await upsertPlan(np);
+    const o = oMap[pl.order_id]; logAudit("생산 완료", "plan", pl.order_id, { name: o?.name });
   }
 
   const Row = ({ o, end, start, pl, late }: { o: Order; end: string; start: string; pl: PlanEntry; late?: boolean }) => (
