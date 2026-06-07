@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Order, CocData, Settings } from "../lib/types";
-import { listCocs, upsertCoc, getSettings, saveSettings } from "../lib/db";
+import { Order, CocData, Settings, PlanEntry } from "../lib/types";
+import { listCocs, upsertCoc, getSettings, saveSettings, listPlans } from "../lib/db";
+import { completionDate } from "../lib/plan";
 
 const TODAY = new Date();
 
@@ -18,15 +19,16 @@ function gravitySpec(size: string) {
   return "9.x ± 0.05";
 }
 function addYear(iso: string) {
+  if (!iso) return "";
   const d = new Date(iso); const e = new Date(d.getFullYear() + 1, d.getMonth(), d.getDate() - 1);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${e.getFullYear()}-${p(e.getMonth() + 1)}-${p(e.getDate())}`;
 }
+// prod/exp 는 생산계획에서 자동 계산하므로 defaults 에서 제외
 function defaults(o: Order): Record<string, string> {
   const { size, comp } = parseSpec(o.spec);
   return {
-    customer: o.customer, model: o.name, size, comp,
-    prod: o.order_date, exp: addYear(o.order_date), netwt: String(o.qty),
+    customer: o.customer, model: o.name, size, comp, netwt: String(o.qty),
     goldSpec: ">100", goldRes: "", silverSpec: "N/A", silverRes: "N/A",
     gravSpec: gravitySpec(size), gravRes: "",
     cohRes: "0", unpRes: "0", pdSpec: ">90%", pdRes: "", certBy: "",
@@ -35,7 +37,6 @@ function defaults(o: Order): Record<string, string> {
   };
 }
 
-// 이미지 선택 → 축소 → dataURL 콜백
 function pickImageFile(maxW: number, cb: (durl: string) => void) {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
   inp.onchange = () => {
@@ -59,6 +60,7 @@ function pickImageFile(maxW: number, cb: (durl: string) => void) {
 
 export default function CocIssue({ orders }: { orders: Order[] }) {
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
+  const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [settings, setSettings] = useState<Settings>({});
   const [sel, setSel] = useState<string | null>(null);
   const [cur, setCur] = useState(() => {
@@ -67,7 +69,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     return { y: +last.slice(0, 4), m: +last.slice(5, 7) };
   });
 
-  useEffect(() => { listCocs().then(setCocs); getSettings().then(setSettings); }, []);
+  useEffect(() => { listCocs().then(setCocs); listPlans().then(setPlans); getSettings().then(setSettings); }, []);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => orders.filter(o => o.ym === ym).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, ym]);
@@ -76,6 +78,12 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const order = orders.find(o => o.id === sel) || null;
   const data: Record<string, string> = order ? { ...defaults(order), ...(cocs[order.id]?.data || {}) } : {};
 
+  // 생산완료일(계획 마지막날) → Production Date 자동 반영. data.prod 가 있으면 직접수정으로 간주.
+  const planProd = order ? completionDate(plans[order.id]) : null;
+  const prodManual = !!(order && cocs[order.id]?.data?.prod);
+  const effProd = (order && cocs[order.id]?.data?.prod) || planProd || order?.order_date || "";
+  const effExp = addYear(effProd);
+
   function setField(f: string, v: string) {
     if (!order) return;
     const next = { ...data, [f]: v };
@@ -83,8 +91,14 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     setCocs(prev => ({ ...prev, [order.id]: c }));
     upsertCoc(c);
   }
+  function clearProd() { // 직접수정 해제 → 다시 생산계획 자동
+    if (!order) return;
+    const next = { ...data }; delete next.prod;
+    const c: CocData = { order_id: order.id, data: next };
+    setCocs(prev => ({ ...prev, [order.id]: c }));
+    upsertCoc(c);
+  }
   function pickPerCoc(key: string) { pickImageFile(520, durl => setField(key, durl)); }
-
   function setLogo() { pickImageFile(400, durl => { const s = { ...settings, logo: durl }; setSettings(s); saveSettings(s); }); }
   function setStamp() { pickImageFile(300, durl => { const s = { ...settings, stamp: durl }; setSettings(s); saveSettings(s); }); }
 
@@ -106,11 +120,15 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
           </div>
         </div>
         <ul className="olist">
-          {rows.map(o =>
-            <li key={o.id} className={o.id === sel ? "sel" : ""} onClick={() => setSel(o.id)}>
-              <div className="nm">{o.name}</div>
-              <div className="meta">{o.customer} · {o.qty.toLocaleString()}g · {o.order_date.slice(5)} · {o.gubun}</div>
-            </li>)}
+          {rows.map(o => {
+            const cp = completionDate(plans[o.id]);
+            return (
+              <li key={o.id} className={o.id === sel ? "sel" : ""} onClick={() => setSel(o.id)}>
+                <div className="nm">{o.name}</div>
+                <div className="meta">{o.customer} · {o.qty.toLocaleString()}g · 주문 {o.order_date.slice(5)}{cp ? ` · 완료 ${cp.slice(5)}` : ""}</div>
+              </li>
+            );
+          })}
           {rows.length === 0 && <li className="meta" style={{ padding: 14 }}>이 달 주문 없음</li>}
         </ul>
       </div>
@@ -131,8 +149,19 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <table className="info"><tbody>
                 <tr><td className="lbl">Manufacturer</td><td>ORO</td><td className="lbl">Customer</td><td>{F("customer")}</td></tr>
                 <tr><td className="lbl">Model Name</td><td>{F("model")}</td><td className="lbl">Size</td><td>{F("size")}</td></tr>
-                <tr><td className="lbl">Composition</td><td>{F("comp")}</td><td className="lbl">Production Date</td><td>{F("prod")}</td></tr>
-                <tr><td className="lbl">Net wt</td><td>{F("netwt", { width: 60 })} g</td><td className="lbl">Expiration Date</td><td>{F("exp")}</td></tr>
+                <tr>
+                  <td className="lbl">Composition</td><td>{F("comp")}</td>
+                  <td className="lbl">Production Date</td>
+                  <td>
+                    <input className="f" value={effProd} onChange={e => setField("prod", e.target.value)} />
+                    <div className="no-print" style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260", lineHeight: 1.2 }}>
+                      {prodManual
+                        ? <>직접수정됨 <span style={{ color: "#2f6cb0", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻ 생산계획 완료일로</span></>
+                        : (planProd ? "생산계획 완료일 자동" : "생산계획 없음 → 주문일 사용")}
+                    </div>
+                  </td>
+                </tr>
+                <tr><td className="lbl">Net wt</td><td>{F("netwt", { width: 60 })} g</td><td className="lbl">Expiration Date</td><td>{effExp} <span className="no-print muted" style={{ fontSize: 9 }}>(생산일+1년 자동)</span></td></tr>
               </tbody></table>
               <div className="sec-title">Thickness (Average)</div>
               <div className="method">{F("method1")}</div>
