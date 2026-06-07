@@ -21,3 +21,9 @@ export type CocData = {
   order_id: string;
   data: Record<string, string>;
 };
+
+export type Settings = {
+  logo?: string;   // dataURL
+  stamp?: string;  // dataURL
+  company?: string;
+};

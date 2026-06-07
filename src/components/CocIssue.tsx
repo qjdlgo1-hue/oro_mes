@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Order, CocData } from "../lib/types";
-import { listCocs, upsertCoc } from "../lib/db";
+import { Order, CocData, Settings } from "../lib/types";
+import { listCocs, upsertCoc, getSettings, saveSettings } from "../lib/db";
 
 const TODAY = new Date();
 
@@ -35,8 +35,31 @@ function defaults(o: Order): Record<string, string> {
   };
 }
 
+// 이미지 선택 → 축소 → dataURL 콜백
+function pickImageFile(maxW: number, cb: (durl: string) => void) {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+  inp.onchange = () => {
+    const f = inp.files?.[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        const sc = Math.min(1, maxW / img.width);
+        c.width = img.width * sc; c.height = img.height * sc;
+        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        cb(c.toDataURL("image/png"));
+      };
+      img.src = r.result as string;
+    };
+    r.readAsDataURL(f);
+  };
+  inp.click();
+}
+
 export default function CocIssue({ orders }: { orders: Order[] }) {
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
+  const [settings, setSettings] = useState<Settings>({});
   const [sel, setSel] = useState<string | null>(null);
   const [cur, setCur] = useState(() => {
     const months = [...new Set(orders.map(o => o.ym))].sort();
@@ -44,7 +67,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     return { y: +last.slice(0, 4), m: +last.slice(5, 7) };
   });
 
-  useEffect(() => { listCocs().then(setCocs); }, []);
+  useEffect(() => { listCocs().then(setCocs); getSettings().then(setSettings); }, []);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => orders.filter(o => o.ym === ym).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, ym]);
@@ -60,28 +83,10 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     setCocs(prev => ({ ...prev, [order.id]: c }));
     upsertCoc(c);
   }
+  function pickPerCoc(key: string) { pickImageFile(520, durl => setField(key, durl)); }
 
-  function pickImage(key: string) {
-    if (!order) return;
-    const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-    inp.onchange = () => {
-      const f = inp.files?.[0]; if (!f) return;
-      const r = new FileReader();
-      r.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          const c = document.createElement("canvas");
-          const sc = Math.min(1, 520 / img.width);
-          c.width = img.width * sc; c.height = img.height * sc;
-          c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-          setField(key, c.toDataURL("image/jpeg", 0.8));
-        };
-        img.src = r.result as string;
-      };
-      r.readAsDataURL(f);
-    };
-    inp.click();
-  }
+  function setLogo() { pickImageFile(400, durl => { const s = { ...settings, logo: durl }; setSettings(s); saveSettings(s); }); }
+  function setStamp() { pickImageFile(300, durl => { const s = { ...settings, stamp: durl }; setSettings(s); saveSettings(s); }); }
 
   const F = (f: string, style?: React.CSSProperties) =>
     <input className="f" style={style} value={data[f] ?? ""} onChange={e => setField(f, e.target.value)} />;
@@ -90,11 +95,15 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     <div className="coc-layout">
       <div className="sidebar no-print">
         <h3>주문 목록</h3>
-        <div style={{ padding: 8 }}>
+        <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
           <select value={ym} onChange={e => { const v = e.target.value; setCur({ y: +v.slice(0, 4), m: +v.slice(5, 7) }); setSel(null); }} style={{ width: "100%", padding: 6 }}>
             {months.length === 0 && <option>{ym}</option>}
             {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
           </select>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setLogo}>로고 설정{settings.logo ? " ✓" : ""}</button>
+            <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setStamp}>도장 설정{settings.stamp ? " ✓" : ""}</button>
+          </div>
         </div>
         <ul className="olist">
           {rows.map(o =>
@@ -113,6 +122,10 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <button className="btn green" onClick={() => window.print()}>🖨 인쇄 / PDF 저장</button>
             </div>
             <div className="cert">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                {settings.logo ? <img src={settings.logo} style={{ maxHeight: 46, maxWidth: 180 }} /> : <span style={{ width: 1 }} />}
+                <span className="muted" style={{ fontSize: 10 }}>{settings.company || ""}</span>
+              </div>
               <h2>Certificate of Compliance</h2>
               <div className="sec-title">Product Information</div>
               <table className="info"><tbody>
@@ -144,11 +157,14 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               </tbody></table>
               <div className="imgs">
                 <div className="imgbox"><div className="cap">{F("capL", { color: "#fff", textAlign: "center" })}</div>
-                  <div className="drop" onClick={() => pickImage("imgL")}>{data.imgL ? <img src={data.imgL} /> : "클릭하여 이미지 추가"}</div></div>
+                  <div className="drop" onClick={() => pickPerCoc("imgL")}>{data.imgL ? <img src={data.imgL} /> : "클릭하여 이미지 추가"}</div></div>
                 <div className="imgbox"><div className="cap">{F("capR", { color: "#fff", textAlign: "center" })}</div>
-                  <div className="drop" onClick={() => pickImage("imgR")}>{data.imgR ? <img src={data.imgR} /> : "클릭하여 이미지 추가"}</div></div>
+                  <div className="drop" onClick={() => pickPerCoc("imgR")}>{data.imgR ? <img src={data.imgR} /> : "클릭하여 이미지 추가"}</div></div>
               </div>
-              <div className="certby">Certified by : <input value={data.certBy ?? ""} onChange={e => setField("certBy", e.target.value)} placeholder="검사자" /></div>
+              <div className="certby" style={{ position: "relative" }}>
+                Certified by : <input value={data.certBy ?? ""} onChange={e => setField("certBy", e.target.value)} placeholder="검사자" />
+                {settings.stamp && <img src={settings.stamp} style={{ height: 60, position: "absolute", right: 0, top: -18 }} />}
+              </div>
               <div className="footer">809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea<br />Tel. 070-8098-0668 &nbsp; E.mail oro_corp@naver.com</div>
             </div>
           </div>}

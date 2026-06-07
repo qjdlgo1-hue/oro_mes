@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order } from "../lib/types";
 import { parsePaste, parseRows } from "../lib/parseOrders";
-import { replaceMonth } from "../lib/db";
+import { replaceMonth, appendOrders, dupKey } from "../lib/db";
 import { sampleOrders } from "../lib/sampleOrders";
 
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
@@ -10,20 +10,35 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   const [preview, setPreview] = useState<Order[]>([]);
   const [msg, setMsg] = useState("");
 
+  const existingKeys = useMemo(() => new Set(orders.map(dupKey)), [orders]);
+
   const byMonth = useMemo(() => {
     const m: Record<string, number> = {};
     orders.forEach(o => { m[o.ym] = (m[o.ym] || 0) + 1; });
     return Object.entries(m).sort((a, b) => a[0] < b[0] ? 1 : -1);
   }, [orders]);
 
+  // 미리보기 각 행에 신규/중복 표시
+  const marked = useMemo(() => {
+    const seen = new Set(existingKeys);
+    return preview.map(o => {
+      const k = dupKey(o);
+      const dup = seen.has(k);
+      seen.add(k); // 같은 붙여넣기 내 중복도 두번째부터 중복 처리
+      return { o, dup };
+    });
+  }, [preview, existingKeys]);
+
+  const newCount = marked.filter(m => !m.dup).length;
+  const dupCount = marked.filter(m => m.dup).length;
+
   function doPreview(list: Order[]) {
     setPreview(list);
     const months = [...new Set(list.map(o => o.ym))].sort();
     setMsg(list.length
-      ? `미리보기: ${list.length}건 (${months.join(", ")}). 아래 '저장'을 누르면 해당 월 주문을 교체 저장합니다.`
+      ? `인식: ${list.length}건 (${months.join(", ")})`
       : "인식된 주문이 없습니다. 컬럼/형식을 확인하세요.");
   }
-
   function onPaste() { doPreview(parsePaste(pasteText)); }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -36,16 +51,21 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     e.target.value = "";
   }
 
-  async function save() {
-    if (!preview.length) return;
-    const months = [...new Set(preview.map(o => o.ym))];
-    for (const ym of months) {
-      await replaceMonth(ym, preview.filter(o => o.ym === ym));
-    }
-    setPreview([]); setPasteText(""); setMsg(`저장 완료: ${months.join(", ")}`);
+  // 신규만 추가 (중복 제외)
+  async function addNewOnly() {
+    const toAdd = marked.filter(m => !m.dup).map(m => m.o);
+    if (!toAdd.length) { setMsg("추가할 신규 주문이 없습니다 (모두 중복)."); return; }
+    await appendOrders(toAdd);
+    setPreview([]); setPasteText(""); setMsg(`신규 ${toAdd.length}건 추가 완료 (중복 ${dupCount}건 제외)`);
     onChange();
   }
-
+  // 이 달 전체 교체
+  async function replaceMonths() {
+    const months = [...new Set(preview.map(o => o.ym))];
+    for (const ym of months) await replaceMonth(ym, preview.filter(o => o.ym === ym));
+    setPreview([]); setPasteText(""); setMsg(`교체 저장 완료: ${months.join(", ")} (총 ${preview.length}건)`);
+    onChange();
+  }
   async function loadSample() {
     const months = [...new Set(sampleOrders.map(o => o.ym))];
     for (const ym of months) await replaceMonth(ym, sampleOrders.filter(o => o.ym === ym));
@@ -62,14 +82,24 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
         <h3>② 화면 복사 → 붙여넣기</h3>
         <p className="muted">주문서현황 표를 드래그 복사(Ctrl+C) 후 아래에 붙여넣기(Ctrl+V).</p>
         <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
-          placeholder="여기에 붙여넣기..." style={{ width: "100%", height: 120, fontSize: 12, padding: 8 }} />
-        <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          placeholder="여기에 붙여넣기..." style={{ width: "100%", height: 110, fontSize: 12, padding: 8 }} />
+        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn" onClick={onPaste}>붙여넣기 인식</button>
           <button className="btn ghost" onClick={loadSample}>데모 데이터 불러오기</button>
         </div>
         {msg && <p style={{ marginTop: 12, color: "#1f4e78", fontSize: 13 }}>{msg}</p>}
+
         {preview.length > 0 &&
-          <button className="btn green" style={{ marginTop: 8 }} onClick={save}>이 {preview.length}건 저장</button>}
+          <div style={{ marginTop: 10, padding: 10, background: "#f5f9ff", borderRadius: 8 }}>
+            <div style={{ fontSize: 13, marginBottom: 8 }}>
+              <b style={{ color: "#1aa260" }}>신규 {newCount}건</b> · <b style={{ color: "#c0392b" }}>중복 {dupCount}건</b>
+              <span className="muted"> (중복 기준: 일자·품목·규격·수량·거래처)</span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn green" onClick={addNewOnly}>신규 {newCount}건만 추가</button>
+              <button className="btn" onClick={replaceMonths}>이 달 전체 교체</button>
+            </div>
+          </div>}
       </div>
 
       <div className="card">
@@ -83,18 +113,18 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           </table>}
         {preview.length > 0 &&
           <>
-            <h4>미리보기 (상위 10건)</h4>
+            <h4>미리보기 (상위 12건, <span style={{ color: "#c0392b" }}>빨강=중복</span>)</h4>
             <table style={{ borderCollapse: "collapse", fontSize: 11 }}>
-              <thead><tr>{["일자", "품목구분", "품목명", "규격", "수량", "거래처"].map(h =>
+              <thead><tr>{["", "일자", "품목명", "규격", "수량", "거래처"].map(h =>
                 <th key={h} style={{ border: "1px solid #ddd", padding: 3 }}>{h}</th>)}</tr></thead>
-              <tbody>{preview.slice(0, 10).map((o, i) =>
-                <tr key={i}>
-                  <td style={{ border: "1px solid #eee", padding: 3 }}>{o.order_date}</td>
-                  <td style={{ border: "1px solid #eee", padding: 3 }}>{o.gubun}</td>
-                  <td style={{ border: "1px solid #eee", padding: 3 }}>{o.name}</td>
-                  <td style={{ border: "1px solid #eee", padding: 3 }}>{o.spec}</td>
-                  <td style={{ border: "1px solid #eee", padding: 3, textAlign: "right" }}>{o.qty.toLocaleString()}</td>
-                  <td style={{ border: "1px solid #eee", padding: 3 }}>{o.customer}</td>
+              <tbody>{marked.slice(0, 12).map((m, i) =>
+                <tr key={i} style={{ background: m.dup ? "#fdeeee" : "#fff" }}>
+                  <td style={{ border: "1px solid #eee", padding: 3, color: m.dup ? "#c0392b" : "#1aa260" }}>{m.dup ? "중복" : "신규"}</td>
+                  <td style={{ border: "1px solid #eee", padding: 3 }}>{m.o.order_date}</td>
+                  <td style={{ border: "1px solid #eee", padding: 3 }}>{m.o.name}</td>
+                  <td style={{ border: "1px solid #eee", padding: 3 }}>{m.o.spec}</td>
+                  <td style={{ border: "1px solid #eee", padding: 3, textAlign: "right" }}>{m.o.qty.toLocaleString()}</td>
+                  <td style={{ border: "1px solid #eee", padding: 3 }}>{m.o.customer}</td>
                 </tr>)}
               </tbody>
             </table>
