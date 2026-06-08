@@ -85,3 +85,5 @@ table.spec td.item{background:#f6f8fb;font-weight:700;text-align:left;width:34%;
   body{background:#fff;} .coc-layout{display:block;} .wrap{padding:0;}
   .cert{box-shadow:none;border:none;width:auto;min-height:auto;padding:0;}
 }
+
+@media (max-width: 900px){ .rcpt-grid { grid-template-columns: 1fr !important; } }

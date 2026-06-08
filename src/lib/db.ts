@@ -151,3 +151,36 @@ export async function listAudit(limit = 200): Promise<any[]> {
   const { data, error } = await supabase.from("audit_log").select("*").order("at", { ascending: false }).limit(limit);
   if (error) throw error; return data || [];
 }
+
+import { Receipt } from "./types";
+const LS_RCPT = "oro_receipts";
+export async function listReceipts(): Promise<Receipt[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("receipts").select("*").order("rdate", { ascending: false });
+    if (error) throw error; return (data || []) as Receipt[];
+  }
+  return lsGet<Receipt[]>(LS_RCPT, []);
+}
+export async function addReceipt(r: Receipt): Promise<void> {
+  if (supabase) {
+    const { data: u } = await supabase.auth.getUser();
+    const { error } = await supabase.from("receipts").insert({ ...r, created_by: u.user?.email });
+    if (error) throw error; return;
+  }
+  const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...r, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
+}
+export async function deleteReceipt(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_RCPT, lsGet<Receipt[]>(LS_RCPT, []).filter(r => r.id !== id));
+}
+export async function readReceiptAI(imageBase64: string, mediaType: string): Promise<any> {
+  if (!supabase) throw new Error("AI 인식은 클라우드 연결에서만 됩니다.");
+  const { data, error } = await supabase.functions.invoke("read-receipt", { body: { imageBase64, mediaType } });
+  if (error) {
+    let msg = error.message;
+    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data.rec;
+}

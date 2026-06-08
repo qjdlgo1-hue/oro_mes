@@ -11,10 +11,11 @@ import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import Dashboard from "./components/Dashboard";
 import Audit from "./components/Audit";
+import Receipts from "./components/Receipts";
 import Admin from "./components/Admin";
 import Login from "./components/Login";
 
-type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "admin";
+type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "receipt" | "admin";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
@@ -58,6 +59,7 @@ export default function App() {
           {T("coc", "COC 발행", can("coc.issue") && can("menu.coc"))}
           {T("report", "리포트", can("report.view") && can("menu.report"))}
           {T("audit", "기록", can("audit.view") && can("menu.audit"))}
+          {T("receipt", "증빙", can("menu.receipt"))}
           {T("admin", "관리자", role === "master")}
         </nav>
         <span className="badge">
@@ -75,6 +77,7 @@ export default function App() {
           tab === "coc" ? <CocIssue orders={orders} /> :
           tab === "report" ? <Dashboard orders={orders} /> :
           tab === "audit" ? <Audit /> :
+          tab === "receipt" ? <Receipts /> :
           <Admin onRoleChange={loadPerms} />}
       </div>
       <ToastHost />

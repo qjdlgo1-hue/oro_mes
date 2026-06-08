@@ -27,3 +27,11 @@ export type Settings = {
   stamp?: string;  // dataURL
   company?: string;
 };
+
+export type Receipt = {
+  id?: string;
+  rdate: string; vendor: string; bizno: string;
+  supply: number; vat: number; total: number;
+  rtype: string; account: string; memo: string;
+  company?: string; period?: string;
+};

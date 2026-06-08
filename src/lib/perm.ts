@@ -8,6 +8,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.coc", label: "COC 발행" },
   { key: "menu.report", label: "리포트" },
   { key: "menu.audit", label: "기록" },
+  { key: "menu.receipt", label: "증빙(영수증)" },
 ];
 
 export const CAPS: { key: string; label: string }[] = [
@@ -18,6 +19,7 @@ export const CAPS: { key: string; label: string }[] = [
   { key: "coc.issue", label: "COC 발행/설정" },
   { key: "report.view", label: "리포트 보기" },
   { key: "audit.view", label: "기록 보기" },
+  { key: "receipt.edit", label: "증빙 입력/삭제" },
 ];
 
 let _role = "user";
