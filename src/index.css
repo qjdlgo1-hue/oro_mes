@@ -87,3 +87,32 @@ table.spec td.item{background:#f6f8fb;font-weight:700;text-align:left;width:34%;
 }
 
 @media (max-width: 900px){ .rcpt-grid { grid-template-columns: 1fr !important; } }
+
+/* ===== 모바일 ===== */
+.botnav{ display:none; }
+@media (max-width: 760px){
+  body{ font-size: 14px; }
+  .wrap{ padding: 12px 12px 78px; }
+  header.app{ padding: 10px 12px; gap: 8px; }
+  header.app .tabs{ display: none; }
+  header.app .badge{ font-size: 11px; margin-left: auto; }
+  button.btn{ min-height: 42px; }
+  input, select, textarea{ font-size: 16px; } /* iOS 줌 방지 */
+  .botnav{
+    display:flex; position: fixed; left:0; right:0; bottom:0; z-index: 60;
+    background:#fff; border-top:1px solid var(--line); overflow-x:auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -2px 8px rgba(0,0,0,.06);
+  }
+  .botnav button{
+    flex:0 0 auto; min-width: 62px; padding: 7px 6px; border:none; background:transparent;
+    font-size: 11px; color: var(--muted); display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;
+  }
+  .botnav button.active{ color: var(--navy); font-weight: 700; }
+  .botnav .ic{ font-size: 18px; line-height: 1; }
+  /* 카드형 행 */
+  .mcard{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .mcard .mrow{ display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:2px 0; }
+  .mcard .mrow .k{ color: var(--muted); }
+  .mcard .mrow .v{ font-weight:600; text-align:right; }
+}

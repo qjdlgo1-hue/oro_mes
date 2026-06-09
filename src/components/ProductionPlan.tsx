@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan } from "../lib/db";
-import { daysInMonth, weekBuckets } from "../lib/plan";
+import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
+import { useIsMobile } from "../lib/useIsMobile";
 import { logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 
@@ -27,6 +28,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [anchor, setAnchor] = useState<"mon" | "first">("mon");
   const [dayw, setDayw] = useState(30);
   const canEdit = can("plan.edit");
+  const isMobile = useIsMobile();
 
   useEffect(() => { listPlans().then(setPlans); }, []);
 
@@ -87,6 +89,45 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const dayTot = new Array(nDays + 1).fill(0);
   rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = 1; d <= nDays; d++) dayTot[d] += dayQty(o, p, d); });
   const weekTot = buckets.map(b => { let s = 0; rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); }); return s; });
+
+  if (isMobile) {
+    return (
+      <div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+          <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>
+          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 8, borderRadius: 6 }}>
+            <option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option>
+          </select>
+        </div>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{rows.length}개 · 시작일/기간을 정하면 생산완료일이 자동 계산됩니다.</div>
+        {rows.length === 0 ? <div className="card nodata">이 달 주문이 없습니다.</div> :
+          rows.map((o, idx) => {
+            const p = planOf(o); const cp = completionDate(p);
+            return (
+              <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
+                <div className="mrow"><span className="k">{idx + 1}. 품목</span><span className="v">{o.name}{p.done ? " ✅" : ""}</span></div>
+                <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
+                <div className="mrow"><span className="k">거래처 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {o.qty.toLocaleString()}g</span></div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <label style={{ fontSize: 12, color: "#6b7280" }}>시작일
+                    <input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })}
+                      style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                  <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)
+                    <input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span}
+                      onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })}
+                      style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                  <div style={{ fontSize: 12, color: "#1f4e78" }}>완료일<br /><b>{cp}</b></div>
+                </div>
+                {canEdit &&
+                  <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 10, width: "100%" }}
+                    onClick={() => { const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }}>
+                    {p.done ? "완료 해제" : "생산 완료 처리"}</button>}
+              </div>
+            );
+          })}
+      </div>
+    );
+  }
 
   return (
     <div>

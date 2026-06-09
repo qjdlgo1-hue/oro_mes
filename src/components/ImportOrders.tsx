@@ -7,9 +7,11 @@ import { completionDate } from "../lib/plan";
 import { sampleOrders } from "../lib/sampleOrders";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
+import { useIsMobile } from "../lib/useIsMobile";
 
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
   const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
+  const isMobile = useIsMobile();
   const [pasteText, setPasteText] = useState("");
   const [preview, setPreview] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
@@ -169,6 +171,24 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           <span className="muted">{viewRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부 · 행 수정/삭제 가능</span>
         </div>
         {viewRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
+          isMobile ? (
+          <div>
+            {viewRows.map(o => {
+              const cp = completionDate(plans[o.id]); const done = !!plans[o.id]?.done; const hasCoc = !!cocs[o.id];
+              return (
+                <div className="mcard" key={o.id}>
+                  <div className="mrow"><span className="k">{o.order_date}</span><span className="v">{o.qty.toLocaleString()}g</span></div>
+                  <div className="mrow"><span className="k">품목</span><span className="v">{o.name}</span></div>
+                  <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
+                  <div className="mrow"><span className="k">거래처</span><span className="v" style={{ fontWeight: 400 }}>{o.customer}</span></div>
+                  <div className="mrow"><span className="k">완료일 / 상태 / COC</span><span className="v" style={{ fontWeight: 400 }}>{cp || "-"} · {done ? "완료" : (cp ? "진행중" : "미계획")} · {hasCoc ? "발행" : "-"}</span></div>
+                  {canDelete && <button className="btn" style={{ background: "#c0392b", marginTop: 8, width: "100%" }} onClick={() => removeOrder(o)}>삭제</button>}
+                </div>
+              );
+            })}
+            <p className="muted" style={{ fontSize: 11 }}>※ 주문 내용 수정은 PC 화면에서 가능합니다.</p>
+          </div>
+          ) : (
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
               <thead><tr>{["주문일", "구분", "품목명", "규격", "수량(g)", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
@@ -207,7 +227,8 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                 })}
               </tbody>
             </table>
-          </div>}
+          </div>
+          )}
       </div>
     </div>
   );

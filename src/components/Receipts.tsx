@@ -4,6 +4,7 @@ import { Receipt } from "../lib/types";
 import { listReceipts, addReceipt, deleteReceipt, readReceiptAI, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const ACCOUNTS = ["복리후생비", "여비교통비", "소모품비", "접대비", "통신비", "운반비", "수수료", "기타"];
 const TYPES = ["카드", "세금계산서", "현금영수증", "간이영수증"];
@@ -21,6 +22,7 @@ function fileToBase64(file: File): Promise<string> {
 
 export default function Receipts() {
   const canEdit = can("receipt.edit");
+  const isMobile = useIsMobile();
   const [rows, setRows] = useState<Receipt[]>([]);
   const [form, setForm] = useState<Receipt>(emptyForm());
   const [queue, setQueue] = useState<Receipt[]>([]);
@@ -144,11 +146,11 @@ export default function Receipts() {
           </div>
           <label style={lbl}>거래처명</label><input style={fin} placeholder="예: 하나로마트" value={form.vendor} onChange={e => setField("vendor", e.target.value)} />
           <label style={lbl}>사업자번호 (있으면)</label><input style={fin} placeholder="123-45-67890" value={form.bizno} onChange={e => setField("bizno", e.target.value)} />
-          <label style={lbl}>합계금액 (실제 결제액)</label><input type="number" style={fin} placeholder="11000" value={form.total || ""} onChange={e => onTotal(Number(e.target.value))} />
+          <label style={lbl}>합계금액 (실제 결제액)</label><input type="number" inputMode="numeric" style={fin} placeholder="11000" value={form.total || ""} onChange={e => onTotal(Number(e.target.value))} />
           <div style={{ fontSize: 11, color: "#6b7280", marginTop: -6, marginBottom: 8 }}>합계만 넣으면 공급가액·부가세 자동 역산(÷1.1)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div><label style={lbl}>공급가액</label><input type="number" style={fin} value={form.supply || ""} onChange={e => setField("supply", Number(e.target.value))} /></div>
-            <div><label style={lbl}>부가세</label><input type="number" style={fin} value={form.vat || ""} onChange={e => setField("vat", Number(e.target.value))} /></div>
+            <div><label style={lbl}>공급가액</label><input type="number" inputMode="numeric" style={fin} value={form.supply || ""} onChange={e => setField("supply", Number(e.target.value))} /></div>
+            <div><label style={lbl}>부가세</label><input type="number" inputMode="numeric" style={fin} value={form.vat || ""} onChange={e => setField("vat", Number(e.target.value))} /></div>
           </div>
           <label style={lbl}>계정과목</label><select style={fin} value={form.account} onChange={e => setField("account", e.target.value)}>{ACCOUNTS.map(a => <option key={a}>{a}</option>)}</select>
           <label style={lbl}>비고</label><input style={fin} placeholder="확인 필요한 항목 등" value={form.memo} onChange={e => setField("memo", e.target.value)} />
@@ -161,6 +163,24 @@ export default function Receipts() {
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
             <button className="btn green" onClick={exportExcel}>📊 엑셀 다운로드</button>
           </div>
+          {isMobile ? (
+            <div>
+              {rows.length === 0 ? <p className="muted">아직 증빙이 없어요.</p> :
+                rows.map(r => {
+                  const warn = r.memo && (r.memo.includes("확인") || r.memo.includes("추정"));
+                  return (
+                    <div className="mcard" key={r.id}>
+                      <div className="mrow"><span className="k">{r.rdate}</span><span className="v">{won(r.total)}원</span></div>
+                      <div className="mrow"><span className="k">거래처</span><span className="v">{r.vendor}</span></div>
+                      <div className="mrow"><span className="k">유형 / 계정</span><span className="v" style={{ fontWeight: 400 }}>{r.rtype} · {r.account}</span></div>
+                      <div className="mrow"><span className="k">공급가액 / 부가세</span><span className="v" style={{ fontWeight: 400 }}>{won(r.supply)} / {won(r.vat)}</span></div>
+                      {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "#6b7280", fontWeight: 400 }}>{r.memo}</span></div> : null}
+                      {canEdit && <button className="btn" style={{ background: "#c0392b", marginTop: 8, width: "100%" }} onClick={() => del(r.id)}>삭제</button>}
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
           <div style={{ overflow: "auto", maxHeight: "55vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>{["일자", "거래처", "유형", "공급가액", "부가세", "합계", "계정과목", "비고", ""].map(h =>
@@ -183,6 +203,7 @@ export default function Receipts() {
               </tbody>
             </table>
           </div>
+          )}
           <div style={{ display: "flex", gap: 24, marginTop: 14, padding: "12px 16px", background: "#e6f0ea", borderRadius: 10, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13 }}>건수 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{rows.length}건</b></div>
             <div style={{ fontSize: 13 }}>공급가액 합 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumS)}</b></div>

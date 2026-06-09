@@ -5,6 +5,7 @@ import { listOrders, backendName } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
 import { loadPerms, useCaps } from "./lib/perm";
+import { useIsMobile } from "./lib/useIsMobile";
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
@@ -24,6 +25,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
   const { can, role, loaded: permLoaded } = useCaps();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -45,26 +47,30 @@ export default function App() {
   if (hasSupabase && !session) return <Login />;
   if (hasSupabase && !permLoaded) return <div className="wrap muted">권한 확인 중…</div>;
 
-  const T = (key: Tab, label: string, show = true) =>
-    show ? <button className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{label}</button> : null;
+  const ALL: { key: Tab; label: string; icon: string; show: boolean }[] = [
+    { key: "today", label: "POP", icon: "📋", show: can("menu.pop") },
+    { key: "import", label: "주문", icon: "📥", show: can("menu.import") },
+    { key: "plan", label: "생산", icon: "📅", show: can("menu.plan") },
+    { key: "coc", label: "COC", icon: "📄", show: can("coc.issue") && can("menu.coc") },
+    { key: "report", label: "리포트", icon: "📊", show: can("report.view") && can("menu.report") },
+    { key: "receipt", label: "증빙", icon: "🧾", show: can("menu.receipt") },
+    { key: "audit", label: "기록", icon: "🕘", show: can("audit.view") && can("menu.audit") },
+    { key: "admin", label: "관리자", icon: "⚙️", show: role === "master" },
+  ];
+  const tabs = ALL.filter(t => t.show);
+
+  const fullLabel: Record<Tab, string> = { today: "POP", import: "주문 가져오기", plan: "생산계획", coc: "COC 발행", report: "리포트", audit: "기록", receipt: "증빙", admin: "관리자" };
 
   return (
     <>
       <header className="app">
         <h1>ORO MES</h1>
         <nav className="tabs">
-          {T("today", "POP", can("menu.pop"))}
-          {T("import", "주문 가져오기", can("menu.import"))}
-          {T("plan", "생산계획", can("menu.plan"))}
-          {T("coc", "COC 발행", can("coc.issue") && can("menu.coc"))}
-          {T("report", "리포트", can("report.view") && can("menu.report"))}
-          {T("audit", "기록", can("audit.view") && can("menu.audit"))}
-          {T("receipt", "증빙", can("menu.receipt"))}
-          {T("admin", "관리자", role === "master")}
+          {tabs.map(t => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{fullLabel[t.key]}</button>)}
         </nav>
         <span className="badge">
-          {backendName} · 주문 {orders.length}건
-          {session?.user?.email && <> · {session.user.email} ({role})</>}
+          {!isMobile && <>{backendName} · 주문 {orders.length}건 </>}
+          {session?.user?.email && <>{isMobile ? role : `· ${session.user.email} (${role})`}</>}
           {supabase && session && <button className="btn ghost" style={{ marginLeft: 10, padding: "3px 10px", fontSize: 12 }}
             onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
         </span>
@@ -80,6 +86,13 @@ export default function App() {
           tab === "receipt" ? <Receipts /> :
           <Admin onRoleChange={loadPerms} />}
       </div>
+      <nav className="botnav">
+        {tabs.map(t => (
+          <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>
+            <span className="ic">{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </nav>
       <ToastHost />
     </>
   );
