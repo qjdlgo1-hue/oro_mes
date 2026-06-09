@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { parsePaste, parseRows } from "../lib/parseOrders";
@@ -42,6 +42,13 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     const m: Record<string, number> = {}; orders.forEach(o => { m[o.ym] = (m[o.ym] || 0) + 1; });
     return Object.entries(m).sort((a, b) => a[0] < b[0] ? 1 : -1);
   }, [orders]);
+  const [colY2, setColY2] = useState<Set<string>>(new Set());
+  const toggleY2 = (y: string) => setColY2(s => { const n = new Set(s); n.has(y) ? n.delete(y) : n.add(y); return n; });
+  const byYear2 = useMemo(() => {
+    const g: Record<string, { months: [string, number][]; total: number }> = {};
+    byMonth.forEach(([ym, n]) => { const y = ym.slice(0, 4); const e = g[y] || (g[y] = { months: [], total: 0 }); e.months.push([ym, n]); e.total += n; });
+    return Object.entries(g).sort((a, b) => a[0] < b[0] ? 1 : -1);
+  }, [byMonth]);
   const curView = viewYm || months[months.length - 1] || "";
   const viewRows = useMemo(() => orders.filter(o => o.ym === curView).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, curView]);
 
@@ -166,9 +173,24 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
         <div className="card">
           <h3 style={{ marginTop: 0 }}>저장된 주문 (월별)</h3>
           {byMonth.length === 0 ? <p className="muted">아직 없음.</p> :
-            <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr><th style={{ textAlign: "left", padding: 4 }}>월</th><th style={{ padding: 4 }}>건수</th></tr></thead>
-              <tbody>{byMonth.map(([ym, n]) => <tr key={ym}><td style={{ padding: 4 }}>{ym}</td><td style={{ padding: 4, textAlign: "center" }}>{n}</td></tr>)}</tbody>
+            <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+              <thead><tr><th style={{ textAlign: "left", padding: 4, borderBottom: "1px solid var(--line)" }}>연/월</th><th style={{ padding: 4, borderBottom: "1px solid var(--line)" }}>건수</th></tr></thead>
+              <tbody>
+                {byYear2.map(([y, yv]) => {
+                  const collapsed = colY2.has(y);
+                  return (
+                    <React.Fragment key={y}>
+                      <tr style={{ cursor: "pointer", background: "#eef3f9", fontWeight: 700 }} onClick={() => toggleY2(y)}>
+                        <td style={{ padding: "5px 4px" }}>{collapsed ? "▶" : "▼"} {y}년</td>
+                        <td style={{ padding: "5px 4px", textAlign: "center" }}>{yv.total}</td>
+                      </tr>
+                      {!collapsed && yv.months.map(([ym, n]) => (
+                        <tr key={ym}><td style={{ padding: "3px 4px 3px 22px" }}>{ym.slice(5)}월</td><td style={{ padding: "3px 4px", textAlign: "center" }}>{n}</td></tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
             </table>}
           {!canDelete && <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>※ 삭제 권한이 없습니다.</p>}
         </div>

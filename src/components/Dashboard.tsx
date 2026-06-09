@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans } from "../lib/db";
 
@@ -25,6 +25,14 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
     return Object.entries(m).sort((a, b) => a[0] < b[0] ? 1 : -1);
   }, [prod, plans]);
   const maxQty = Math.max(1, ...perMonth.map(([, v]) => v.qty));
+  const [colY, setColY] = useState<Set<string>>(new Set());
+  const toggleY = (y: string) => setColY(s => { const n = new Set(s); n.has(y) ? n.delete(y) : n.add(y); return n; });
+  const byYear = useMemo(() => {
+    const g: Record<string, { months: typeof perMonth; cnt: number; qty: number; doneCnt: number; doneQty: number }> = {};
+    perMonth.forEach(([ym, v]) => { const y = ym.slice(0, 4); const e = g[y] || (g[y] = { months: [], cnt: 0, qty: 0, doneCnt: 0, doneQty: 0 }); e.months.push([ym, v]); e.cnt += v.cnt; e.qty += v.qty; e.doneCnt += v.doneCnt; e.doneQty += v.doneQty; });
+    return Object.entries(g).sort((a, b) => a[0] < b[0] ? 1 : -1);
+  }, [perMonth]);
+  const maxYearQty = Math.max(1, ...byYear.map(([, v]) => v.qty));
 
   function groupBy(key: (o: Order) => string) {
     const m: Record<string, { qty: number; doneQty: number }> = {};
@@ -95,18 +103,35 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
               <th style={TH}></th>
             </tr></thead>
             <tbody>
-              {perMonth.map(([ym, v]) => {
-                const rate = v.qty ? Math.round(v.doneQty / v.qty * 100) : 0;
+              {byYear.map(([y, yv]) => {
+                const collapsed = colY.has(y);
+                const yrate = yv.qty ? Math.round(yv.doneQty / yv.qty * 100) : 0;
                 return (
-                  <tr key={ym} style={{ cursor: "pointer", background: ym === curYm ? "#eef3fb" : "" }} onClick={() => setSel(ym)}>
-                    <td style={{ ...TD, fontWeight: 700 }}>{ym}</td>
-                    <td style={{ ...TD, textAlign: "right" }}>{v.cnt}</td>
-                    <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
-                    <td style={{ ...TD, textAlign: "right" }}>{v.doneCnt}</td>
-                    <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
-                    <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "#1aa260" : "#1f4e78" }}>{rate}%</td>
-                    <td style={TD}><Bar val={v.qty} max={maxQty} color="#9bb8d9" /><Bar val={v.doneQty} max={maxQty} color="#1aa260" /></td>
-                  </tr>
+                  <React.Fragment key={y}>
+                    <tr style={{ cursor: "pointer", background: "#dde7f3", fontWeight: 700 }} onClick={() => toggleY(y)}>
+                      <td style={{ ...TD, fontWeight: 700 }}>{collapsed ? "▶" : "▼"} {y}년</td>
+                      <td style={{ ...TD, textAlign: "right" }}>{yv.cnt}</td>
+                      <td style={{ ...TD, textAlign: "right" }}>{won(yv.qty)}</td>
+                      <td style={{ ...TD, textAlign: "right" }}>{yv.doneCnt}</td>
+                      <td style={{ ...TD, textAlign: "right" }}>{won(yv.doneQty)}</td>
+                      <td style={{ ...TD, textAlign: "right", color: yrate >= 100 ? "#1aa260" : "#1f4e78" }}>{yrate}%</td>
+                      <td style={TD}><Bar val={yv.qty} max={maxYearQty} color="#7ba0cc" /><Bar val={yv.doneQty} max={maxYearQty} color="#1aa260" /></td>
+                    </tr>
+                    {!collapsed && yv.months.map(([ym, v]) => {
+                      const rate = v.qty ? Math.round(v.doneQty / v.qty * 100) : 0;
+                      return (
+                        <tr key={ym} style={{ cursor: "pointer", background: ym === curYm ? "#eef3fb" : "" }} onClick={() => setSel(ym)}>
+                          <td style={{ ...TD, paddingLeft: 22 }}>{ym.slice(5)}월</td>
+                          <td style={{ ...TD, textAlign: "right" }}>{v.cnt}</td>
+                          <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
+                          <td style={{ ...TD, textAlign: "right" }}>{v.doneCnt}</td>
+                          <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
+                          <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "#1aa260" : "#1f4e78" }}>{rate}%</td>
+                          <td style={TD}><Bar val={v.qty} max={maxQty} color="#9bb8d9" /><Bar val={v.doneQty} max={maxQty} color="#1aa260" /></td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </tbody>
