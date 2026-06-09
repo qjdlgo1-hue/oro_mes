@@ -43,4 +43,5 @@ export type Receipt = {
   supply: number; vat: number; total: number;
   rtype: string; account: string; memo: string;
   company?: string; period?: string;
+  image_path?: string | null;
 };

@@ -161,17 +161,39 @@ export async function listReceipts(): Promise<Receipt[]> {
   }
   return lsGet<Receipt[]>(LS_RCPT, []);
 }
-export async function addReceipt(r: Receipt): Promise<void> {
+export async function addReceipt(r: Receipt, file?: File): Promise<void> {
   if (supabase) {
+    let image_path = r.image_path || null;
+    if (file) {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `${(crypto as any).randomUUID?.() || Date.now()}.${ext}`;
+      const { error: ue } = await supabase.storage.from("receipts").upload(path, file, { contentType: file.type || "image/jpeg" });
+      if (ue) throw ue;
+      image_path = path;
+    }
     const { data: u } = await supabase.auth.getUser();
-    const { error } = await supabase.from("receipts").insert({ ...r, created_by: u.user?.email });
+    const { error } = await supabase.from("receipts").insert({ ...r, image_path, created_by: u.user?.email });
     if (error) throw error; return;
   }
   const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...r, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
 }
-export async function deleteReceipt(id: string): Promise<void> {
-  if (supabase) { const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error; return; }
+export async function deleteReceipt(id: string, image_path?: string | null): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error;
+    if (image_path) { await supabase.storage.from("receipts").remove([image_path]); }
+    return;
+  }
   lsSet(LS_RCPT, lsGet<Receipt[]>(LS_RCPT, []).filter(r => r.id !== id));
+}
+export async function receiptSignedUrl(path: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.storage.from("receipts").createSignedUrl(path, 600);
+  if (error) throw error; return data?.signedUrl || null;
+}
+export async function receiptImageBlob(path: string): Promise<Blob | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.storage.from("receipts").download(path);
+  if (error) throw error; return data;
 }
 export async function readReceiptAI(imageBase64: string, mediaType: string): Promise<any> {
   if (!supabase) throw new Error("AI 인식은 클라우드 연결에서만 됩니다.");
