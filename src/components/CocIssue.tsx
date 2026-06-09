@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "../lib/toast";
 import { Order, CocData, Settings, PlanEntry } from "../lib/types";
 import { listCocs, upsertCoc, getSettings, saveSettings, listPlans, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
@@ -44,6 +45,8 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [settings, setSettings] = useState<Settings>({});
+  const [fmtOpen, setFmtOpen] = useState(false);
+  const certRef = useRef<HTMLDivElement>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [cur, setCur] = useState(() => {
     const months = [...new Set(orders.map(o => o.ym))].sort();
@@ -83,6 +86,32 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   function pickPerCoc(key: string) { pickImageFile(520, durl => setField(key, durl)); }
   function setLogo() { pickImageFile(400, durl => { const s = { ...settings, logo: durl }; setSettings(s); saveSettings(s); }); }
   function setStamp() { pickImageFile(300, durl => { const s = { ...settings, stamp: durl }; setSettings(s); saveSettings(s); }); }
+  const fmt = settings.format || {};
+  function setFmt(patch: any) { const nf = { ...fmt, ...patch }; const s = { ...settings, format: nf }; setSettings(s); saveSettings(s); }
+  async function savePdf() {
+    if (!order || !certRef.current) return;
+    try {
+      toast.success("PDF 만드는 중…");
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
+      const canvas = await html2canvas(certRef.current, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
+      const paper = fmt.paper || "A4";
+      const pdf = new jsPDF({ unit: "mm", format: paper === "Letter" ? "letter" : "a4" });
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+      const m = fmt.marginMm ?? 10; const iw = pw - m * 2;
+      const pagePx = Math.floor((ph - m * 2) * canvas.width / iw);
+      let sY = 0, first = true;
+      while (sY < canvas.height) {
+        const h = Math.min(pagePx, canvas.height - sY);
+        const slice = document.createElement("canvas"); slice.width = canvas.width; slice.height = h;
+        slice.getContext("2d")!.drawImage(canvas, 0, sY, canvas.width, h, 0, 0, canvas.width, h);
+        if (!first) pdf.addPage();
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", m, m, iw, h * iw / canvas.width);
+        sY += h; first = false;
+      }
+      pdf.save(`COC_${(data.model || "성적서")}_${(effProd || "")}.pdf`.replace(/\s/g, ""));
+      logAudit("COC PDF 저장", "coc", order.id, { name: order.name });
+    } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+  }
 
   const F = (f: string, style?: React.CSSProperties) =>
     <input className="f" style={style} value={data[f] ?? ""} onChange={e => setField(f, e.target.value)} />;
@@ -100,6 +129,21 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setLogo}>로고 설정{settings.logo ? " ✓" : ""}</button>
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setStamp}>도장 설정{settings.stamp ? " ✓" : ""}</button>
           </div>
+          <button className="btn ghost" style={{ fontSize: 12, marginTop: 6, width: "100%" }} onClick={() => setFmtOpen(o => !o)}>서식 설정 {fmtOpen ? "▲" : "▼"}</button>
+          {fmtOpen &&
+            <div style={{ padding: 8, background: "#f5f9ff", borderRadius: 8, marginTop: 6, fontSize: 12 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                <label style={{ flex: 1 }}>용지<select value={fmt.paper || "A4"} onChange={e => setFmt({ paper: e.target.value })} style={{ width: "100%", padding: 5 }}><option>A4</option><option>Letter</option></select></label>
+                <label style={{ flex: 1 }}>여백(mm)<input type="number" inputMode="numeric" value={fmt.marginMm ?? 10} onChange={e => setFmt({ marginMm: Number(e.target.value) })} style={{ width: "100%", padding: 5 }} /></label>
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                <label style={{ flex: 1 }}>로고 높이(px)<input type="number" inputMode="numeric" value={fmt.logoH ?? 46} onChange={e => setFmt({ logoH: Number(e.target.value) })} style={{ width: "100%", padding: 5 }} /></label>
+                <label style={{ flex: 1 }}>글자 배율<input type="number" step={0.05} value={fmt.fontScale ?? 1} onChange={e => setFmt({ fontScale: Number(e.target.value) })} style={{ width: "100%", padding: 5 }} /></label>
+              </div>
+              <label>푸터 1줄<input value={fmt.footer1 ?? ""} placeholder="회사 주소" onChange={e => setFmt({ footer1: e.target.value })} style={{ width: "100%", padding: 5, marginBottom: 4 }} /></label>
+              <label>푸터 2줄<input value={fmt.footer2 ?? ""} placeholder="Tel / E.mail" onChange={e => setFmt({ footer2: e.target.value })} style={{ width: "100%", padding: 5 }} /></label>
+              <p className="muted" style={{ fontSize: 10, marginTop: 6 }}>서식은 모든 COC에 공통 적용됩니다.</p>
+            </div>}
         </div>
         <ul className="olist">
           {rows.map(o => {
@@ -120,11 +164,12 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
         {!order ? <div className="card nodata">왼쪽에서 주문을 선택하세요.</div> :
           <div>
             <div className="no-print" style={{ marginBottom: 8, textAlign: "right" }}>
-              <button className="btn green" onClick={() => { logAudit("COC 발행(인쇄)", "coc", order.id, { name: order.name }); window.print(); }}>🖨 인쇄 / PDF 저장</button>
+              <button className="btn green" onClick={savePdf}>📄 PDF 저장</button>
+              <button className="btn ghost" style={{ marginLeft: 8 }} onClick={() => { logAudit("COC 인쇄", "coc", order.id, { name: order.name }); window.print(); }}>🖨 인쇄</button>
             </div>
-            <div className="cert">
+            <div className="cert" ref={certRef} style={{ zoom: fmt.fontScale || 1 } as any}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                {settings.logo ? <img src={settings.logo} style={{ maxHeight: 46, maxWidth: 180 }} /> : <span style={{ width: 1 }} />}
+                {settings.logo ? <img src={settings.logo} style={{ maxHeight: fmt.logoH || 46, maxWidth: 220 }} /> : <span style={{ width: 1 }} />}
                 <span className="muted" style={{ fontSize: 10 }}>{settings.company || ""}</span>
               </div>
               <h2>Certificate of Compliance</h2>
@@ -177,7 +222,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
                 Certified by : <input value={data.certBy ?? ""} onChange={e => setField("certBy", e.target.value)} placeholder="검사자" />
                 {settings.stamp && <img src={settings.stamp} style={{ height: 60, position: "absolute", right: 0, top: -18 }} />}
               </div>
-              <div className="footer">809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea<br />Tel. 070-8098-0668 &nbsp; E.mail oro_corp@naver.com</div>
+              <div className="footer">{fmt.footer1 || "809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea"}<br />{fmt.footer2 || "Tel. 070-8098-0668 \u00a0 E.mail oro_corp@naver.com"}</div>
             </div>
           </div>}
       </div>

@@ -81,9 +81,11 @@ table.spec td.item{background:#f6f8fb;font-weight:700;text-align:left;width:34%;
 .nodata{padding:40px;text-align:center;color:var(--muted);}
 @media print{
   @page{size:A4;margin:10mm;}
-  header.app,.sidebar,.toolbar,.hint,.no-print{display:none!important;}
-  body{background:#fff;} .coc-layout{display:block;} .wrap{padding:0;}
-  .cert{box-shadow:none;border:none;width:auto;min-height:auto;padding:0;}
+  body{background:#fff;}
+  body *{visibility:hidden;}
+  .cert, .cert *{visibility:visible;}
+  .cert{position:absolute;left:0;top:0;width:100%;box-shadow:none;border:none;padding:0;margin:0;min-height:auto;}
+  .no-print,.botnav,header.app{display:none!important;}
 }
 
 @media (max-width: 900px){ .rcpt-grid { grid-template-columns: 1fr !important; } }

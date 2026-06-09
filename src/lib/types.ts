@@ -22,10 +22,19 @@ export type CocData = {
   data: Record<string, string>;
 };
 
+export type FormatSettings = {
+  paper?: "A4" | "Letter";
+  marginMm?: number;
+  logoH?: number;
+  fontScale?: number;
+  footer1?: string;
+  footer2?: string;
+};
 export type Settings = {
   logo?: string;   // dataURL
   stamp?: string;  // dataURL
   company?: string;
+  format?: FormatSettings;
 };
 
 export type Receipt = {
