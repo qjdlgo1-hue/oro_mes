@@ -206,3 +206,21 @@ export async function readReceiptAI(imageBase64: string, mediaType: string): Pro
   if (data?.error) throw new Error(data.error);
   return data.rec;
 }
+
+// ---- 범용 Storage ----
+export async function storageUpload(bucket: string, file: File): Promise<string> {
+  if (!supabase) throw new Error("클라우드 연결이 필요합니다.");
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+  const path = `${(crypto as any).randomUUID?.() || Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from(bucket).upload(path, file, { contentType: file.type || "image/jpeg" });
+  if (error) throw error; return path;
+}
+export async function storageBlob(bucket: string, path: string): Promise<Blob | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.storage.from(bucket).download(path);
+  if (error) throw error; return data;
+}
+export async function storageBlobToDataUrl(bucket: string, path: string): Promise<string | null> {
+  const b = await storageBlob(bucket, path); if (!b) return null;
+  return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(b); });
+}
