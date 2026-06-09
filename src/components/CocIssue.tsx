@@ -251,7 +251,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               {t.cert} : {data.certBy}
               {settings.stamp && <img src={settings.stamp} style={{ height: 60, position: "absolute", right: 0, top: -18 }} />}
             </div>
-            <div className="footer">{fmt.footer1 || "809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea"}<br />{fmt.footer2 || "Tel. 070-8098-0668   E.mail oro_corp@naver.com"}{data.issuedAt ? `  |  발행일 ${data.issuedAt}` : ""}</div>
+            <div className="footer">{fmt.footer1 || "809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea"}<br />{fmt.footer2 || "Tel. 070-8098-0668   E.mail. dwlee@orocorp.kr"}{data.issuedAt ? `  |  발행일 ${data.issuedAt}` : ""}</div>
           </div>
         </>}
       </div>
