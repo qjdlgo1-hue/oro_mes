@@ -130,7 +130,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
 
   // 판정
   const judges = order ? {
-    gold: judge(data.goldSpec, data.goldRes), silver: judge(data.silverSpec, data.silverRes), sg: judge(data.gravSpec, data.gravRes),
+    sg: judge(data.gravSpec, data.gravRes),
     coh: judge("C=0", data.cohRes), unp: judge("C=0", data.unpRes), pd: judge(data.pdSpec, data.pdRes),
   } : {};
   const anyFail = Object.values(judges).includes("FAIL");
@@ -202,7 +202,6 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <div><label style={lb}>유효기간</label><input style={{ ...fI, background: "#f3f4f6" }} value={effExp} readOnly /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 10 }}>
-              {F("goldSpec", "금 규격")}{F("goldRes", "금 결과")}{F("silverSpec", "은 규격")}{F("silverRes", "은 결과")}
               {F("gravSpec", "비중 규격")}{F("gravRes", "비중 결과")}
               {F("cohRes", "응집 결과")}{F("unpRes", "미도금 결과")}{F("pdSpec", "입자밀도 규격")}{F("pdRes", "입자밀도 결과")}
               {F("certBy", "검사자")}
@@ -227,13 +226,6 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <tr><td className="lbl">{t.model}</td><td>{data.model}</td><td className="lbl">{t.size}</td><td>{data.size}</td></tr>
               <tr><td className="lbl">{t.comp}</td><td>{data.comp}</td><td className="lbl">{t.prod}</td><td>{effProd}</td></tr>
               <tr><td className="lbl">{t.netwt}</td><td>{data.netwt}g</td><td className="lbl">{t.exp}</td><td>{effExp}</td></tr>
-            </tbody></table>
-            <div className="sec-title">{t.thick}</div>
-            <div className="method">{data.method1}</div>
-            <table className="spec"><tbody>
-              <tr><th>{t.item}</th><th>{t.unit}</th><th>{t.spec}</th><th>{t.result}</th></tr>
-              <tr><td className="item">{t.gold}</td><td>nm</td><td>{data.goldSpec}</td><td>{data.goldRes}<Badge v={judges.gold!} /></td></tr>
-              <tr><td className="item">{t.silver}</td><td>nm</td><td>{data.silverSpec}</td><td>{data.silverRes}<Badge v={judges.silver!} /></td></tr>
             </tbody></table>
             <div className="sec-title">{t.sg}</div>
             <div className="method">{data.method2}</div>
