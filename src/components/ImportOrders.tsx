@@ -12,6 +12,19 @@ import { useIsMobile } from "../lib/useIsMobile";
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
   const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
   const isMobile = useIsMobile();
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const blankOrder = (): Order => ({ id: "", order_no: "수동입력", order_date: todayIso(), ym: "", item_code: "", gubun: "제품", name: "", spec: "", qty: 0, customer: "", note: "" });
+  const [no, setNo] = useState<Order>(blankOrder());
+  async function addManual() {
+    if (!no.name.trim()) { toast.error("품목명을 입력하세요."); return; }
+    if (!(Number(no.qty) > 0)) { toast.error("수량을 입력하세요."); return; }
+    const id = (crypto as any).randomUUID?.() || String(Date.now());
+    const ord: Order = { ...no, id, ym: no.order_date.slice(0, 7), qty: Number(no.qty) };
+    setBusy(true);
+    try { await appendOrders([ord]); await logAudit("주문 직접추가", "order", id, { name: ord.name, qty: ord.qty }); toast.success("주문 추가됨 (수동입력)"); setNo(blankOrder()); onChange(); }
+    catch (e: any) { toast.error("추가 실패: " + (e.message || e)); }
+    setBusy(false);
+  }
   const [pasteText, setPasteText] = useState("");
   const [preview, setPreview] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
@@ -159,6 +172,25 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
             </table>}
           {!canDelete && <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>※ 삭제 권한이 없습니다.</p>}
         </div>
+
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>➕ 주문 직접 추가 <span className="muted" style={{ fontSize: 12 }}>(긴급·이카운트 외)</span></h3>
+          {canImport ? <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div><label style={{ fontSize: 12, fontWeight: 700 }}>주문일자</label><input type="date" value={no.order_date} onChange={e => setNo({ ...no, order_date: e.target.value })} style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} /></div>
+              <div><label style={{ fontSize: 12, fontWeight: 700 }}>구분</label><select value={no.gubun} onChange={e => setNo({ ...no, gubun: e.target.value })} style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }}><option>제품</option><option>무형상품</option><option>원재료</option></select></div>
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 700 }}>품목명</label><input value={no.name} onChange={e => setNo({ ...no, name: e.target.value })} placeholder="예: ACC2532-G20A" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} />
+            <label style={{ fontSize: 12, fontWeight: 700 }}>규격</label><input value={no.spec} onChange={e => setNo({ ...no, spec: e.target.value })} placeholder="예: 25-32um : Ni+Au(0.2um)" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div><label style={{ fontSize: 12, fontWeight: 700 }}>수량(g)</label><input type="number" inputMode="numeric" value={no.qty || ""} onChange={e => setNo({ ...no, qty: Number(e.target.value) })} placeholder="1000" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} /></div>
+              <div><label style={{ fontSize: 12, fontWeight: 700 }}>거래처</label><input value={no.customer} onChange={e => setNo({ ...no, customer: e.target.value })} placeholder="주식회사 ..." style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} /></div>
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 700 }}>적요(비고)</label><input value={no.note} onChange={e => setNo({ ...no, note: e.target.value })} placeholder="긴급/메모" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 10 }} />
+            <button className="btn green" style={{ width: "100%" }} disabled={busy} onClick={addManual}>이 주문 추가</button>
+            <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>추가한 주문은 목록에 ✋수동 으로 표시됩니다. 생산계획·COC에서 동일하게 사용됩니다.</p>
+          </> : <p className="muted">주문 추가 권한이 없습니다.</p>}
+        </div>
       </div>
 
       <div className="card">
@@ -178,7 +210,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
               return (
                 <div className="mcard" key={o.id}>
                   <div className="mrow"><span className="k">{o.order_date}</span><span className="v">{o.qty.toLocaleString()}g</span></div>
-                  <div className="mrow"><span className="k">품목</span><span className="v">{o.name}</span></div>
+                  <div className="mrow"><span className="k">품목</span><span className="v">{o.order_no && o.order_no.includes("수동") ? "✋ " : ""}{o.name}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처</span><span className="v" style={{ fontWeight: 400 }}>{o.customer}</span></div>
                   <div className="mrow"><span className="k">완료일 / 상태 / COC</span><span className="v" style={{ fontWeight: 400 }}>{cp || "-"} · {done ? "완료" : (cp ? "진행중" : "미계획")} · {hasCoc ? "발행" : "-"}</span></div>
