@@ -167,6 +167,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
                 <label style={{ flex: 1 }}>여백mm<input type="number" value={fmt.marginMm ?? 10} onChange={e => setFmt({ marginMm: Number(e.target.value) })} style={{ width: "100%", padding: 5 }} /></label>
               </div>
               <label>로고높이px<input type="number" value={fmt.logoH ?? 46} onChange={e => setFmt({ logoH: Number(e.target.value) })} style={{ width: "100%", padding: 5, marginBottom: 4 }} /></label>
+              <label>머리말(상단)<input value={fmt.header ?? ""} onChange={e => setFmt({ header: e.target.value })} placeholder="예: ORO 주식회사 / 품질보증서" style={{ width: "100%", padding: 5, marginBottom: 4 }} /></label>
               <label>푸터1<input value={fmt.footer1 ?? ""} onChange={e => setFmt({ footer1: e.target.value })} style={{ width: "100%", padding: 5, marginBottom: 4 }} /></label>
               <label>푸터2<input value={fmt.footer2 ?? ""} onChange={e => setFmt({ footer2: e.target.value })} style={{ width: "100%", padding: 5 }} /></label>
             </div>}
@@ -214,6 +215,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
 
           {/* 미리보기(읽기전용) = 인쇄/PDF 대상 */}
           <div className="cert" ref={certRef}>
+            {fmt.header && <div style={{ textAlign: "center", fontSize: 12, color: "#555", marginBottom: 6, borderBottom: "1px solid #eee", paddingBottom: 4 }}>{fmt.header}</div>}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               {settings.logo ? <img src={settings.logo} style={{ maxHeight: fmt.logoH || 46, maxWidth: 220 }} /> : <span style={{ width: 1 }} />}
               <span style={{ fontSize: 11, color: "#555" }}>{data.issueNo ? `${t.issue}: ${data.issueNo}` : ""}</span>

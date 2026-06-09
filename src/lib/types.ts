@@ -27,6 +27,7 @@ export type FormatSettings = {
   marginMm?: number;
   logoH?: number;
   fontScale?: number;
+  header?: string;
   footer1?: string;
   footer2?: string;
 };
