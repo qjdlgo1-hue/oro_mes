@@ -30,7 +30,8 @@ export default function Receipts() {
   const [busy, setBusy] = useState(false);
   const [company, setCompany] = useState(localStorage.getItem("oro_rcpt_company") || "ORO 주식회사");
   const [period, setPeriod] = useState(localStorage.getItem("oro_rcpt_period") || "");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const camRef = useRef<HTMLInputElement>(null);
+  const galRef = useRef<HTMLInputElement>(null);
 
   async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); } }
   useEffect(() => { reload(); }, []);
@@ -66,8 +67,9 @@ export default function Receipts() {
     setBusy(false);
   }
 
-  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []); if (!files.length) return;
+  async function processFiles(files: File[]) {
+    files = files.filter(f => f.type.startsWith("image/"));
+    if (!files.length) { toast.error("이미지 파일을 선택하세요."); return; }
     const found: Receipt[] = [];
     for (let i = 0; i < files.length; i++) {
       setScanning(`AI가 영수증을 읽고 있어요... (${i + 1}/${files.length})`);
@@ -79,9 +81,11 @@ export default function Receipts() {
         found.push({ rdate: rec["거래일자"] || todayIso(), vendor: rec["거래처명"] || "", bizno: rec["사업자번호"] || "", supply, vat, total, rtype: rec["증빙유형"] || "카드", account: rec["계정과목"] || "기타", memo: rec["비고"] || "" });
       } catch (err: any) { toast.error(`${i + 1}번째 사진 인식 실패: ${err.message || err}`); }
     }
-    setScanning(""); setQueue(q => [...q, ...found]); e.target.value = "";
+    setScanning(""); setQueue(q => [...q, ...found]);
     if (found.length) toast.success(`${found.length}건 인식됨 — 확인 후 추가하세요`);
   }
+  function onFiles(e: React.ChangeEvent<HTMLInputElement>) { processFiles(Array.from(e.target.files || [])); e.target.value = ""; }
+  function onDrop(e: React.DragEvent) { e.preventDefault(); processFiles(Array.from(e.dataTransfer.files || [])); }
 
   function exportExcel() {
     if (!rows.length) { toast.error("내보낼 데이터가 없어요."); return; }
@@ -115,10 +119,16 @@ export default function Receipts() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>📷 영수증 사진 인식 (AI)</h3>
           {canEdit ? <>
-            <div onClick={() => fileRef.current?.click()} style={{ border: "2px dashed #b9c2d0", borderRadius: 10, padding: 20, textAlign: "center", cursor: "pointer", color: "#6b7280" }}>
-              <div style={{ fontSize: 28 }}>📷</div>사진 찍기 / 파일 올리기<div style={{ fontSize: 11 }}>여러 장 가능 · AI가 자동으로 읽어요</div>
+            <div onClick={() => galRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={onDrop}
+              style={{ border: "2px dashed #b9c2d0", borderRadius: 10, padding: 18, textAlign: "center", cursor: "pointer", color: "#6b7280" }}>
+              <div style={{ fontSize: 28 }}>🖼️</div>갤러리에서 선택 / 파일 끌어다 놓기<div style={{ fontSize: 11 }}>여러 장 가능 · AI가 자동으로 읽어요</div>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple onChange={onFiles} style={{ display: "none" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => camRef.current?.click()}>📷 사진 촬영</button>
+              <button className="btn ghost" style={{ flex: 1 }} onClick={() => galRef.current?.click()}>🖼️ 갤러리에서 선택</button>
+            </div>
+            <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onFiles} style={{ display: "none" }} />
+            <input ref={galRef} type="file" accept="image/*" multiple onChange={onFiles} style={{ display: "none" }} />
             {scanning && <p style={{ color: "#3b5e8c", fontSize: 13, marginTop: 10 }}>⏳ {scanning}</p>}
           </> : <p className="muted">증빙 입력 권한이 없습니다(보기 전용).</p>}
 

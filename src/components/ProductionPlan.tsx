@@ -1,19 +1,15 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
-import { listPlans, upsertPlan } from "../lib/db";
+import { listPlans, upsertPlan, logAudit } from "../lib/db";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
-import { useIsMobile } from "../lib/useIsMobile";
-import { logAudit } from "../lib/db";
 import { can } from "../lib/perm";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const TODAY = new Date();
 
 function dayOf(iso: string) { return parseInt(iso.slice(8, 10), 10); }
-function isoFor(y: number, m: number, d: number) {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${y}-${p(m)}-${p(d)}`;
-}
+function isoFor(y: number, m: number, d: number) { const p = (n: number) => String(n).padStart(2, "0"); return `${y}-${p(m)}-${p(d)}`; }
 
 export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [cur, setCur] = useState(() => {
@@ -27,6 +23,8 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [view, setView] = useState<"day" | "week">("day");
   const [anchor, setAnchor] = useState<"mon" | "first">("mon");
   const [dayw, setDayw] = useState(30);
+  const [mview, setMview] = useState<"cal" | "list">("cal");
+  const [selDay, setSelDay] = useState<number | null>(null);
   const canEdit = can("plan.edit");
   const isMobile = useIsMobile();
 
@@ -44,99 +42,127 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const DAYW = dayw;
   const buckets = useMemo(() => weekBuckets(cur.y, cur.m, anchor), [cur, anchor]);
 
-  function planOf(o: Order): PlanEntry {
-    return plans[o.id] || { order_id: o.id, start_date: o.order_date, span: 1, done: false };
-  }
-  async function commit(p: PlanEntry) {
-    setPlans(prev => ({ ...prev, [p.order_id]: p })); setTick(t => t + 1);
-    await upsertPlan(p);
-  }
-  function prevM() { setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
-  function nextM() { setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
+  function planOf(o: Order): PlanEntry { return plans[o.id] || { order_id: o.id, start_date: o.order_date, span: 1, done: false }; }
+  async function commit(p: PlanEntry) { setPlans(prev => ({ ...prev, [p.order_id]: p })); setTick(t => t + 1); await upsertPlan(p); }
+  function prevM() { setSelDay(null); setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
+  function nextM() { setSelDay(null); setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
+  function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? o.qty / p.span : 0; }
+  function toggleDone(o: Order, p: PlanEntry) { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }
 
-  function dayQty(o: Order, p: PlanEntry, day: number) {
-    const sd = dayOf(p.start_date), ed = sd + p.span - 1;
-    return (day >= sd && day <= ed) ? o.qty / p.span : 0;
-  }
-
-  // --- drag (day view) ---
+  // ---- drag (day view) ----
   function startMove(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
-    if (!canEdit) return;
-    e.preventDefault();
+    if (!canEdit) return; e.preventDefault();
     const p = planOf(o); const startX = e.clientX; const origLeft = (dayOf(p.start_date) - 1) * DAYW;
     function mv(ev: PointerEvent) { let nl = origLeft + (ev.clientX - startX); nl = Math.max(0, Math.min(nl, (nDays - p.span) * DAYW)); barEl.style.left = nl + "px"; }
-    function up() {
-      document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
-      let day = Math.round(parseFloat(barEl.style.left) / DAYW) + 1; day = Math.max(1, Math.min(day, nDays - p.span + 1));
-      commit({ ...p, start_date: isoFor(cur.y, cur.m, day) });
-    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); let day = Math.round(parseFloat(barEl.style.left) / DAYW) + 1; day = Math.max(1, Math.min(day, nDays - p.span + 1)); commit({ ...p, start_date: isoFor(cur.y, cur.m, day) }); }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
   }
   function startResize(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
-    if (!canEdit) return;
-    e.preventDefault(); e.stopPropagation();
+    if (!canEdit) return; e.preventDefault(); e.stopPropagation();
     const p = planOf(o); const startX = e.clientX; const origSpan = p.span;
     function mv(ev: PointerEvent) { let span = origSpan + Math.round((ev.clientX - startX) / DAYW); span = Math.max(1, Math.min(span, nDays - dayOf(p.start_date) + 1)); barEl.style.width = (span * DAYW - 3) + "px"; }
-    function up() {
-      document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up);
-      let span = Math.round((parseFloat(barEl.style.width) + 3) / DAYW); span = Math.max(1, Math.min(span, nDays - dayOf(p.start_date) + 1));
-      commit({ ...p, span });
-    }
+    function up() { document.removeEventListener("pointermove", mv); document.removeEventListener("pointerup", up); let span = Math.round((parseFloat(barEl.style.width) + 3) / DAYW); span = Math.max(1, Math.min(span, nDays - dayOf(p.start_date) + 1)); commit({ ...p, span }); }
     document.addEventListener("pointermove", mv); document.addEventListener("pointerup", up);
   }
 
-  // totals
   const dayTot = new Array(nDays + 1).fill(0);
   rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = 1; d <= nDays; d++) dayTot[d] += dayQty(o, p, d); });
   const weekTot = buckets.map(b => { let s = 0; rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); }); return s; });
 
+  const MonthNav = () => <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>;
+  const FilterSel = () => <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 8, borderRadius: 6 }}><option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option></select>;
+
+  // ================= 모바일 =================
   if (isMobile) {
+    // 캘린더용 일별 합계(완료 포함)
+    const calTot = new Array(nDays + 1).fill(0);
+    rows.forEach(o => { const p = planOf(o); for (let d = 1; d <= nDays; d++) calTot[d] += dayQty(o, p, d); });
+    const maxCal = Math.max(1, ...calTot.slice(1));
+    const firstDow = new Date(cur.y, cur.m - 1, 1).getDay();
+    const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)];
+    const dayItems = selDay ? rows.filter(o => dayQty(o, planOf(o), selDay!) > 0) : [];
+
     return (
       <div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-          <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>
-          <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 8, borderRadius: 6 }}>
-            <option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option>
-          </select>
+          <MonthNav />
+          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+            <button className="btn" style={{ borderRadius: 0, background: mview === "cal" ? "#2f6cb0" : "#cdd8e6", color: mview === "cal" ? "#fff" : "#333" }} onClick={() => setMview("cal")}>캘린더</button>
+            <button className="btn" style={{ borderRadius: 0, background: mview === "list" ? "#2f6cb0" : "#cdd8e6", color: mview === "list" ? "#fff" : "#333" }} onClick={() => setMview("list")}>목록</button>
+          </div>
+          <FilterSel />
         </div>
-        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{rows.length}개 · 시작일/기간을 정하면 생산완료일이 자동 계산됩니다.</div>
+
         {rows.length === 0 ? <div className="card nodata">이 달 주문이 없습니다.</div> :
-          rows.map((o, idx) => {
-            const p = planOf(o); const cp = completionDate(p);
-            return (
-              <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
-                <div className="mrow"><span className="k">{idx + 1}. 품목</span><span className="v">{o.name}{p.done ? " ✅" : ""}</span></div>
-                <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
-                <div className="mrow"><span className="k">거래처 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {o.qty.toLocaleString()}g</span></div>
-                <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <label style={{ fontSize: 12, color: "#6b7280" }}>시작일
-                    <input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })}
-                      style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-                  <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)
-                    <input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span}
-                      onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })}
-                      style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-                  <div style={{ fontSize: 12, color: "#1f4e78" }}>완료일<br /><b>{cp}</b></div>
-                </div>
-                {canEdit &&
-                  <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 10, width: "100%" }}
-                    onClick={() => { const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }}>
-                    {p.done ? "완료 해제" : "생산 완료 처리"}</button>}
+          mview === "cal" ? (
+            <div className="card" style={{ padding: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
+                {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "#2f6cb0" : "#6b7280" }}>{w}</div>)}
               </div>
-            );
-          })}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
+                {cells.map((d, i) => {
+                  if (d === null) return <div key={"b" + i} />;
+                  const t = calTot[d]; const intensity = t / maxCal;
+                  const isToday = cur.y === TODAY.getFullYear() && cur.m === TODAY.getMonth() + 1 && d === TODAY.getDate();
+                  const dow = new Date(cur.y, cur.m - 1, d).getDay();
+                  return (
+                    <button key={d} onClick={() => setSelDay(d)} style={{
+                      aspectRatio: "1/1", border: selDay === d ? "2px solid #1f4e78" : "1px solid var(--line)", borderRadius: 8,
+                      background: t > 0 ? `rgba(26,162,96,${0.15 + 0.55 * intensity})` : (isToday ? "#fff7e6" : "#fff"),
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 2, cursor: "pointer"
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: dow === 0 ? "#c0392b" : dow === 6 ? "#2f6cb0" : "#1c2128" }}>{d}</span>
+                      {t > 0 && <span style={{ fontSize: 9, color: intensity > 0.5 ? "#fff" : "#15663f", fontWeight: 700 }}>{Math.round(t).toLocaleString()}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>색이 진할수록 그날 생산량(g)이 많습니다. 날짜를 누르면 그날 품목이 나와요.</p>
+
+              {selDay &&
+                <div style={{ marginTop: 10, borderTop: "2px solid var(--navy)", paddingTop: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <b>{cur.m}월 {selDay}일 · 합계 {Math.round(calTot[selDay]).toLocaleString()}g</b>
+                    <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setSelDay(null)}>닫기</button>
+                  </div>
+                  {dayItems.length === 0 ? <p className="muted">이 날 생산 일정이 없습니다.</p> :
+                    dayItems.map(o => { const p = planOf(o); return (
+                      <div key={o.id} className="mcard" style={{ opacity: p.done ? 0.6 : 1, marginBottom: 8 }}>
+                        <div className="mrow"><span className="k">{o.name}{p.done ? " ✅" : ""}</span><span className="v">{Math.round(dayQty(o, p, selDay!)).toLocaleString()}g/일</span></div>
+                        <div className="mrow"><span className="k" style={{ fontSize: 12 }}>{o.customer}</span><span className="v" style={{ fontWeight: 400, fontSize: 12 }}>총 {o.qty.toLocaleString()}g · 완료일 {completionDate(p)}</span></div>
+                        {canEdit && <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 6, width: "100%" }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료"}</button>}
+                      </div>
+                    ); })}
+                </div>}
+            </div>
+          ) : (
+            <div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{rows.length}개 · 시작일/기간을 정하면 생산완료일이 자동 계산됩니다.</div>
+              {rows.map((o, idx) => { const p = planOf(o); const cp = completionDate(p); return (
+                <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
+                  <div className="mrow"><span className="k">{idx + 1}. 품목</span><span className="v">{o.name}{p.done ? " ✅" : ""}</span></div>
+                  <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
+                  <div className="mrow"><span className="k">거래처 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {o.qty.toLocaleString()}g</span></div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ fontSize: 12, color: "#6b7280" }}>시작일<input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                    <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)<input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span} onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })} style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                    <div style={{ fontSize: 12, color: "#1f4e78" }}>완료일<br /><b>{cp}</b></div>
+                  </div>
+                  {canEdit && <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 10, width: "100%" }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료 처리"}</button>}
+                </div>
+              ); })}
+            </div>
+          )}
       </div>
     );
   }
 
+  // ================= 데스크탑 =================
   return (
     <div>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-        <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>
-        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 6, borderRadius: 6 }}>
-          <option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option>
-        </select>
-        {/* 일별/주별 토글 */}
+        <MonthNav />
+        <FilterSel />
         <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
           <button className="btn" style={{ borderRadius: 0, background: view === "day" ? "#2f6cb0" : "#cdd8e6", color: view === "day" ? "#fff" : "#333" }} onClick={() => setView("day")}>일별</button>
           <button className="btn" style={{ borderRadius: 0, background: view === "week" ? "#2f6cb0" : "#cdd8e6", color: view === "week" ? "#fff" : "#333" }} onClick={() => setView("week")}>주별</button>
@@ -166,10 +192,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                 <th className="fixcol c-cust" style={{ left: 344 }}>거래처</th>
                 <th className="fixcol c-qty" style={{ left: 464 }}>수량</th>
                 {view === "day"
-                  ? Array.from({ length: nDays }, (_, i) => {
-                    const d = i + 1; const wd = new Date(cur.y, cur.m - 1, d).getDay();
-                    return <th key={d} className="day" style={{ width: DAYW, minWidth: DAYW }}><div className="dn">{d}</div><div className="wd">{WD[wd]}</div></th>;
-                  })
+                  ? Array.from({ length: nDays }, (_, i) => { const d = i + 1; const wd = new Date(cur.y, cur.m - 1, d).getDay(); return <th key={d} className="day" style={{ width: DAYW, minWidth: DAYW }}><div className="dn">{d}</div><div className="wd">{WD[wd]}</div></th>; })
                   : buckets.map((b, i) => <th key={i} className="day" style={{ width: 70, minWidth: 70 }}><div className="dn">{b.label}</div><div className="wd">{cur.m}월</div></th>)}
               </tr>
             </thead>
@@ -186,22 +209,13 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                     {view === "day" ? (
                       <td className="barcell" colSpan={nDays}>
                         <div className="track" style={{ width: nDays * DAYW }}>
-                          {Array.from({ length: nDays }, (_, i) => {
-                            const d = i + 1; const wd = new Date(cur.y, cur.m - 1, d).getDay();
-                            const today = cur.y === TODAY.getFullYear() && cur.m === TODAY.getMonth() + 1 && d === TODAY.getDate();
-                            const bg = today ? "var(--today)" : (wd === 0 || wd === 6 ? "var(--wknd)" : "#fff");
-                            return <div key={d} style={{ position: "absolute", left: i * DAYW, top: 0, width: DAYW, height: 30, background: bg, borderRight: "1px solid var(--line2)" }} />;
-                          })}
+                          {Array.from({ length: nDays }, (_, i) => { const d = i + 1; const wd = new Date(cur.y, cur.m - 1, d).getDay(); const today = cur.y === TODAY.getFullYear() && cur.m === TODAY.getMonth() + 1 && d === TODAY.getDate(); const bg = today ? "var(--today)" : (wd === 0 || wd === 6 ? "var(--wknd)" : "#fff"); return <div key={d} style={{ position: "absolute", left: i * DAYW, top: 0, width: DAYW, height: 30, background: bg, borderRight: "1px solid var(--line2)" }} />; })}
                           <div className="ordermark" style={{ left: (dayOf(o.order_date) - 1) * DAYW }} title="주문일" />
-                          <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} per={Math.round(o.qty / p.span)}
-                            onMove={startMove} onResize={startResize} onToggle={() => { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }} />
+                          <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} per={Math.round(o.qty / p.span)} onMove={startMove} onResize={startResize} onToggle={() => toggleDone(o, p)} />
                         </div>
                       </td>
                     ) : (
-                      buckets.map((b, i) => {
-                        let s = 0; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d);
-                        return <td key={i} className="day" style={{ width: 70, minWidth: 70, background: p.done ? "#eee" : (s ? "#eaf3ea" : "#fff"), color: p.done ? "#999" : "#1f4e78", fontWeight: s ? 700 : 400, textDecoration: p.done ? "line-through" : "none" }}>{s ? Math.round(s).toLocaleString() : ""}</td>;
-                      })
+                      buckets.map((b, i) => { let s = 0; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); return <td key={i} className="day" style={{ width: 70, minWidth: 70, background: p.done ? "#eee" : (s ? "#eaf3ea" : "#fff"), color: p.done ? "#999" : "#1f4e78", fontWeight: s ? 700 : 400, textDecoration: p.done ? "line-through" : "none" }}>{s ? Math.round(s).toLocaleString() : ""}</td>; })
                     )}
                   </tr>
                 );
@@ -209,8 +223,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
             </tbody>
             <tfoot>
               <tr>
-                <td className="fixcol c-no" /><td className="fixcol c-name" style={{ left: 34 }} />
-                <td className="fixcol c-spec" style={{ left: 184 }} /><td className="fixcol c-cust" style={{ left: 344 }} />
+                <td className="fixcol c-no" /><td className="fixcol c-name" style={{ left: 34 }} /><td className="fixcol c-spec" style={{ left: 184 }} /><td className="fixcol c-cust" style={{ left: 344 }} />
                 <td className="fixcol c-qty" style={{ left: 464 }}>{view === "day" ? "일계(g)" : "주계(g)"}</td>
                 {view === "day"
                   ? Array.from({ length: nDays }, (_, i) => <td key={i} className="day" style={{ width: DAYW, minWidth: DAYW }}>{dayTot[i + 1] ? Math.round(dayTot[i + 1]).toLocaleString() : ""}</td>)
@@ -231,10 +244,8 @@ function PlanBar({ o, p, left, w, per, onMove, onResize, onToggle }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
-    <div ref={ref} className={"bar" + (p.done ? " done" : "")} style={{ left, width: w }}
-      title={`${o.name} · ${o.qty}g`}
-      onPointerDown={e => { if ((e.target as HTMLElement).classList.contains("handle")) return; onMove(e, o, ref.current!); }}
-      onDoubleClick={onToggle}>
+    <div ref={ref} className={"bar" + (p.done ? " done" : "")} style={{ left, width: w }} title={`${o.name} · ${o.qty}g`}
+      onPointerDown={e => { if ((e.target as HTMLElement).classList.contains("handle")) return; onMove(e, o, ref.current!); }} onDoubleClick={onToggle}>
       <span className="qh">{o.qty.toLocaleString()}g</span>
       {p.span > 1 && <span style={{ opacity: .85 }}>({per}/일)</span>}
       <span className="handle" onPointerDown={e => onResize(e, o, ref.current!)} />
