@@ -7,7 +7,27 @@ import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
 
 type QItem = Receipt & { file?: File };
-const ACCOUNTS = ["복리후생비", "여비교통비", "소모품비", "접대비", "통신비", "운반비", "수수료", "기타"];
+const ACCOUNTS = ["복리후생비", "여비교통비", "차량유지비", "소모품비", "비품", "사무용품비", "접대비", "통신비", "운반비", "지급수수료", "도서인쇄비", "교육훈련비", "광고선전비", "보험료", "임차료", "세금과공과", "수선비", "기타"];
+const RULES: [RegExp, string][] = [
+  [/엔진오일|엔진 오일|주유|경유|휘발유|디젤|lpg|타이어|차량|자동차|정비|세차|하이패스|주차|통행료|렌트|오토오아시스|카센터/i, "차량유지비"],
+  [/택시|버스|지하철|기차|ktx|srt|항공|비행기|출장|숙박|호텔|모텔|고속/i, "여비교통비"],
+  [/식대|점심|저녁|아침|회식|카페|커피|간식|음료|다과|마트|편의점|식당|배달/i, "복리후생비"],
+  [/접대|미팅|벤더|골프|선물|화환|경조/i, "접대비"],
+  [/택배|운송|배송|화물|퀵|용달/i, "운반비"],
+  [/통신|인터넷|휴대폰|핸드폰|전화|요금제|kt|skt|lg유플|데이터/i, "통신비"],
+  [/복사|인쇄|명함|출력|도서|잉크|토너|제본/i, "도서인쇄비"],
+  [/장갑|청소|소모품|부자재|소모성|걸레|마스크|세제/i, "소모품비"],
+  [/비품|가구|모니터|의자|책상|공구|장비|냉장고|프린터/i, "비품"],
+  [/볼펜|노트|용지|문구|사무용품|파일|포스트잇|a4/i, "사무용품비"],
+  [/수수료|이체|송금|결제대행|중개|법무|세무사/i, "지급수수료"],
+  [/교육|강의|세미나|연수|학원/i, "교육훈련비"],
+  [/광고|홍보|마케팅|전단|배너/i, "광고선전비"],
+  [/보험/i, "보험료"],
+  [/임대|월세|임차|렌탈/i, "임차료"],
+  [/세금|과태료|등록면허|공과금|등기/i, "세금과공과"],
+  [/수리|수선|고장|as|에이에스|점검/i, "수선비"],
+];
+function suggestAccount(text: string): string { const t = (text || "").toLowerCase(); for (const [re, acc] of RULES) if (re.test(t)) return acc; return ""; }
 const TYPES = ["카드", "세금계산서", "현금영수증", "간이영수증"];
 const won = (n: any) => (Number(n) || 0).toLocaleString("ko-KR");
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -42,6 +62,7 @@ export default function Receipts() {
   const quarters = useMemo(() => ["전체", ...[...new Set(rows.map(r => quarterOf(r.rdate)))].sort((a, b) => a < b ? 1 : -1)], [rows]);
   const shown = useMemo(() => (qFilter === "전체" ? rows : rows.filter(r => quarterOf(r.rdate) === qFilter)), [rows, qFilter]);
   const periodLabel = qFilter !== "전체" ? qFilter : period;
+  const accSuggest = useMemo(() => suggestAccount(`${form.memo || ""} ${form.vendor || ""}`), [form.memo, form.vendor]);
   const sumS = useMemo(() => shown.reduce((a, r) => a + Number(r.supply || 0), 0), [shown]);
   const sumV = useMemo(() => shown.reduce((a, r) => a + Number(r.vat || 0), 0), [shown]);
   const sumT = useMemo(() => shown.reduce((a, r) => a + Number(r.total || 0), 0), [shown]);
@@ -208,6 +229,11 @@ export default function Receipts() {
             <div><label style={lbl}>부가세</label><input type="number" inputMode="numeric" style={fin} value={form.vat || ""} onChange={e => setField("vat", Number(e.target.value))} /></div>
           </div>
           <label style={lbl}>계정과목</label><select style={fin} value={form.account} onChange={e => setField("account", e.target.value)}>{ACCOUNTS.map(a => <option key={a}>{a}</option>)}</select>
+          {accSuggest && accSuggest !== form.account &&
+            <div style={{ fontSize: 12, color: "#1f4e78", marginTop: -6, marginBottom: 8, background: "#eef3fb", borderRadius: 6, padding: "5px 8px" }}>
+              💡 추천 계정: <b>{accSuggest}</b> <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 6 }} onClick={() => setField("account", accSuggest)}>적용</button>
+              <span className="muted" style={{ fontSize: 10 }}> (비고·거래처 내용 기준)</span>
+            </div>}
           {form.account === "접대비" && <div style={{ fontSize: 11, color: "#b45309", marginTop: -6, marginBottom: 8 }}>⚠ 접대비는 비고에 "누구와/왜"를 꼭 적어주세요(소명 대비).</div>}
           <label style={lbl}>비고</label><input style={fin} placeholder="원본파일명/용도, 불공제 등" value={form.memo} onChange={e => setField("memo", e.target.value)} />
           {canEdit && <>
