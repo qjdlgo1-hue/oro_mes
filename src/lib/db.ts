@@ -162,8 +162,10 @@ export async function listReceipts(): Promise<Receipt[]> {
   return lsGet<Receipt[]>(LS_RCPT, []);
 }
 export async function addReceipt(r: Receipt, file?: File): Promise<void> {
+  // DB 컬럼이 아닌 필드 제거(file, 빈 id 등)
+  const { file: _drop, id: _id, ...clean } = r as any;
   if (supabase) {
-    let image_path = r.image_path || null;
+    let image_path = (clean.image_path as string | null) || null;
     if (file) {
       const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
       const path = `${(crypto as any).randomUUID?.() || Date.now()}.${ext}`;
@@ -172,10 +174,10 @@ export async function addReceipt(r: Receipt, file?: File): Promise<void> {
       image_path = path;
     }
     const { data: u } = await supabase.auth.getUser();
-    const { error } = await supabase.from("receipts").insert({ ...r, image_path, created_by: u.user?.email });
+    const { error } = await supabase.from("receipts").insert({ ...clean, image_path, created_by: u.user?.email });
     if (error) throw error; return;
   }
-  const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...r, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
+  const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...clean, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
 }
 export async function deleteReceipt(id: string, image_path?: string | null): Promise<void> {
   if (supabase) {
