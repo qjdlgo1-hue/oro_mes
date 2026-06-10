@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { CAPS, MENUS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const ROLES = ["master", "manager", "user"];
 
 export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
+  const isMobile = useIsMobile();
   const [users, setUsers] = useState<any[]>([]);
   const [matrix, setMatrix] = useState<Record<string, boolean>>({}); // `${role}:${cap}` -> bool
   const [busy, setBusy] = useState(false);
@@ -62,6 +64,17 @@ export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
     <div style={{ display: "grid", gap: 16 }}>
       <div className="card">
         <h3 style={{ marginTop: 0 }}>사용자 / 역할</h3>
+        {isMobile ? (
+          <div>{users.map(u => (
+            <div className="mcard" key={u.id}>
+              <div className="mrow"><span className="k">{u.email}</span></div>
+              <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+                <select value={u.role} disabled={busy} onChange={e => changeRole(u, e.target.value)} style={{ padding: 6, flex: 1 }}>{ROLES.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                <button className="btn ghost" disabled={busy} onClick={() => resetPw(u)}>비번 재설정</button>
+              </div>
+            </div>))}
+          </div>
+        ) : (
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr>{["이메일", "역할", "관리"].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead>
           <tbody>
@@ -78,6 +91,7 @@ export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       <div className="card">
@@ -106,7 +120,8 @@ function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>{title} <span className="muted">(Master는 항상 전체)</span></h3>
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+      <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 320 }}>
         <thead><tr>
           <th style={TH}>항목</th>
           <th style={{ ...TH, textAlign: "center" }}>Master</th>
@@ -127,6 +142,7 @@ function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
           ))}
         </tbody>
       </table>
+      </div>
       {note && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{note}</p>}
     </div>
   );

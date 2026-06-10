@@ -6,6 +6,7 @@ import { parseSpec, gravitySpec, addYear } from "../lib/coc";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { supabase } from "../lib/supabase";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const TODAY = new Date();
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -54,6 +55,9 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const [imgCache, setImgCache] = useState<Record<string, string>>({});
   const [email, setEmail] = useState("");
   const certRef = useRef<HTMLDivElement>(null);
+  const certWrapRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const [fit, setFit] = useState(true);
   const [cur, setCur] = useState(() => {
     const months = [...new Set(orders.map(o => o.ym))].sort();
     const last = months[months.length - 1] || `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, "0")}`;
@@ -69,6 +73,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const data: Record<string, string> = order ? { ...parseSpecDefaults(order), ...(cocs[order.id]?.data || {}) } : {};
   const t = L[lang];
   const fmt = settings.format || {};
+  const fitScale = isMobile && fit ? Math.min(1, (window.innerWidth - 28) / 760) : 1;
 
   const planProd = order ? completionDate(plans[order.id]) : null;
   const prodManual = !!(order && cocs[order.id]?.data?.prod);
@@ -111,7 +116,10 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     try {
       toast.success("PDF 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
+      const wrap = certWrapRef.current; const pz = wrap ? wrap.style.zoom : "";
+      if (wrap) (wrap.style as any).zoom = "1";
       const canvas = await html2canvas(certRef.current, { scale: 2, backgroundColor: "#ffffff" });
+      if (wrap) (wrap.style as any).zoom = pz;
       const pdf = new jsPDF({ unit: "mm", format: (fmt.paper === "Letter" ? "letter" : "a4") });
       const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = fmt.marginMm ?? 10; const iw = pw - m * 2;
       const pagePx = Math.floor((ph - m * 2) * canvas.width / iw); let sY = 0, first = true;
@@ -194,6 +202,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
                 <button className="btn" onClick={issue}>📋 발행 확정</button>
                 <button className="btn green" onClick={savePdf}>📄 PDF 저장</button>
                 <button className="btn ghost" onClick={() => { logAudit("COC 인쇄", "coc", order.id, {}); window.print(); }}>🖨 인쇄</button>
+                {isMobile && <button className="btn ghost" onClick={() => setFit(f => !f)}>{fit ? "실제크기" : "화면맞춤"}</button>}
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
@@ -214,6 +223,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
           </div>
 
           {/* 미리보기(읽기전용) = 인쇄/PDF 대상 */}
+          <div ref={certWrapRef} style={isMobile && fit ? ({ zoom: fitScale } as any) : { overflowX: "auto" }}>
           <div className="cert" ref={certRef}>
             {fmt.header && <div style={{ textAlign: "center", fontSize: 12, color: "#555", marginBottom: 6, borderBottom: "1px solid #eee", paddingBottom: 4 }}>{fmt.header}</div>}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -252,6 +262,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               {settings.stamp && <img src={settings.stamp} style={{ height: 60, position: "absolute", right: 0, top: -18 }} />}
             </div>
             <div className="footer">{fmt.footer1 || "809, Dongtandaero 635, Hwaseong-si, Gyeonggi-do, Republic of Korea"}<br />{fmt.footer2 || "Tel. 070-8098-0668   E.mail. dwlee@orocorp.kr"}{data.issuedAt ? `  |  발행일 ${data.issuedAt}` : ""}</div>
+          </div>
           </div>
         </>}
       </div>

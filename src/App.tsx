@@ -24,6 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
+  const [drawer, setDrawer] = useState(false);
   const { can, role, loaded: permLoaded } = useCaps();
   const isMobile = useIsMobile();
 
@@ -49,24 +50,30 @@ export default function App() {
 
   const ALL: { key: Tab; label: string; icon: string; show: boolean }[] = [
     { key: "today", label: "POP", icon: "📋", show: can("menu.pop") },
-    { key: "import", label: "주문", icon: "📥", show: can("menu.import") },
-    { key: "plan", label: "생산", icon: "📅", show: can("menu.plan") },
-    { key: "coc", label: "COC", icon: "📄", show: can("coc.issue") && can("menu.coc") },
+    { key: "import", label: "주문 가져오기", icon: "📥", show: can("menu.import") },
+    { key: "plan", label: "생산계획", icon: "📅", show: can("menu.plan") },
+    { key: "coc", label: "COC 발행", icon: "📄", show: can("coc.issue") && can("menu.coc") },
     { key: "report", label: "리포트", icon: "📊", show: can("report.view") && can("menu.report") },
-    { key: "receipt", label: "증빙", icon: "🧾", show: can("menu.receipt") },
     { key: "audit", label: "기록", icon: "🕘", show: can("audit.view") && can("menu.audit") },
+    { key: "receipt", label: "증빙", icon: "🧾", show: can("menu.receipt") },
     { key: "admin", label: "관리자", icon: "⚙️", show: role === "master" },
   ];
   const tabs = ALL.filter(t => t.show);
-
-  const fullLabel: Record<Tab, string> = { today: "POP", import: "주문 가져오기", plan: "생산계획", coc: "COC 발행", report: "리포트", audit: "기록", receipt: "증빙", admin: "관리자" };
+  const curLabel = (ALL.find(t => t.key === tab)?.label) || "";
+  const GROUPS: { name: string; keys: Tab[] }[] = [
+    { name: "현장", keys: ["today", "plan", "coc", "receipt"] },
+    { name: "데이터", keys: ["import", "report", "audit"] },
+    { name: "관리", keys: ["admin"] },
+  ];
 
   return (
     <>
       <header className="app">
+        {isMobile && <button className="hamb" onClick={() => setDrawer(true)} aria-label="메뉴">☰</button>}
         <h1>ORO MES</h1>
+        {isMobile && <span className="curtab">{curLabel}</span>}
         <nav className="tabs">
-          {tabs.map(t => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{fullLabel[t.key]}</button>)}
+          {tabs.map(t => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>)}
         </nav>
         <span className="badge">
           {!isMobile && <>{backendName} · 주문 {orders.length}건 </>}
@@ -75,6 +82,29 @@ export default function App() {
             onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
         </span>
       </header>
+
+      {isMobile && drawer &&
+        <div className="drawer-overlay" onClick={() => setDrawer(false)}>
+          <div className="drawer" onClick={e => e.stopPropagation()}>
+            <div className="drawer-head"><b>메뉴</b><button onClick={() => setDrawer(false)}>✕</button></div>
+            {GROUPS.map(g => {
+              const items = tabs.filter(t => g.keys.includes(t.key));
+              if (!items.length) return null;
+              return (
+                <div key={g.name}>
+                  <div className="drawer-group">{g.name}</div>
+                  {items.map(t => (
+                    <button key={t.key} className={"drawer-item" + (tab === t.key ? " active" : "")}
+                      onClick={() => { setTab(t.key); setDrawer(false); }}>
+                      <span className="ic">{t.icon}</span> {t.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>}
+
       <div className="wrap">
         {loading ? <div className="muted">불러오는 중…</div> :
           tab === "today" ? <Today orders={orders} /> :
@@ -86,13 +116,6 @@ export default function App() {
           tab === "receipt" ? <Receipts /> :
           <Admin onRoleChange={loadPerms} />}
       </div>
-      <nav className="botnav">
-        {tabs.map(t => (
-          <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>
-            <span className="ic">{t.icon}</span>{t.label}
-          </button>
-        ))}
-      </nav>
       <ToastHost />
     </>
   );
