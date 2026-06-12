@@ -9,6 +9,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.report", label: "리포트" },
   { key: "menu.audit", label: "기록" },
   { key: "menu.receipt", label: "증빙(영수증)" },
+  { key: "menu.bom", label: "원재료(BOM)" },
 ];
 
 export const CAPS: { key: string; label: string }[] = [
@@ -20,6 +21,7 @@ export const CAPS: { key: string; label: string }[] = [
   { key: "report.view", label: "리포트 보기" },
   { key: "audit.view", label: "기록 보기" },
   { key: "receipt.edit", label: "증빙 입력/삭제" },
+  { key: "bom.edit", label: "원재료(BOM) 수정" },
 ];
 
 let _role = "user";

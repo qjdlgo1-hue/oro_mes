@@ -226,3 +226,18 @@ export async function storageBlobToDataUrl(bucket: string, path: string): Promis
   const b = await storageBlob(bucket, path); if (!b) return null;
   return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(b); });
 }
+
+// ---- 원재료(BOM) ----
+export type BomMap = Record<string, { agcn: number; pgc: number; note?: string }>;
+const LS_BOM = "oro_bom";
+export async function listBom(): Promise<BomMap> {
+  if (supabase) {
+    const { data, error } = await supabase.from("bom").select("*"); if (error) throw error;
+    const m: BomMap = {}; (data || []).forEach((b: any) => { m[b.product] = { agcn: Number(b.agcn) || 0, pgc: Number(b.pgc) || 0, note: b.note || "" }; }); return m;
+  }
+  return lsGet<BomMap>(LS_BOM, {});
+}
+export async function upsertBom(product: string, patch: { agcn?: number; pgc?: number; note?: string }): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("bom").upsert({ product, ...patch, updated_at: new Date().toISOString() }, { onConflict: "product" }); if (error) throw error; return; }
+  const m = lsGet<BomMap>(LS_BOM, {}); const prev = m[product] || { agcn: 0, pgc: 0 }; m[product] = { ...prev, ...patch } as any; lsSet(LS_BOM, m);
+}

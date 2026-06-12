@@ -13,10 +13,11 @@ import CocIssue from "./components/CocIssue";
 import Dashboard from "./components/Dashboard";
 import Audit from "./components/Audit";
 import Receipts from "./components/Receipts";
+import MaterialBom from "./components/MaterialBom";
 import Admin from "./components/Admin";
 import Login from "./components/Login";
 
-type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "receipt" | "admin";
+type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "receipt" | "bom" | "admin";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
@@ -56,12 +57,13 @@ export default function App() {
     { key: "report", label: "리포트", icon: "📊", show: can("report.view") && can("menu.report") },
     { key: "audit", label: "기록", icon: "🕘", show: can("audit.view") && can("menu.audit") },
     { key: "receipt", label: "증빙", icon: "🧾", show: can("menu.receipt") },
+    { key: "bom", label: "원재료", icon: "⚗️", show: can("menu.bom") },
     { key: "admin", label: "관리자", icon: "⚙️", show: role === "master" },
   ];
   const tabs = ALL.filter(t => t.show);
   const curLabel = (ALL.find(t => t.key === tab)?.label) || "";
   const GROUPS: { name: string; keys: Tab[] }[] = [
-    { name: "현장", keys: ["today", "plan", "coc", "receipt"] },
+    { name: "현장", keys: ["today", "plan", "coc", "bom", "receipt"] },
     { name: "데이터", keys: ["import", "report", "audit"] },
     { name: "관리", keys: ["admin"] },
   ];
@@ -114,6 +116,7 @@ export default function App() {
           tab === "report" ? <Dashboard orders={orders} /> :
           tab === "audit" ? <Audit /> :
           tab === "receipt" ? <Receipts /> :
+          tab === "bom" ? <MaterialBom orders={orders} /> :
           <Admin onRoleChange={loadPerms} />}
       </div>
       <ToastHost />
