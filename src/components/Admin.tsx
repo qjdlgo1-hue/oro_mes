@@ -3,11 +3,17 @@ import { CAPS, MENUS, listProfiles, setRole, getMatrix, setPermission, adminCrea
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
+import { TAB_DEFS } from "../lib/tabs";
+import { getMenuOrder, setMenuOrder } from "../lib/db";
 
 const ROLES = ["master", "manager", "user"];
 
-export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
+export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChange: () => void; onMenuOrderChange: () => void }) {
   const isMobile = useIsMobile();
+  const [order, setOrder] = useState<string[]>([]);
+  useEffect(() => { getMenuOrder().then(o => setOrder(o.length ? o.filter(k => TAB_DEFS.some(t => t.key === k)).concat(TAB_DEFS.filter(t => !o.includes(t.key)).map(t => t.key)) : TAB_DEFS.map(t => t.key))); }, []);
+  const moveMenu = (i: number, dir: number) => { const j = i + dir; if (j < 0 || j >= order.length) return; const n = [...order]; [n[i], n[j]] = [n[j], n[i]]; setOrder(n); };
+  async function saveOrder() { try { await setMenuOrder(order); await logAudit("메뉴 순서 변경", "menu", "", { order }); toast.success("메뉴 순서 저장됨 (새로고침/재로그인 시 모두 적용)"); onMenuOrderChange(); } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); } }
   const [users, setUsers] = useState<any[]>([]);
   const [matrix, setMatrix] = useState<Record<string, boolean>>({}); // `${role}:${cap}` -> bool
   const [busy, setBusy] = useState(false);
@@ -62,6 +68,23 @@ export default function Admin({ onRoleChange }: { onRoleChange: () => void }) {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>메뉴 표시 순서 <span className="muted">(PC 상단탭·모바일 드로어 공통)</span></h3>
+        <div style={{ maxWidth: 420 }}>
+          {order.map((k, i) => { const d = TAB_DEFS.find(t => t.key === k); if (!d) return null; return (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, marginBottom: 6 }}>
+              <span style={{ width: 22, textAlign: "center", color: "#9aa3af" }}>{i + 1}</span>
+              <span style={{ fontSize: 18 }}>{d.icon}</span>
+              <span style={{ flex: 1, fontWeight: 600 }}>{d.label}</span>
+              <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={i === 0} onClick={() => moveMenu(i, -1)}>▲</button>
+              <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={i === order.length - 1} onClick={() => moveMenu(i, 1)}>▼</button>
+            </div>
+          ); })}
+          <button className="btn green" style={{ marginTop: 6 }} onClick={saveOrder}>순서 저장</button>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>각 사용자는 다음 새로고침/로그인 때 반영됩니다. (권한·메뉴표시로 숨긴 메뉴는 순서와 무관하게 안 보입니다)</p>
+        </div>
+      </div>
+
       <div className="card">
         <h3 style={{ marginTop: 0 }}>사용자 / 역할</h3>
         {isMobile ? (

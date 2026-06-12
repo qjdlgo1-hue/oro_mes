@@ -241,3 +241,13 @@ export async function upsertBom(product: string, patch: { agcn?: number; pgc?: n
   if (supabase) { const { error } = await supabase.from("bom").upsert({ product, ...patch, updated_at: new Date().toISOString() }, { onConflict: "product" }); if (error) throw error; return; }
   const m = lsGet<BomMap>(LS_BOM, {}); const prev = m[product] || { agcn: 0, pgc: 0 }; m[product] = { ...prev, ...patch } as any; lsSet(LS_BOM, m);
 }
+
+// ---- 메뉴 표시 순서 ----
+export async function getMenuOrder(): Promise<string[]> {
+  if (supabase) { const { data, error } = await supabase.from("app_settings").select("menu_order").eq("id", 1).maybeSingle(); if (error) throw error; return ((data as any)?.menu_order as string[]) || []; }
+  try { return JSON.parse(localStorage.getItem("oro_menu_order") || "[]"); } catch { return []; }
+}
+export async function setMenuOrder(arr: string[]): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("app_settings").upsert({ id: 1, menu_order: arr }, { onConflict: "id" }); if (error) throw error; return; }
+  localStorage.setItem("oro_menu_order", JSON.stringify(arr));
+}

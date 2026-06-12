@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Order } from "./lib/types";
-import { listOrders, backendName } from "./lib/db";
+import { listOrders, backendName, getMenuOrder } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile } from "./lib/useIsMobile";
+import { TAB_DEFS, TabKey } from "./lib/tabs";
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
@@ -17,15 +18,14 @@ import MaterialBom from "./components/MaterialBom";
 import Admin from "./components/Admin";
 import Login from "./components/Login";
 
-type Tab = "today" | "import" | "plan" | "coc" | "report" | "audit" | "receipt" | "bom" | "admin";
-
 export default function App() {
-  const [tab, setTab] = useState<Tab>("today");
+  const [tab, setTab] = useState<TabKey>("today");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
   const [drawer, setDrawer] = useState(false);
+  const [menuOrder, setMenuOrder] = useState<string[]>([]);
   const { can, role, loaded: permLoaded } = useCaps();
   const isMobile = useIsMobile();
 
@@ -41,32 +41,45 @@ export default function App() {
     try { setOrders(await listOrders()); } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
+  const reloadMenu = useCallback(() => { getMenuOrder().then(setMenuOrder).catch(() => {}); }, []);
 
   const signedIn = !hasSupabase || !!session;
-  useEffect(() => { if (signedIn) { refresh(); loadPerms(); } }, [signedIn, refresh]);
+  useEffect(() => { if (signedIn) { refresh(); loadPerms(); reloadMenu(); } }, [signedIn, refresh, reloadMenu]);
 
   if (!authReady) return <div className="wrap muted">불러오는 중…</div>;
   if (hasSupabase && !session) return <Login />;
   if (hasSupabase && !permLoaded) return <div className="wrap muted">권한 확인 중…</div>;
 
-  const ALL: { key: Tab; label: string; icon: string; show: boolean }[] = [
-    { key: "today", label: "POP", icon: "📋", show: can("menu.pop") },
-    { key: "import", label: "주문 가져오기", icon: "📥", show: can("menu.import") },
-    { key: "plan", label: "생산계획", icon: "📅", show: can("menu.plan") },
-    { key: "coc", label: "COC 발행", icon: "📄", show: can("coc.issue") && can("menu.coc") },
-    { key: "report", label: "리포트", icon: "📊", show: can("report.view") && can("menu.report") },
-    { key: "audit", label: "기록", icon: "🕘", show: can("audit.view") && can("menu.audit") },
-    { key: "receipt", label: "증빙", icon: "🧾", show: can("menu.receipt") },
-    { key: "bom", label: "원재료", icon: "⚗️", show: can("menu.bom") },
-    { key: "admin", label: "관리자", icon: "⚙️", show: role === "master" },
-  ];
-  const tabs = ALL.filter(t => t.show);
-  const curLabel = (ALL.find(t => t.key === tab)?.label) || "";
-  const GROUPS: { name: string; keys: Tab[] }[] = [
-    { name: "현장", keys: ["today", "plan", "coc", "bom", "receipt"] },
-    { name: "데이터", keys: ["import", "report", "audit"] },
-    { name: "관리", keys: ["admin"] },
-  ];
+  const showFor = (k: TabKey): boolean => {
+    switch (k) {
+      case "today": return can("menu.pop");
+      case "import": return can("menu.import");
+      case "plan": return can("menu.plan");
+      case "coc": return can("coc.issue") && can("menu.coc");
+      case "report": return can("report.view") && can("menu.report");
+      case "audit": return can("audit.view") && can("menu.audit");
+      case "receipt": return can("menu.receipt");
+      case "bom": return can("menu.bom");
+      case "admin": return role === "master";
+    }
+  };
+  const ord = (k: string) => { const i = menuOrder.indexOf(k); return i < 0 ? 999 : i; };
+  const tabs = TAB_DEFS.filter(t => showFor(t.key)).sort((a, b) => ord(a.key) - ord(b.key));
+  const curLabel = (TAB_DEFS.find(t => t.key === tab)?.label) || "";
+
+  const render = () => {
+    switch (tab) {
+      case "today": return <Today orders={orders} />;
+      case "import": return <ImportOrders orders={orders} onChange={refresh} />;
+      case "plan": return <ProductionPlan orders={orders} />;
+      case "coc": return <CocIssue orders={orders} />;
+      case "report": return <Dashboard orders={orders} />;
+      case "audit": return <Audit />;
+      case "receipt": return <Receipts />;
+      case "bom": return <MaterialBom orders={orders} />;
+      case "admin": return <Admin onRoleChange={loadPerms} onMenuOrderChange={reloadMenu} />;
+    }
+  };
 
   return (
     <>
@@ -89,36 +102,16 @@ export default function App() {
         <div className="drawer-overlay" onClick={() => setDrawer(false)}>
           <div className="drawer" onClick={e => e.stopPropagation()}>
             <div className="drawer-head"><b>메뉴</b><button onClick={() => setDrawer(false)}>✕</button></div>
-            {GROUPS.map(g => {
-              const items = tabs.filter(t => g.keys.includes(t.key));
-              if (!items.length) return null;
-              return (
-                <div key={g.name}>
-                  <div className="drawer-group">{g.name}</div>
-                  {items.map(t => (
-                    <button key={t.key} className={"drawer-item" + (tab === t.key ? " active" : "")}
-                      onClick={() => { setTab(t.key); setDrawer(false); }}>
-                      <span className="ic">{t.icon}</span> {t.label}
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
+            {tabs.map(t => (
+              <button key={t.key} className={"drawer-item" + (tab === t.key ? " active" : "")}
+                onClick={() => { setTab(t.key); setDrawer(false); }}>
+                <span className="ic">{t.icon}</span> {t.label}
+              </button>
+            ))}
           </div>
         </div>}
 
-      <div className="wrap">
-        {loading ? <div className="muted">불러오는 중…</div> :
-          tab === "today" ? <Today orders={orders} /> :
-          tab === "import" ? <ImportOrders orders={orders} onChange={refresh} /> :
-          tab === "plan" ? <ProductionPlan orders={orders} /> :
-          tab === "coc" ? <CocIssue orders={orders} /> :
-          tab === "report" ? <Dashboard orders={orders} /> :
-          tab === "audit" ? <Audit /> :
-          tab === "receipt" ? <Receipts /> :
-          tab === "bom" ? <MaterialBom orders={orders} /> :
-          <Admin onRoleChange={loadPerms} />}
-      </div>
+      <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
       <ToastHost />
     </>
   );
