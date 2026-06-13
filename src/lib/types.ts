@@ -45,4 +45,5 @@ export type Receipt = {
   rtype: string; account: string; memo: string;
   company?: string; period?: string;
   image_path?: string | null;
+  image_paths?: string[] | null;
 };

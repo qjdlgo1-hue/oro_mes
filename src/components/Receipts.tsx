@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Receipt } from "../lib/types";
-import { listReceipts, addReceipt, deleteReceipt, readReceiptAI, receiptSignedUrl, receiptImageBlob, logAudit } from "../lib/db";
+import { listReceipts, addReceipt, deleteReceipt, readReceiptAI, receiptSignedUrl, receiptImageBlob, storageUpload, setReceiptImages, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
@@ -46,6 +46,30 @@ export default function Receipts() {
   const [queue, setQueue] = useState<QItem[]>([]);
   const [scanning, setScanning] = useState("");
   const [busy, setBusy] = useState(false);
+  const [viewer, setViewer] = useState<{ r: Receipt; urls: { path: string; url: string }[] } | null>(null);
+  function receiptImgs(r: Receipt): string[] { return (r.image_paths && r.image_paths.length ? r.image_paths : (r.image_path ? [r.image_path] : [])) as string[]; }
+  async function openViewer(r: Receipt) {
+    try { const paths = receiptImgs(r); const urls = await Promise.all(paths.map(async p => ({ path: p, url: (await receiptSignedUrl(p)) || "" }))); setViewer({ r, urls }); }
+    catch (e: any) { toast.error("원본 열기 실패: " + (e.message || e)); }
+  }
+  function pickOneFile(cb: (f: File) => void) { const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.onchange = () => { const f = i.files?.[0]; if (f) cb(f); }; i.click(); }
+  async function addPhotoTo(r: Receipt) {
+    if (!canEdit || !r.id) return;
+    pickOneFile(async f => {
+      setBusy(true);
+      try {
+        const path = await storageUpload("receipts", f);
+        const next = [...receiptImgs(r), path];
+        await setReceiptImages(r.id!, next);
+        await logAudit("증빙 사진 추가", "receipt", r.id!, { count: next.length });
+        toast.success("사진 추가됨");
+        const url = (await receiptSignedUrl(path)) || "";
+        setViewer(v => v && v.r.id === r.id ? { r: { ...v.r, image_paths: next }, urls: [...v.urls, { path, url }] } : v);
+        await reload();
+      } catch (e: any) { toast.error("추가 실패: " + (e.message || e)); }
+      setBusy(false);
+    });
+  }
   const [qFilter, setQFilter] = useState("전체");
   const [company, setCompany] = useState(localStorage.getItem("oro_rcpt_company") || "ORO 주식회사");
   const [period, setPeriod] = useState(localStorage.getItem("oro_rcpt_period") || "");
@@ -89,7 +113,7 @@ export default function Receipts() {
     if (!r.id) return;
     if (!confirm("이 증빙(원본 포함)을 삭제할까요?")) return;
     setBusy(true);
-    try { await deleteReceipt(r.id, r.image_path); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("삭제됨"); await reload(); }
+    try { await deleteReceipt(r.id, receiptImgs(r)); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("삭제됨"); await reload(); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }
@@ -267,7 +291,7 @@ export default function Receipts() {
                       <div className="mrow"><span className="k">공급가액 / 부가세</span><span className="v" style={{ fontWeight: 400 }}>{won(r.supply)} / {won(r.vat)}</span></div>
                       {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "#6b7280", fontWeight: 400 }}>{r.memo}</span></div> : null}
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                        {r.image_path && <button className="btn ghost" style={{ flex: 1 }} onClick={() => viewOriginal(r.image_path!)}>📎 원본 보기</button>}
+                        {receiptImgs(r).length > 0 && <button className="btn ghost" style={{ flex: 1 }} onClick={() => openViewer(r)}>📎 원본 {receiptImgs(r).length}장</button>}
                         {canEdit && <button className="btn" style={{ background: "#c0392b", flex: 1 }} onClick={() => del(r)}>삭제</button>}
                       </div>
                     </div>
@@ -290,7 +314,7 @@ export default function Receipts() {
                           <td style={{ ...cell, textAlign: "right" }}>{won(r.supply)}</td><td style={{ ...cell, textAlign: "right" }}>{won(r.vat)}</td><td style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{won(r.total)}</td>
                           <td style={cell}>{r.account}</td>
                           <td style={{ ...cell, color: warn ? "#b45309" : "#6b7280" }}>{warn ? `⚠ ${r.memo}` : r.memo}</td>
-                          <td style={{ ...cell, textAlign: "center" }}>{r.image_path ? <button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => viewOriginal(r.image_path!)}>보기</button> : <span style={{ color: "#c0392b" }}>없음</span>}</td>
+                          <td style={{ ...cell, textAlign: "center" }}>{receiptImgs(r).length ? <button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => openViewer(r)}>{receiptImgs(r).length}장</button> : <span style={{ color: "#c0392b" }}>없음</span>}</td>
                           <td style={cell}>{canEdit && <button className="btn" style={{ background: "#c0392b", padding: "1px 7px", fontSize: 12 }} onClick={() => del(r)}>×</button>}</td>
                         </tr>
                       );
@@ -308,6 +332,26 @@ export default function Receipts() {
           <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>※ 원본 '없음'은 5년 보관 대비 위험 — 사진으로 추가하면 자동 보관됩니다. 세무사 전달: 엑셀 + PDF 요약본 + 원본 ZIP.</p>
         </div>
       </div>
+
+      {viewer &&
+        <div onClick={() => setViewer(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, maxWidth: 640, width: "100%", maxHeight: "88vh", overflow: "auto", padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <b>{viewer.r.vendor} · {won(viewer.r.total)}원 · 원본 {viewer.urls.length}장</b>
+              <button className="btn ghost" onClick={() => setViewer(null)}>닫기</button>
+            </div>
+            {viewer.urls.length === 0 ? <p className="muted">원본 사진이 없습니다.</p> :
+              <div style={{ display: "grid", gap: 10 }}>
+                {viewer.urls.map((u, i) => (
+                  <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 6 }}>
+                    <img src={u.url} style={{ width: "100%", borderRadius: 6 }} />
+                    <div style={{ textAlign: "right", marginTop: 4 }}><a href={u.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>새 창에서 열기 / 다운로드</a></div>
+                  </div>
+                ))}
+              </div>}
+            {canEdit && <button className="btn green" style={{ marginTop: 12, width: "100%" }} disabled={busy} onClick={() => addPhotoTo(viewer.r)}>＋ 사진 추가</button>}
+          </div>
+        </div>}
 
       {/* PDF 요약본용 오프스크린 */}
       <div ref={summaryRef} style={{ position: "fixed", left: -10000, top: 0, width: 760, background: "#fff", padding: 24, fontFamily: "'Malgun Gothic',sans-serif" }}>

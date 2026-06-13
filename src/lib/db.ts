@@ -174,18 +174,25 @@ export async function addReceipt(r: Receipt, file?: File): Promise<void> {
       image_path = path;
     }
     const { data: u } = await supabase.auth.getUser();
-    const { error } = await supabase.from("receipts").insert({ ...clean, image_path, created_by: u.user?.email });
+    const image_paths = image_path ? [image_path] : (clean.image_paths || null);
+    const { error } = await supabase.from("receipts").insert({ ...clean, image_path, image_paths, created_by: u.user?.email });
     if (error) throw error; return;
   }
   const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...clean, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
 }
-export async function deleteReceipt(id: string, image_path?: string | null): Promise<void> {
+export async function deleteReceipt(id: string, paths?: (string | null)[] | null): Promise<void> {
   if (supabase) {
     const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error;
-    if (image_path) { await supabase.storage.from("receipts").remove([image_path]); }
+    const ps = (paths || []).filter(Boolean) as string[];
+    if (ps.length) { await supabase.storage.from("receipts").remove(ps); }
     return;
   }
   lsSet(LS_RCPT, lsGet<Receipt[]>(LS_RCPT, []).filter(r => r.id !== id));
+}
+export async function setReceiptImages(id: string, paths: string[]): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("receipts").update({ image_paths: paths, image_path: paths[0] || null }).eq("id", id);
+  if (error) throw error;
 }
 export async function receiptSignedUrl(path: string): Promise<string | null> {
   if (!supabase) return null;
