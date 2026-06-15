@@ -46,7 +46,7 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
   }, [prodOrders, curYm, bom]);
   const totQ = consume.reduce((a, r) => a + r.qty, 0), totAg = consume.reduce((a, r) => a + r.agcn, 0), totPg = consume.reduce((a, r) => a + r.pgc, 0);
 
-  const TH: React.CSSProperties = { background: "var(--navy)", color: "#fff", padding: "6px 8px", fontSize: 12, position: "sticky", top: 0 };
+  const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", padding: "6px 8px", fontSize: 12, position: "sticky", top: 0 };
   const TD: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7", fontSize: 13 };
   const inp: React.CSSProperties = { width: 90, padding: 5, border: "1px solid var(--line)", borderRadius: 5, textAlign: "right" };
 

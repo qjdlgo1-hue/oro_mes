@@ -93,7 +93,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
     setBusy(false);
   }
 
-  const TH: React.CSSProperties = { background: "var(--navy)", color: "#fff", padding: "6px 8px", fontSize: 12, textAlign: "left" };
+  const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", padding: "6px 8px", fontSize: 12, textAlign: "left" };
   const TD: React.CSSProperties = { padding: "6px 8px", borderBottom: "1px solid #eef2f7", fontSize: 13 };
 
   return (

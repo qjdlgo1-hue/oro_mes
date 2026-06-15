@@ -302,7 +302,7 @@ export default function Receipts() {
             <div style={{ overflow: "auto", maxHeight: "55vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>{["일자", "분기", "거래처", "유형", "공급가액", "부가세", "합계", "계정과목", "비고", "원본", ""].map(h =>
-                  <th key={h} style={{ ...cell, background: "#1f3a5f", color: "#fff", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
+                  <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {shown.length === 0 ? <tr><td colSpan={11} style={{ ...cell, textAlign: "center", color: "#6b7280", padding: 30 }}>증빙이 없어요. 사진을 올리거나 직접 입력하세요.</td></tr> :
                     shown.map(r => {
@@ -359,7 +359,7 @@ export default function Receipts() {
         <div style={{ color: "#555", fontSize: 13, marginBottom: 12 }}>대상기간: {periodLabel || "전체"} · 출력일 {todayIso()}</div>
         <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
           <thead><tr>{["번호", "거래일자", "거래처", "유형", "공급가액", "부가세", "합계", "계정과목", "비고"].map(h =>
-            <th key={h} style={{ border: "1px solid #aaa", padding: "4px 6px", background: "#1f3a5f", color: "#fff" }}>{h}</th>)}</tr></thead>
+            <th key={h} style={{ border: "1px solid #aaa", padding: "4px 6px", background: "#f1f3f7", color: "#374151" }}>{h}</th>)}</tr></thead>
           <tbody>
             {shown.map((r, i) => <tr key={r.id}>
               <td style={{ border: "1px solid #ccc", padding: "3px 6px", textAlign: "center" }}>{i + 1}</td>

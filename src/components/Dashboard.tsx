@@ -3,7 +3,7 @@ import { Order, PlanEntry } from "../lib/types";
 import { listPlans } from "../lib/db";
 
 function won(n: number) { return n.toLocaleString(); }
-const TH: React.CSSProperties = { background: "var(--navy)", color: "#fff", padding: "6px 8px", position: "sticky", top: 0, fontSize: 12, fontWeight: 700 };
+const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", padding: "6px 8px", position: "sticky", top: 0, fontSize: 12, fontWeight: 700 };
 const TD: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7" };
 
 export default function Dashboard({ orders }: { orders: Order[] }) {

@@ -12,7 +12,7 @@ export default function Audit() {
       .catch(e => { setErr(e.message || String(e)); setLoading(false); });
   }, []);
 
-  const TH: React.CSSProperties = { background: "var(--navy)", color: "#fff", padding: "6px 8px", position: "sticky", top: 0, fontSize: 12, textAlign: "left" };
+  const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", padding: "6px 8px", position: "sticky", top: 0, fontSize: 12, textAlign: "left" };
   const TD: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7", fontSize: 12 };
 
   if (loading) return <div className="muted">불러오는 중…</div>;

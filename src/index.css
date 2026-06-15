@@ -158,3 +158,37 @@ header.app{ position:sticky; top:0; z-index:50; min-height:52px; }
   .shell{ display:block; }
   header.app{ position:static; }
 }
+
+/* ============ ORO HR 톤 통일 (라이트 + 블루 #2563eb) ============ */
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --line:#e3e6ea; --line2:#eef0f3;
+  --navy:#1f2330; --accent:#2563eb; --muted:#6b7280;
+}
+body{ font-family:-apple-system,"Segoe UI","Malgun Gothic","맑은 고딕",sans-serif; color:var(--navy); }
+/* 라이트 헤더 (다크바 제거) */
+header.app{ background:#ffffff; color:var(--navy); border-bottom:1px solid var(--line); box-shadow:none; }
+header.app h1{ color:var(--navy); }
+header.app .badge{ color:var(--muted); }
+.curtab{ color:var(--accent); font-weight:700; }
+.hamb{ background:#fff; color:var(--navy); border:1px solid var(--line); }
+/* 사이드바/드로어 active = HR 스타일 */
+.nav-item.active{ background:#eff6ff; color:#2563eb; border-left-color:transparent; font-weight:700; }
+.drawer-item.active{ background:#eff6ff; color:#2563eb; }
+.nav-group, .drawer-group{ color:#9aa6b8; }
+/* 버튼 */
+button.btn{ background:var(--accent); }
+button.btn.ghost{ background:#fff; color:#4b5563; border:1px solid var(--line); }
+.btn.green{ background:#1aa260; }
+/* 표 머릿글 라이트 */
+.grid thead th{ background:#f1f3f7; color:#374151; }
+th.fixcol{ background:#f1f3f7 !important; color:#374151; }
+.grid thead .day .wd{ color:#9aa6b8; }
+.grid thead .day.sat .wd{ color:#3b82f6; } .grid thead .day.sun .wd{ color:#e06a6a; }
+.grid .day.sat .dn, .grid .day.sun .dn{ color:#374151; }
+tfoot td{ background:#eef2f6; color:var(--navy); border-top:2px solid var(--accent); }
+tfoot td.fixcol{ background:#eef2f6 !important; }
+/* 탭(데스크탑 잔존시) */
+.tabs button.active{ background:#eff6ff; color:#2563eb; }
+/* HR 바로가기 링크 */
+.xlink{ color:var(--accent); text-decoration:none; font-size:13px; font-weight:600; padding:5px 11px; border:1px solid var(--line); border-radius:6px; background:#fff; white-space:nowrap; }
+.xlink:hover{ background:#eff6ff; }

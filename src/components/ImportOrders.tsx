@@ -246,7 +246,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
               <thead><tr>{["주문일", "구분", "품목명", "규격", "수량(g)", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
-                <th key={h} style={{ ...cell, background: "#1f4e78", color: "#fff", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
+                <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
               <tbody>
                 {viewRows.map(o => {
                   const cp = completionDate(plans[o.id]); const done = !!plans[o.id]?.done; const hasCoc = !!cocs[o.id];

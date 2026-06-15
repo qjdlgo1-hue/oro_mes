@@ -110,7 +110,8 @@ export default function App() {
         {isMobile && <button className="hamb" onClick={() => setDrawer(true)} aria-label="메뉴">☰</button>}
         <h1>ORO MES</h1>
         {isMobile && <span className="curtab">{curLabel}</span>}
-        <span className="badge">
+        <a className="xlink" href="https://hr.orocorp.kr" style={{ marginLeft: "auto" }}>HR 연차 ↗</a>
+        <span className="badge" style={{ marginLeft: 10 }}>
           {!isMobile && <>{backendName} · 주문 {orders.length}건 </>}
           {session?.user?.email && <>{isMobile ? role : `· ${session.user.email} (${role})`}</>}
           {supabase && session && <button className="btn ghost" style={{ marginLeft: 10, padding: "3px 10px", fontSize: 12 }}
