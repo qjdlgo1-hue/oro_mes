@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Order } from "./lib/types";
-import { listOrders, backendName, getMenuOrder } from "./lib/db";
+import { listOrders, backendName, getMenuConfig, MenuGroupRow, MenuPlacement } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
 import { loadPerms, useCaps } from "./lib/perm";
@@ -25,7 +25,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
   const [drawer, setDrawer] = useState(false);
-  const [menuOrder, setMenuOrder] = useState<string[]>([]);
+  const [groups, setGroups] = useState<MenuGroupRow[]>([]);
+  const [placement, setPlacement] = useState<MenuPlacement>({});
   const { can, role, loaded: permLoaded } = useCaps();
   const isMobile = useIsMobile();
 
@@ -41,7 +42,7 @@ export default function App() {
     try { setOrders(await listOrders()); } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
-  const reloadMenu = useCallback(() => { getMenuOrder().then(setMenuOrder).catch(() => {}); }, []);
+  const reloadMenu = useCallback(() => { getMenuConfig().then(c => { setGroups(c.groups); setPlacement(c.placement); }).catch(() => {}); }, []);
 
   const signedIn = !hasSupabase || !!session;
   useEffect(() => { if (signedIn) { refresh(); loadPerms(); reloadMenu(); } }, [signedIn, refresh, reloadMenu]);
@@ -63,9 +64,31 @@ export default function App() {
       case "admin": return role === "master";
     }
   };
-  const ord = (k: string) => { const i = menuOrder.indexOf(k); return i < 0 ? 999 : i; };
-  const tabs = TAB_DEFS.filter(t => showFor(t.key)).sort((a, b) => ord(a.key) - ord(b.key));
+  const visible = TAB_DEFS.filter(t => showFor(t.key));
+  let navGroups = [...groups].sort((a, b) => a.sort - b.sort).map(g => ({
+    id: g.id, name: g.name,
+    items: visible.filter(t => placement[t.key]?.group_id === g.id).sort((a, b) => (placement[a.key]?.sort || 0) - (placement[b.key]?.sort || 0)),
+  })).filter(g => g.items.length > 0);
+  const placed = new Set(navGroups.flatMap(g => g.items.map(i => i.key)));
+  const unplaced = visible.filter(t => !placed.has(t.key));
+  if (navGroups.length === 0) navGroups = [{ id: "_all", name: "메뉴", items: visible }];
+  else if (unplaced.length) navGroups = [...navGroups, { id: "_etc", name: "기타", items: unplaced }];
+
   const curLabel = (TAB_DEFS.find(t => t.key === tab)?.label) || "";
+  const NavList = ({ onPick }: { onPick: () => void }) => (
+    <>
+      {navGroups.map(g => (
+        <div key={g.id} className="nav-group-block">
+          <div className="nav-group">{g.name}</div>
+          {g.items.map(t => (
+            <button key={t.key} className={"nav-item" + (tab === t.key ? " active" : "")} onClick={() => { setTab(t.key); onPick(); }}>
+              <span className="ic">{t.icon}</span> {t.label}
+            </button>
+          ))}
+        </div>
+      ))}
+    </>
+  );
 
   const render = () => {
     switch (tab) {
@@ -87,9 +110,6 @@ export default function App() {
         {isMobile && <button className="hamb" onClick={() => setDrawer(true)} aria-label="메뉴">☰</button>}
         <h1>ORO MES</h1>
         {isMobile && <span className="curtab">{curLabel}</span>}
-        <nav className="tabs">
-          {tabs.map(t => <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>)}
-        </nav>
         <span className="badge">
           {!isMobile && <>{backendName} · 주문 {orders.length}건 </>}
           {session?.user?.email && <>{isMobile ? role : `· ${session.user.email} (${role})`}</>}
@@ -102,16 +122,14 @@ export default function App() {
         <div className="drawer-overlay" onClick={() => setDrawer(false)}>
           <div className="drawer" onClick={e => e.stopPropagation()}>
             <div className="drawer-head"><b>메뉴</b><button onClick={() => setDrawer(false)}>✕</button></div>
-            {tabs.map(t => (
-              <button key={t.key} className={"drawer-item" + (tab === t.key ? " active" : "")}
-                onClick={() => { setTab(t.key); setDrawer(false); }}>
-                <span className="ic">{t.icon}</span> {t.label}
-              </button>
-            ))}
+            <NavList onPick={() => setDrawer(false)} />
           </div>
         </div>}
 
-      <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
+      <div className="shell">
+        {!isMobile && <nav className="sidebar-nav"><NavList onPick={() => {}} /></nav>}
+        <div className="content"><div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div></div>
+      </div>
       <ToastHost />
     </>
   );

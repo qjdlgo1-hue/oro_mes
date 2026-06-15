@@ -258,3 +258,27 @@ export async function setMenuOrder(arr: string[]): Promise<void> {
   if (supabase) { const { error } = await supabase.from("app_settings").upsert({ id: 1, menu_order: arr }, { onConflict: "id" }); if (error) throw error; return; }
   localStorage.setItem("oro_menu_order", JSON.stringify(arr));
 }
+
+// ---- 메뉴 그룹/배치 ----
+export type MenuGroupRow = { id: string; name: string; sort: number };
+export type MenuPlacement = Record<string, { group_id: string | null; sort: number }>;
+export async function getMenuConfig(): Promise<{ groups: MenuGroupRow[]; placement: MenuPlacement }> {
+  if (!supabase) return { groups: [], placement: {} };
+  const [{ data: gs, error: ge }, { data: ps, error: pe }] = await Promise.all([
+    supabase.from("menu_groups").select("*").order("sort"),
+    supabase.from("menu_placement").select("*"),
+  ]);
+  if (ge) throw ge; if (pe) throw pe;
+  const placement: MenuPlacement = {};
+  (ps || []).forEach((p: any) => { placement[p.item_key] = { group_id: p.group_id, sort: p.sort }; });
+  return { groups: (gs || []) as MenuGroupRow[], placement };
+}
+export async function saveMenuConfig(groups: MenuGroupRow[], placements: { item_key: string; group_id: string | null; sort: number }[]): Promise<void> {
+  if (!supabase) return;
+  if (groups.length) { const { error } = await supabase.from("menu_groups").upsert(groups); if (error) throw error; }
+  if (placements.length) { const { error } = await supabase.from("menu_placement").upsert(placements, { onConflict: "item_key" }); if (error) throw error; }
+}
+export async function deleteMenuGroup(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("menu_groups").delete().eq("id", id); if (error) throw error;
+}
