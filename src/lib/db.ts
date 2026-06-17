@@ -105,11 +105,11 @@ export type InoutKind = "in" | "out";
 export type InoutRow = {
   id?: string; kind: InoutKind; ym: string; idate: string;
   item_code: string; name: string; spec?: string; qty: number;
-  amount?: number | null; customer?: string; note?: string; sig: string;
+  amount?: number | null; customer?: string; trade_type?: string; note?: string; sig: string;
 };
 // 중복 판별 키(같은 행 재붙여넣기 방지)
 export function inoutSig(r: Omit<InoutRow, "sig">): string {
-  return [r.kind, r.idate, r.item_code, r.name, r.spec || "", r.qty, r.amount ?? "", r.customer || ""].join("|");
+  return [r.kind, r.idate, r.item_code, r.name, r.spec || "", r.qty, r.amount ?? "", r.customer || "", r.trade_type || ""].join("|");
 }
 const lsKeyOf = (k: InoutKind) => (k === "in" ? LS.inout_in : LS.inout_out);
 

@@ -12,6 +12,7 @@ import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import DataImport from "./components/DataImport";
+import Insights from "./components/Insights";
 import Dashboard from "./components/Dashboard";
 import Audit from "./components/Audit";
 import Receipts from "./components/Receipts";
@@ -60,6 +61,7 @@ export default function App() {
       case "coc": return can("coc.issue") && can("menu.coc");
       case "prodin": return can("order.import");
       case "sales": return can("order.import");
+      case "dash": return can("report.view");
       case "report": return can("report.view") && can("menu.report");
       case "audit": return can("audit.view") && can("menu.audit");
       case "receipt": return can("menu.receipt");
@@ -101,6 +103,7 @@ export default function App() {
       case "coc": return <CocIssue orders={orders} />;
       case "prodin": return <DataImport kind="in" />;
       case "sales": return <DataImport kind="out" />;
+      case "dash": return <Insights />;
       case "report": return <Dashboard orders={orders} />;
       case "audit": return <Audit />;
       case "receipt": return <Receipts />;
