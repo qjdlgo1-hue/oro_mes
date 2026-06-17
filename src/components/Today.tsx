@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
@@ -11,7 +11,28 @@ export default function Today({ orders }: { orders: Order[] }) {
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
   const [tick, setTick] = useState(0);
-  useEffect(() => { listPlans().then(setPlans); listCocs().then(setCocs); }, []);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const load = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const [pl, co] = await Promise.all([listPlans(), listCocs()]);
+      setPlans(pl); setCocs(co); setLastSync(new Date());
+    } catch { /* 네트워크 일시 오류는 다음 주기에 재시도 */ }
+    setSyncing(false);
+  }, []);
+
+  // 마운트 시 + 30초마다 자동 + 화면을 다시 볼 때 자동 갱신 (현장 모니터에 띄워둬도 최신 유지)
+  useEffect(() => {
+    load();
+    const iv = setInterval(load, 30000);
+    const onFocus = () => load();
+    const onVis = () => { if (document.visibilityState === "visible") load(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(iv); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onVis); };
+  }, [load]);
 
   const canEdit = can("plan.edit");
   const T = todayIso();
@@ -62,8 +83,10 @@ export default function Today({ orders }: { orders: Order[] }) {
 
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 1040, gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
-      <div style={{ gridColumn: "1 / -1", fontSize: 13, color: "#6b7280" }}>
-        <b style={{ color: "#1f4e78", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획에서 일정을 잡은 주문 기준입니다.
+      <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
+        <span><b style={{ color: "#1f4e78", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
+        <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 12px", fontSize: 12 }} onClick={load} disabled={syncing}>{syncing ? "갱신 중…" : "🔄 새로고침"}</button>
+        {lastSync && <span style={{ fontSize: 11 }}>갱신 {lastSync.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30초마다 자동</span>}
       </div>
 
       <Section title="🔴 지연 (완료일 지났는데 미완료)" color="#c0392b" count={groups.late.length}>

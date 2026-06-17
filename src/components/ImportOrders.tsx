@@ -136,6 +136,11 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
         <div className="card">
           <h3 style={{ marginTop: 0 }}>주문 가져오기</h3>
+          <div style={{ background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>
+            <b style={{ color: "#2563eb" }}>이카운트에서 가져오는 방법</b><br />
+            <b>가장 빠름(추천):</b> 이카운트 <b>[판매 &gt; 주문서현황]</b> 조회 → 브라우저 즐겨찾기의 <b>「ORO 주문복사」</b> 클릭(표 자동 복사) → 아래 붙여넣기 칸에 <b>Ctrl+V</b> → <b>붙여넣기 인식</b> → <b>신규만 추가</b>.<br />
+            <span className="muted">「ORO 주문복사」 즐겨찾기가 없으면 설치용 파일(ORO_ecount_order_copy.html)로 한 번만 설치하세요. 없어도 아래 ①②로 가능합니다.</span>
+          </div>
           <p className="muted">① 이카운트 [주문서현황] → Excel(화면) 파일 업로드</p>
           <input type="file" accept=".xlsx,.xls,.csv" onChange={onFile} disabled={busy} />
           <p className="muted" style={{ marginTop: 14 }}>② 또는 주문서현황 표 복사 후 붙여넣기</p>

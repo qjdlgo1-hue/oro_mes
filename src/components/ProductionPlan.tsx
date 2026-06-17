@@ -4,6 +4,7 @@ import { listPlans, upsertPlan, logAudit } from "../lib/db";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
+import { toast } from "../lib/toast";
 
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const TODAY = new Date();
@@ -43,7 +44,12 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const buckets = useMemo(() => weekBuckets(cur.y, cur.m, anchor), [cur, anchor]);
 
   function planOf(o: Order): PlanEntry { return plans[o.id] || { order_id: o.id, start_date: o.order_date, span: 1, done: false }; }
-  async function commit(p: PlanEntry) { setPlans(prev => ({ ...prev, [p.order_id]: p })); setTick(t => t + 1); await upsertPlan(p); }
+  async function commit(p: PlanEntry) {
+    const prev = plans;
+    setPlans(cur => ({ ...cur, [p.order_id]: p })); setTick(t => t + 1);
+    try { await upsertPlan(p); }
+    catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일정 저장 실패(권한/네트워크 확인): " + (e?.message || e)); }
+  }
   function prevM() { setSelDay(null); setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
   function nextM() { setSelDay(null); setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
   function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? o.qty / p.span : 0; }
