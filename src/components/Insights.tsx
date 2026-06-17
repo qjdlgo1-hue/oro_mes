@@ -57,7 +57,11 @@ export default function Insights() {
     scoped.forEach(r => { const k = keyFn(r) || "(미상)"; const e = m.get(k) || { name: k, value: 0 }; e.value += valueOf(r); m.set(k, e); });
     return [...m.values()].sort((a, b) => b.value - a.value);
   };
-  const byItem = useMemo(() => aggBy(r => r.item_code || r.name), [scoped, isIn]);
+  const byItem = useMemo(() => {
+    const m = new Map<string, { code: string; name: string; value: number }>();
+    scoped.forEach(r => { const code = r.item_code || r.name || "(미상)"; const e = m.get(code) || { code, name: r.name || r.item_code || "(미상)", value: 0 }; if ((!e.name || e.name === e.code) && r.name) e.name = r.name; e.value += valueOf(r); m.set(code, e); });
+    return [...m.values()].sort((a, b) => b.value - a.value);
+  }, [scoped, isIn]);
   const byCust = useMemo(() => aggBy(r => r.customer || ""), [scoped, isIn]);
 
   const total = scoped.reduce((s, r) => s + valueOf(r), 0);
@@ -79,7 +83,7 @@ export default function Insights() {
     const p = [[unit === "year" ? "연도" : unit === "quarter" ? "분기" : "월", unitLabel, ...(isIn ? [] : ["내자", "외자"])]];
     periodData.forEach(r => p.push([r.name, String(Math.round(r.value)), ...(isIn ? [] : [String(Math.round(r.내자)), String(Math.round(r.외자))])]));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(p), "기간별");
-    const it = [["품목코드/품목", unitLabel]]; byItem.forEach(r => it.push([r.name, String(Math.round(r.value))]));
+    const it = [["품목코드", "품목명", unitLabel]]; byItem.forEach(r => it.push([r.code, r.name, String(Math.round(r.value))]));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(it), "품목별");
     if (!isIn) { const cu = [["거래처", "판매액"]]; byCust.forEach(r => cu.push([r.name, String(Math.round(r.value))])); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cu), "거래처별"); }
     XLSX.writeFile(wb, `${isIn ? "생산" : "판매"}_대시보드_${year || "전체"}.xlsx`);
@@ -222,8 +226,8 @@ export default function Insights() {
             <h4 style={{ marginTop: 0 }}>품목별 {unitLabel}</h4>
             <div style={{ overflow: "auto", maxHeight: "50vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                <thead><tr><th style={{ ...th, textAlign: "left" }}>품목</th><th style={th}>{unitLabel}</th></tr></thead>
-                <tbody>{byItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf(r.value)}</td></tr>)}</tbody>
+                <thead><tr><th style={{ ...th, textAlign: "left" }}>품목코드</th><th style={{ ...th, textAlign: "left" }}>품목명</th><th style={th}>{unitLabel}</th></tr></thead>
+                <tbody>{byItem.map(r => <tr key={r.code}><td style={tdL}>{r.code}</td><td style={tdL}>{r.name}</td><td style={td}>{nf(r.value)}</td></tr>)}</tbody>
               </table>
             </div>
           </div>
