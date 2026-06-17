@@ -6,6 +6,8 @@ const LS = {
   orders: "oro_orders",
   plans: "oro_plans",
   cocs: "oro_cocs",
+  inout_in: "oro_inout_in",
+  inout_out: "oro_inout_out",
 };
 function lsGet<T>(k: string, def: T): T {
   try { return JSON.parse(localStorage.getItem(k) || "") as T; } catch { return def; }
@@ -96,6 +98,52 @@ export async function appendOrders(orders: Order[]): Promise<void> {
   }
   const all = lsGet<Order[]>(LS.orders, []);
   lsSet(LS.orders, [...all, ...orders]);
+}
+
+// ===== 생산입고('in') / 판매현황('out') 누적 데이터 =====
+export type InoutKind = "in" | "out";
+export type InoutRow = {
+  id?: string; kind: InoutKind; ym: string; idate: string;
+  item_code: string; name: string; spec?: string; qty: number;
+  amount?: number | null; customer?: string; note?: string; sig: string;
+};
+// 중복 판별 키(같은 행 재붙여넣기 방지)
+export function inoutSig(r: Omit<InoutRow, "sig">): string {
+  return [r.kind, r.idate, r.item_code, r.name, r.spec || "", r.qty, r.amount ?? "", r.customer || ""].join("|");
+}
+const lsKeyOf = (k: InoutKind) => (k === "in" ? LS.inout_in : LS.inout_out);
+
+export async function listInout(kind: InoutKind): Promise<InoutRow[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("inout_rows").select("*").eq("kind", kind).order("idate");
+    if (error) throw error;
+    return (data || []) as InoutRow[];
+  }
+  return lsGet<InoutRow[]>(lsKeyOf(kind), []);
+}
+
+// 신규(중복 아님)만 누적 추가
+export async function appendInout(rows: InoutRow[]): Promise<void> {
+  if (!rows.length) return;
+  if (supabase) {
+    const { error } = await supabase.from("inout_rows").upsert(rows, { onConflict: "kind,sig", ignoreDuplicates: true });
+    if (error) throw error;
+    return;
+  }
+  const k = rows[0].kind;
+  const all = lsGet<InoutRow[]>(lsKeyOf(k), []);
+  const seen = new Set(all.map(r => r.sig));
+  lsSet(lsKeyOf(k), [...all, ...rows.filter(r => !seen.has(r.sig))]);
+}
+
+export async function deleteInoutMonth(kind: InoutKind, ym: string): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("inout_rows").delete().eq("kind", kind).eq("ym", ym);
+    if (error) throw error;
+    return;
+  }
+  const all = lsGet<InoutRow[]>(lsKeyOf(kind), []).filter(r => r.ym !== ym);
+  lsSet(lsKeyOf(kind), all);
 }
 
 const LS_SETTINGS = "oro_settings";
