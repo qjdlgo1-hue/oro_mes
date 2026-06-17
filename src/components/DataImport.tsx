@@ -6,8 +6,8 @@ import { can } from "../lib/perm";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
 const CFG: Record<InoutKind, Cfg> = {
-  in: { kind: "in", title: "생산입고 가져오기", source: "이카운트 [생산입고 조회]", accent: "#2563eb" },
-  out: { kind: "out", title: "판매현황 가져오기", source: "이카운트 [판매현황]", accent: "#1aa260" },
+  in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "#2563eb" },
+  out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "#1aa260" },
 };
 const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
