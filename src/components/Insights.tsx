@@ -16,6 +16,7 @@ export default function Insights() {
   const [unit, setUnit] = useState<Unit>("month");
   const [year, setYear] = useState<string>("");      // "" = 전체
   const [trade, setTrade] = useState<Trade>("all");
+  const [gubuns, setGubuns] = useState<Set<string>>(new Set());
   const [inRows, setInRows] = useState<InoutRow[]>([]);
   const [outRows, setOutRows] = useState<InoutRow[]>([]);
 
@@ -29,7 +30,12 @@ export default function Insights() {
   const valueOf = (r: InoutRow) => isIn ? (Number(r.qty) || 0) : (Number(r.amount) || 0);
   const unitLabel = isIn ? "생산량(g)" : "판매액(원)";
 
-  const tradeFiltered = useMemo(() => (isIn || trade === "all") ? rows : rows.filter(r => (r.trade_type || "") === trade), [rows, isIn, trade]);
+  const gubunOpts = useMemo(() => [...new Set(inRows.map(r => r.gubun || "").filter(Boolean))].sort(), [inRows]);
+  useEffect(() => { if (gubunOpts.length) setGubuns(new Set(gubunOpts)); }, [gubunOpts.join(",")]);
+  const tradeFiltered = useMemo(() => {
+    if (isIn) return gubunOpts.length ? rows.filter(r => gubuns.has(r.gubun || "")) : rows;
+    return trade === "all" ? rows : rows.filter(r => (r.trade_type || "") === trade);
+  }, [rows, isIn, trade, gubuns, gubunOpts]);
   const years = useMemo(() => [...new Set(rows.map(r => r.ym.slice(0, 4)))].sort(), [rows]);
   const scoped = useMemo(() => unit === "year" ? tradeFiltered : (year ? tradeFiltered.filter(r => r.ym.slice(0, 4) === year) : tradeFiltered), [tradeFiltered, unit, year]);
 
@@ -119,6 +125,15 @@ export default function Insights() {
             <option value="">전체 연도</option>
             {years.map(y => <option key={y} value={y}>{y}년</option>)}
           </select>
+          {isIn && gubunOpts.length > 0 &&
+            <div style={{ display: "inline-flex", gap: 10, alignItems: "center", flexWrap: "wrap", border: "1px solid var(--line)", borderRadius: 8, padding: "4px 10px" }}>
+              <span className="muted" style={{ fontSize: 12 }}>품목구분</span>
+              {gubunOpts.map(g => (
+                <label key={g} style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                  <input type="checkbox" checked={gubuns.has(g)} onChange={() => setGubuns(s => { const n = new Set(s); n.has(g) ? n.delete(g) : n.add(g); return n; })} /> {g}
+                </label>
+              ))}
+            </div>}
           {!isIn &&
             <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
               {(["all", "내자", "외자"] as Trade[]).map(t => (

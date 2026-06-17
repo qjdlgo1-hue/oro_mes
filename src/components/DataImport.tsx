@@ -146,6 +146,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 <th style={{ ...th, textAlign: "left" }}>품목명</th>
                 <th style={{ ...th, textAlign: "left" }}>규격</th>
                 <th style={th}>수량</th>
+                {!isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
                 {isOut && <th style={th}>공급가액</th>}
                 {isOut && <th style={{ ...th, textAlign: "left" }}>거래처</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
@@ -158,6 +159,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                     <td style={tdL}>{r.name || "-"}</td>
                     <td style={tdL}>{r.spec || ""}</td>
                     <td style={td}>{fmt(Number(r.qty) || 0)}</td>
+                    {!isOut && <td style={{ ...td, textAlign: "center" }}>{r.gubun || ""}</td>}
                     {isOut && <td style={td}>{r.amount != null ? Number(r.amount).toLocaleString() : ""}</td>}
                     {isOut && <td style={tdL}>{r.customer || ""}</td>}
                     {isOut && <td style={{ ...td, textAlign: "center" }}>{r.trade_type || ""}</td>}
