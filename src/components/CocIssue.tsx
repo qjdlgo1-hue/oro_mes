@@ -108,7 +108,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     const version = String((Number(data.version) || 0) + 1);
     setMany({ issueNo, issuedAt: todayIso(), issuedBy: email, version });
     logAudit("COC 발행", "coc", order.id, { issueNo, version });
-    toast.success(`발행 확정: ${issueNo} (v${version})`);
+    toast.success(`발행 완료: ${issueNo} (v${version})`);
   }
 
   async function savePdf() {
@@ -131,7 +131,10 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
         pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", m, m, iw, h * iw / canvas.width);
         sY += h; first = false;
       }
-      pdf.save(`COC_${data.issueNo || data.model || "성적서"}.pdf`.replace(/\s/g, ""));
+      const clean = (x: string) => (x || "").replace(/[\\/:*?"<>|\s]+/g, "");
+      const fdate = data.issuedAt || todayIso();
+      const fname = [fdate, clean(data.customer), clean(data.model), clean(data.netwt)].filter(Boolean).join("_") || "성적서";
+      pdf.save(`${fname}.pdf`);
       logAudit("COC PDF 저장", "coc", order.id, { issueNo: data.issueNo });
     } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
   }
@@ -199,7 +202,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <h3 style={{ margin: 0 }}>성적서 입력 {data.issueNo ? <span style={{ color: "#1aa260", fontSize: 13 }}>· {data.issueNo} (v{data.version})</span> : <span className="muted" style={{ fontSize: 12 }}>· 미발행</span>}</h3>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn ghost" onClick={() => setLang(l => l === "ko" ? "en" : "ko")}>{lang === "ko" ? "EN" : "국문"}</button>
-                <button className="btn" onClick={issue}>📋 발행 확정</button>
+                <button className="btn" onClick={issue}>{data.issueNo ? "✅ 발행 완료" : "📋 발행 확정"}</button>
                 <button className="btn green" onClick={savePdf}>📄 PDF 저장</button>
                 <button className="btn ghost" onClick={() => { logAudit("COC 인쇄", "coc", order.id, {}); window.print(); }}>🖨 인쇄</button>
                 {isMobile && <button className="btn ghost" onClick={() => setFit(f => !f)}>{fit ? "실제크기" : "화면맞춤"}</button>}
