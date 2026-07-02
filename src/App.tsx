@@ -59,9 +59,9 @@ export default function App() {
       case "import": return can("menu.import");
       case "plan": return can("menu.plan");
       case "coc": return can("coc.issue") && can("menu.coc");
-      case "prodin": return can("order.import");
-      case "sales": return can("order.import");
-      case "dash": return can("report.view");
+      case "prodin": return can("menu.prodin");
+      case "sales": return can("menu.sales");
+      case "dash": return can("menu.dash");
       case "report": return can("report.view") && can("menu.report");
       case "audit": return can("audit.view") && can("menu.audit");
       case "receipt": return can("menu.receipt");
