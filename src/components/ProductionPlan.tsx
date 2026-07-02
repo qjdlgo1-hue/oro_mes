@@ -28,6 +28,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [selDay, setSelDay] = useState<number | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [qtyDraft, setQtyDraft] = useState("");
+  const [sortBy, setSortBy] = useState<{ key: "seq" | "name"; dir: 1 | -1 }>({ key: "seq", dir: 1 });
   const canEdit = can("plan.edit");
   const isMobile = useIsMobile();
 
@@ -38,8 +39,12 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
     let r = orders.filter(o => o.ym === ym);
     if (filter === "제품") r = r.filter(o => o.gubun === "제품");
     else if (filter === "제품+무형상품") r = r.filter(o => o.gubun === "제품" || o.gubun === "무형상품");
-    return r.sort((a, b) => a.order_date < b.order_date ? -1 : 1);
-  }, [orders, ym, filter, tick]);
+    const dir = sortBy.dir;
+    return r.sort((a, b) => {
+      if (sortBy.key === "name") { const c = a.name < b.name ? -1 : a.name > b.name ? 1 : (a.order_date < b.order_date ? -1 : 1); return c * dir; }
+      const c = a.order_date < b.order_date ? -1 : a.order_date > b.order_date ? 1 : 0; return c * dir;
+    });
+  }, [orders, ym, filter, tick, sortBy]);
 
   const nDays = daysInMonth(cur.y, cur.m);
   const DAYW = dayw;
@@ -104,6 +109,15 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
 
   const MonthNav = () => <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>;
   const FilterSel = () => <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 8, borderRadius: 6 }}><option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option></select>;
+  function toggleSort(key: "seq" | "name") { setSortBy(sb => sb.key === key ? { key, dir: (sb.dir === 1 ? -1 : 1) } : { key, dir: 1 }); }
+  const arrow = (key: "seq" | "name") => sortBy.key === key ? (sortBy.dir === 1 ? " ▲" : " ▼") : "";
+  const SortSel = () => (
+    <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden", alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: "#6b7280", padding: "6px 8px", background: "#f5f7fa" }}>정렬</span>
+      <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: sortBy.key === "seq" ? "#6b7f96" : "#e3e8f0", color: sortBy.key === "seq" ? "#fff" : "#333" }} onClick={() => toggleSort("seq")}>번호순{arrow("seq")}</button>
+      <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: sortBy.key === "name" ? "#6b7f96" : "#e3e8f0", color: sortBy.key === "name" ? "#fff" : "#333" }} onClick={() => toggleSort("name")}>품목순{arrow("name")}</button>
+    </div>
+  );
 
   // ================= 모바일 =================
   if (isMobile) {
@@ -125,6 +139,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
             <button className="btn" style={{ borderRadius: 0, background: mview === "list" ? "#2f6cb0" : "#cdd8e6", color: mview === "list" ? "#fff" : "#333" }} onClick={() => setMview("list")}>목록</button>
           </div>
           <FilterSel />
+          <SortSel />
         </div>
 
         {rows.length === 0 ? <div className="card nodata">이 달 주문이 없습니다.</div> :
@@ -198,6 +213,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
         <MonthNav />
         <FilterSel />
+        <SortSel />
         <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
           <button className="btn" style={{ borderRadius: 0, background: view === "day" ? "#2f6cb0" : "#cdd8e6", color: view === "day" ? "#fff" : "#333" }} onClick={() => setView("day")}>일별</button>
           <button className="btn" style={{ borderRadius: 0, background: view === "week" ? "#2f6cb0" : "#cdd8e6", color: view === "week" ? "#fff" : "#333" }} onClick={() => setView("week")}>주별</button>
@@ -221,8 +237,8 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
           <table className="grid">
             <thead>
               <tr>
-                <th className="fixcol c-no">NO</th>
-                <th className="fixcol c-name" style={{ left: 34 }}>품목</th>
+                <th className="fixcol c-no" style={{ cursor: "pointer" }} title="번호순 정렬" onClick={() => toggleSort("seq")}>NO{arrow("seq")}</th>
+                <th className="fixcol c-name" style={{ left: 34, cursor: "pointer" }} title="품목순 정렬" onClick={() => toggleSort("name")}>품목{arrow("name")}</th>
                 <th className="fixcol c-spec" style={{ left: 184 }}>규격</th>
                 <th className="fixcol c-cust" style={{ left: 344 }}>거래처</th>
                 <th className="fixcol c-qty" style={{ left: 464 }}>수량</th>
