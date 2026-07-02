@@ -68,7 +68,7 @@ export default function Today({ orders }: { orders: Order[] }) {
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid #f0f3f7" }}>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {o.qty.toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
+        <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {(pl.qty != null ? Number(pl.qty) : o.qty).toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
       </div>
       {canEdit && <button className="btn green" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => markDone(pl)}>완료</button>}
     </div>

@@ -26,6 +26,8 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   const [dayw, setDayw] = useState(30);
   const [mview, setMview] = useState<"cal" | "list">("cal");
   const [selDay, setSelDay] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [qtyDraft, setQtyDraft] = useState("");
   const canEdit = can("plan.edit");
   const isMobile = useIsMobile();
 
@@ -52,8 +54,33 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   }
   function prevM() { setSelDay(null); setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
   function nextM() { setSelDay(null); setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
-  function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? o.qty / p.span : 0; }
+  const pqty = (o: Order, p: PlanEntry) => (p.qty != null ? Number(p.qty) : o.qty);
+  function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? pqty(o, p) / p.span : 0; }
   function toggleDone(o: Order, p: PlanEntry) { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }
+  function openQty(o: Order) { if (!canEdit) return; setQtyDraft(String(pqty(o, planOf(o)))); setEditId(o.id); }
+  async function saveQty() { const o = orders.find(x => x.id === editId); if (!o) return; const v = Number(qtyDraft); if (!(v > 0)) { toast.error("생산수량을 입력하세요."); return; } await commit({ ...planOf(o), qty: v }); logAudit("생산수량 변경", "plan", o.id, { qty: v }); toast.success(`생산수량 ${v.toLocaleString()}g 저장`); setEditId(null); }
+  async function resetQty() { const o = orders.find(x => x.id === editId); if (!o) return; await commit({ ...planOf(o), qty: null }); logAudit("생산수량 초기화", "plan", o.id, {}); setEditId(null); }
+  const qModal = editId ? (() => {
+    const o = orders.find(x => x.id === editId); if (!o) return null; const p = planOf(o);
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setEditId(null)}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: 20, width: 340, maxWidth: "92vw" }} onClick={e => e.stopPropagation()}>
+          <h3 style={{ marginTop: 0 }}>생산수량 변경</h3>
+          <div style={{ fontWeight: 700 }}>{o.name}</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{o.spec}</div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>수주량: <b>{o.qty.toLocaleString()}</b> g{p.qty != null && Number(p.qty) !== o.qty ? " (생산수량 별도 지정됨)" : ""}</div>
+          <label style={{ fontSize: 13, fontWeight: 700 }}>생산수량(g)
+            <input type="number" inputMode="numeric" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} autoFocus style={{ display: "block", width: "100%", padding: 9, border: "1px solid var(--line)", borderRadius: 6, marginTop: 4, fontSize: 16 }} />
+          </label>
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            <button className="btn green" onClick={saveQty}>저장</button>
+            <button className="btn ghost" onClick={resetQty}>수주량으로</button>
+            <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setEditId(null)}>취소</button>
+          </div>
+        </div>
+      </div>
+    );
+  })() : null;
 
   // ---- drag (day view) ----
   function startMove(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
@@ -90,6 +117,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
 
     return (
       <div>
+        {qModal}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           <MonthNav />
           <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
@@ -135,8 +163,8 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                     dayItems.map(o => { const p = planOf(o); return (
                       <div key={o.id} className="mcard" style={{ opacity: p.done ? 0.6 : 1, marginBottom: 8 }}>
                         <div className="mrow"><span className="k">{o.name}{p.done ? " ✅" : ""}</span><span className="v">{Math.round(dayQty(o, p, selDay!)).toLocaleString()}g/일</span></div>
-                        <div className="mrow"><span className="k" style={{ fontSize: 12 }}>{o.customer}</span><span className="v" style={{ fontWeight: 400, fontSize: 12 }}>총 {o.qty.toLocaleString()}g · 완료일 {completionDate(p)}</span></div>
-                        {canEdit && <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 6, width: "100%" }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료"}</button>}
+                        <div className="mrow"><span className="k" style={{ fontSize: 12 }}>{o.customer}</span><span className="v" style={{ fontWeight: 400, fontSize: 12 }}>생산 {pqty(o, p).toLocaleString()}g · 완료일 {completionDate(p)}</span></div>
+                        {canEdit && <div style={{ display: "flex", gap: 6, marginTop: 6 }}><button className="btn ghost" style={{ flex: 1 }} onClick={() => openQty(o)}>수량</button><button className={"btn " + (p.done ? "ghost" : "green")} style={{ flex: 2 }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료"}</button></div>}
                       </div>
                     ); })}
                 </div>}
@@ -148,7 +176,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                 <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
                   <div className="mrow"><span className="k">{idx + 1}. 품목</span><span className="v">{o.name}{p.done ? " ✅" : ""}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
-                  <div className="mrow"><span className="k">거래처 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {o.qty.toLocaleString()}g</span></div>
+                  <div className="mrow"><span className="k">거래처 / 생산수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {pqty(o, p).toLocaleString()}g {canEdit && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 4 }} onClick={() => openQty(o)}>변경</button>}</span></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <label style={{ fontSize: 12, color: "#6b7280" }}>시작일<input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
                     <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)<input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span} onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })} style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
@@ -166,6 +194,7 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   // ================= 데스크탑 =================
   return (
     <div>
+      {qModal}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
         <MonthNav />
         <FilterSel />
@@ -211,13 +240,13 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
                     <td className="fixcol c-name" title={o.name}>{o.name}</td>
                     <td className="fixcol c-spec" title={o.spec}>{o.spec}</td>
                     <td className="fixcol c-cust" title={o.customer}>{o.customer}</td>
-                    <td className="fixcol c-qty">{o.qty.toLocaleString()}</td>
+                    <td className="fixcol c-qty" style={{ cursor: canEdit ? "pointer" : "default" }} title={canEdit ? `클릭: 생산수량 변경 (수주량 ${o.qty.toLocaleString()}g)` : ""} onClick={() => openQty(o)}>{pqty(o, p).toLocaleString()}{p.qty != null && Number(p.qty) !== o.qty ? <span style={{ color: "#f59e0b", fontSize: 11 }}> ✎</span> : null}</td>
                     {view === "day" ? (
                       <td className="barcell" colSpan={nDays}>
                         <div className="track" style={{ width: nDays * DAYW }}>
                           {Array.from({ length: nDays }, (_, i) => { const d = i + 1; const wd = new Date(cur.y, cur.m - 1, d).getDay(); const today = cur.y === TODAY.getFullYear() && cur.m === TODAY.getMonth() + 1 && d === TODAY.getDate(); const bg = today ? "var(--today)" : (wd === 0 || wd === 6 ? "var(--wknd)" : "#fff"); return <div key={d} style={{ position: "absolute", left: i * DAYW, top: 0, width: DAYW, height: 30, background: bg, borderRight: "1px solid var(--line2)" }} />; })}
                           <div className="ordermark" style={{ left: (dayOf(o.order_date) - 1) * DAYW }} title="주문일" />
-                          <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} per={Math.round(o.qty / p.span)} onMove={startMove} onResize={startResize} onToggle={() => toggleDone(o, p)} />
+                          <PlanBar o={o} p={p} left={(dayOf(p.start_date) - 1) * DAYW} w={p.span * DAYW - 3} qty={pqty(o, p)} per={Math.round(pqty(o, p) / p.span)} onMove={startMove} onResize={startResize} onToggle={() => toggleDone(o, p)} />
                         </div>
                       </td>
                     ) : (
@@ -242,17 +271,17 @@ export default function ProductionPlan({ orders }: { orders: Order[] }) {
   );
 }
 
-function PlanBar({ o, p, left, w, per, onMove, onResize, onToggle }: {
-  o: Order; p: PlanEntry; left: number; w: number; per: number;
+function PlanBar({ o, p, left, w, per, qty, onMove, onResize, onToggle }: {
+  o: Order; p: PlanEntry; left: number; w: number; per: number; qty: number;
   onMove: (e: React.PointerEvent, o: Order, el: HTMLDivElement) => void;
   onResize: (e: React.PointerEvent, o: Order, el: HTMLDivElement) => void;
   onToggle: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
-    <div ref={ref} className={"bar" + (p.done ? " done" : "")} style={{ left, width: w }} title={`${o.name} · ${o.qty}g`}
+    <div ref={ref} className={"bar" + (p.done ? " done" : "")} style={{ left, width: w }} title={`${o.name} · ${qty}g`}
       onPointerDown={e => { if ((e.target as HTMLElement).classList.contains("handle")) return; onMove(e, o, ref.current!); }} onDoubleClick={onToggle}>
-      <span className="qh">{o.qty.toLocaleString()}g</span>
+      <span className="qh">{qty.toLocaleString()}g</span>
       {p.span > 1 && <span style={{ opacity: .85 }}>({per}/일)</span>}
       <span className="handle" onPointerDown={e => onResize(e, o, ref.current!)} />
     </div>

@@ -16,6 +16,7 @@ export type PlanEntry = {
   start_date: string; // YYYY-MM-DD (생산 시작일)
   span: number;       // 생산 일수
   done: boolean;
+  qty?: number | null;   // 생산수량(미지정 시 수주량 사용)
 };
 export type CocData = {
   order_id: string;
