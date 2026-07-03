@@ -6,6 +6,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.import", label: "주문 가져오기" },
   { key: "menu.plan", label: "생산계획" },
   { key: "menu.coc", label: "COC 발행" },
+  { key: "menu.delivery", label: "배송 스케줄" },
   { key: "menu.prodin", label: "생산 가져오기" },
   { key: "menu.sales", label: "판매 가져오기" },
   { key: "menu.dash", label: "대시보드" },

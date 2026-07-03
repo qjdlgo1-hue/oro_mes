@@ -13,6 +13,7 @@ import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import DataImport from "./components/DataImport";
 import Insights from "./components/Insights";
+import DeliverySchedule from "./components/DeliverySchedule";
 import Dashboard from "./components/Dashboard";
 import Audit from "./components/Audit";
 import Receipts from "./components/Receipts";
@@ -59,6 +60,7 @@ export default function App() {
       case "import": return can("menu.import");
       case "plan": return can("menu.plan");
       case "coc": return can("coc.issue") && can("menu.coc");
+      case "delivery": return can("menu.delivery");
       case "prodin": return can("menu.prodin");
       case "sales": return can("menu.sales");
       case "dash": return can("menu.dash");
@@ -101,6 +103,7 @@ export default function App() {
       case "import": return <ImportOrders orders={orders} onChange={refresh} />;
       case "plan": return <ProductionPlan orders={orders} onChange={refresh} />;
       case "coc": return <CocIssue orders={orders} />;
+      case "delivery": return <DeliverySchedule orders={orders} />;
       case "prodin": return <DataImport kind="in" />;
       case "sales": return <DataImport kind="out" />;
       case "dash": return <Insights />;

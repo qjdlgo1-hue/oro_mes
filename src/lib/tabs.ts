@@ -1,9 +1,10 @@
-export type TabKey = "today" | "import" | "plan" | "coc" | "prodin" | "sales" | "dash" | "report" | "audit" | "receipt" | "bom" | "admin";
+export type TabKey = "today" | "import" | "plan" | "coc" | "delivery" | "prodin" | "sales" | "dash" | "report" | "audit" | "receipt" | "bom" | "admin";
 export const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
   { key: "today", label: "POP", icon: "📋" },
   { key: "import", label: "주문 가져오기", icon: "📥" },
   { key: "plan", label: "생산계획", icon: "📅" },
   { key: "coc", label: "COC 발행", icon: "📄" },
+  { key: "delivery", label: "배송 스케줄", icon: "🚚" },
   { key: "prodin", label: "생산 가져오기", icon: "🏭" },
   { key: "sales", label: "판매 가져오기", icon: "💰" },
   { key: "dash", label: "대시보드", icon: "📈" },
