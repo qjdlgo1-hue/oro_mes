@@ -31,6 +31,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
   const [viewYm, setViewYm] = useState<string>("");
+  const [showChanged, setShowChanged] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Order>>({});
 
@@ -51,6 +52,12 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   }, [byMonth]);
   const curView = viewYm || months[months.length - 1] || "";
   const viewRows = useMemo(() => orders.filter(o => o.ym === curView).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, curView]);
+  const pqOf = (o: Order) => (plans[o.id]?.qty != null ? Number(plans[o.id]!.qty) : (Number(o.qty) || 0));
+  const isChanged = (o: Order) => plans[o.id]?.qty != null && Number(plans[o.id]!.qty) !== (Number(o.qty) || 0);
+  const displayRows = useMemo(() => showChanged ? viewRows.filter(isChanged) : viewRows, [viewRows, showChanged, plans]);
+  const sumSu = viewRows.reduce((s2, o) => s2 + (Number(o.qty) || 0), 0);
+  const sumSa = viewRows.reduce((s2, o) => s2 + pqOf(o), 0);
+  const changedCnt = viewRows.filter(isChanged).length;
 
   const marked = useMemo(() => {
     const seen = new Set(existingKeys);
@@ -227,12 +234,19 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
             <select value={curView} onChange={e => setViewYm(e.target.value)} style={{ padding: 5 }}>
               {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
             </select>}
-          <span className="muted">{viewRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부 · 행 수정/삭제 가능</span>
+          <span className="muted">{viewRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부</span>
+          <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}><input type="checkbox" checked={showChanged} onChange={e => setShowChanged(e.target.checked)} /> 변동만 보기</label>
         </div>
-        {viewRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <span style={{ background: "#eef3f9", color: "#374151", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>수주 합계 <b>{sumSu.toLocaleString()}</b>g</span>
+          <span style={{ background: "#eff6ff", color: "#2563eb", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>생산 합계 <b>{sumSa.toLocaleString()}</b>g</span>
+          <span style={{ background: sumSa - sumSu === 0 ? "#f1f3f7" : sumSa - sumSu > 0 ? "#e8f6ee" : "#fdeaea", color: sumSa - sumSu > 0 ? "#1aa260" : sumSa - sumSu < 0 ? "#c0392b" : "#6b7280", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>차이 {sumSa - sumSu > 0 ? "+" : ""}{(sumSa - sumSu).toLocaleString()}g</span>
+          <span style={{ background: "#fff7e6", color: "#9a6700", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>변동 {changedCnt}건</span>
+        </div>
+        {displayRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
           isMobile ? (
           <div>
-            {viewRows.map(o => {
+            {displayRows.map(o => {
               const cp = completionDate(plans[o.id]); const done = !!plans[o.id]?.done; const hasCoc = !!cocs[o.id];
               return (
                 <div className="mcard" key={o.id}>
@@ -240,6 +254,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   <div className="mrow"><span className="k">품목</span><span className="v">{o.order_no && o.order_no.includes("수동") ? "✋ " : ""}{o.name}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처</span><span className="v" style={{ fontWeight: 400 }}>{o.customer}</span></div>
+                  <div className="mrow"><span className="k">수주 / 생산 / 차이</span><span className="v" style={{ fontWeight: 400 }}>{o.qty.toLocaleString()} / <b style={{ color: "#2563eb" }}>{pqOf(o).toLocaleString()}</b> / {(() => { const d = pqOf(o) - (Number(o.qty) || 0); return <span style={{ color: d > 0 ? "#1aa260" : d < 0 ? "#c0392b" : "#888", fontWeight: 700 }}>{d !== 0 ? (d > 0 ? "+" : "") + d.toLocaleString() : "-"}</span>; })()}g</span></div>
                   <div className="mrow"><span className="k">완료일 / 상태 / COC</span><span className="v" style={{ fontWeight: 400 }}>{cp || "-"} · {done ? "완료" : (cp ? "진행중" : "미계획")} · {hasCoc ? "발행" : "-"}</span></div>
                   {canDelete && <button className="btn" style={{ background: "#c0392b", marginTop: 8, width: "100%" }} onClick={() => removeOrder(o)}>삭제</button>}
                 </div>
@@ -250,12 +265,13 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           ) : (
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
-              <thead><tr>{["주문일", "구분", "품목명", "규격", "수량(g)", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
+              <thead><tr>{["주문일", "구분", "품목명", "규격", "수주(g)", "생산(g)", "차이", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
                 <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
               <tbody>
-                {viewRows.map(o => {
+                {displayRows.map(o => {
                   const cp = completionDate(plans[o.id]); const done = !!plans[o.id]?.done; const hasCoc = !!cocs[o.id];
                   const editing = editId === o.id;
+                  const pv = pqOf(o), diff = pv - (Number(o.qty) || 0);
                   return (
                     <tr key={o.id}>
                       <td style={cell}>{o.order_date}</td>
@@ -263,6 +279,8 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                       <td style={{ ...cell, fontWeight: 700 }}>{editing ? <input style={inp} value={draft.name ?? ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} /> : o.name}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.spec ?? ""} onChange={e => setDraft(d => ({ ...d, spec: e.target.value }))} /> : o.spec}</td>
                       <td style={{ ...cell, textAlign: "right" }}>{editing ? <input style={{ ...inp, textAlign: "right" }} type="number" value={draft.qty ?? 0} onChange={e => setDraft(d => ({ ...d, qty: Number(e.target.value) }))} /> : o.qty.toLocaleString()}</td>
+                      <td style={{ ...cell, textAlign: "right", color: "#2563eb", fontWeight: 700 }}>{pv.toLocaleString()}</td>
+                      <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: diff > 0 ? "#1aa260" : diff < 0 ? "#c0392b" : "#bbb" }}>{diff !== 0 ? (diff > 0 ? "+" : "") + diff.toLocaleString() : "-"}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.customer ?? ""} onChange={e => setDraft(d => ({ ...d, customer: e.target.value }))} /> : o.customer}</td>
                       <td style={{ ...cell, textAlign: "center", color: cp ? "#1f4e78" : "#bbb", fontWeight: cp ? 700 : 400 }}>{cp || "-"}</td>
                       <td style={{ ...cell, textAlign: "center", color: done ? "#1aa260" : (cp ? "#2f6cb0" : "#bbb"), fontWeight: done ? 700 : 400 }}>{done ? "완료" : (cp ? "진행중" : "미계획")}</td>

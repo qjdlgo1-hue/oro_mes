@@ -106,7 +106,7 @@ export default function App() {
       case "delivery": return <DeliverySchedule orders={orders} />;
       case "prodin": return <DataImport kind="in" />;
       case "sales": return <DataImport kind="out" />;
-      case "dash": return <Insights />;
+      case "dash": return <Insights orders={orders} />;
       case "report": return <Dashboard orders={orders} />;
       case "audit": return <Audit />;
       case "receipt": return <Receipts />;
