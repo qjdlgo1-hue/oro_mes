@@ -11,6 +11,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.prodin", label: "생산 가져오기" },
   { key: "menu.sales", label: "판매 가져오기" },
   { key: "menu.dash", label: "대시보드" },
+  { key: "menu.prodcon", label: "생산·소모 분석" },
   { key: "menu.report", label: "리포트" },
   { key: "menu.audit", label: "기록" },
   { key: "menu.receipt", label: "증빙(영수증)" },

@@ -365,3 +365,23 @@ export async function deleteInspection(id: string): Promise<void> {
   if (supabase) { const { error } = await supabase.from("inspections").delete().eq("id", id); if (error) throw error; return; }
   lsSet("oro_inspections", lsGet<Inspection[]>("oro_inspections", []).filter(x => x.id !== id));
 }
+
+
+// ===== 생산·소모 (생산입고/소모현황) =====
+export type ProdConsume = { id?: string; ym: string; idate: string; prod_code: string; prod_name: string; mat_code?: string; mat_name?: string; prod_qty?: number; std_qty?: number; act_qty?: number; mat_price?: number; diff?: number; amount?: number; sig: string; created_at?: string };
+export function pcSig(r: Omit<ProdConsume, "sig" | "id">): string {
+  return [r.idate, r.prod_code, r.mat_code || "", r.prod_qty ?? "", r.std_qty ?? "", r.act_qty ?? "", r.amount ?? ""].join("|");
+}
+export async function listProdConsume(): Promise<ProdConsume[]> {
+  if (supabase) { const { data, error } = await supabase.from("prod_consume").select("*").order("idate"); if (error) throw error; return (data || []) as ProdConsume[]; }
+  return lsGet<ProdConsume[]>("oro_prodconsume", []);
+}
+export async function appendProdConsume(rows: ProdConsume[]): Promise<void> {
+  if (!rows.length) return;
+  if (supabase) { const { error } = await supabase.from("prod_consume").upsert(rows, { onConflict: "sig", ignoreDuplicates: true }); if (error) throw error; return; }
+  const all = lsGet<ProdConsume[]>("oro_prodconsume", []); const seen = new Set(all.map(r => r.sig)); lsSet("oro_prodconsume", [...all, ...rows.filter(r => !seen.has(r.sig))]);
+}
+export async function clearProdConsume(): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("prod_consume").delete().neq("id", "00000000-0000-0000-0000-000000000000"); if (error) throw error; return; }
+  lsSet("oro_prodconsume", []);
+}

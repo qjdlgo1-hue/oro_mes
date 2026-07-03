@@ -13,6 +13,7 @@ import ProductionPlan from "./components/ProductionPlan";
 import CocIssue from "./components/CocIssue";
 import DataImport from "./components/DataImport";
 import Insights from "./components/Insights";
+import ProdConsumeView from "./components/ProdConsume";
 import DeliverySchedule from "./components/DeliverySchedule";
 import Support from "./components/Support";
 import Dashboard from "./components/Dashboard";
@@ -66,6 +67,7 @@ export default function App() {
       case "prodin": return can("menu.prodin");
       case "sales": return can("menu.sales");
       case "dash": return can("menu.dash");
+      case "prodcon": return can("menu.prodcon");
       case "report": return can("report.view") && can("menu.report");
       case "audit": return can("audit.view") && can("menu.audit");
       case "receipt": return can("menu.receipt");
@@ -110,6 +112,7 @@ export default function App() {
       case "prodin": return <DataImport kind="in" />;
       case "sales": return <DataImport kind="out" />;
       case "dash": return <Insights orders={orders} />;
+      case "prodcon": return <ProdConsumeView />;
       case "report": return <Dashboard orders={orders} />;
       case "audit": return <Audit />;
       case "receipt": return <Receipts />;
