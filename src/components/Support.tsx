@@ -119,7 +119,7 @@ export default function Support() {
   }
 
   const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 };
-  const bd: React.CSSProperties = { border: "1px solid #333", padding: "4px 6px", fontSize: 12 };
+  const bd: React.CSSProperties = { border: "1px solid #333", padding: "4px 6px", fontSize: 12, color: "#111" };
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, display: "block", marginBottom: 3 };
 
   return (
