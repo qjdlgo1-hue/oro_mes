@@ -333,7 +333,7 @@ export async function deleteMenuGroup(id: string): Promise<void> {
 
 
 // ===== 지원사업 과제 / 검수조서 =====
-export type Project = { id?: string; name: string; company?: string; vendor?: string; period_from?: string; period_to?: string; note?: string; created_at?: string };
+export type Project = { id?: string; name: string; announce?: string; company?: string; vendor?: string; period_from?: string; period_to?: string; note?: string; created_at?: string };
 export type InspItem = { name?: string; spec?: string; unit?: string; qty?: number; price?: number; amount?: number; note?: string };
 export type Photo = { path: string; caption?: string };
 export type Inspection = { id?: string; project_id: string; insp_no?: string; deliver_place?: string; vendor?: string; inspect_date?: string; inspector?: string; sign_path?: string; items?: InspItem[]; photos?: Photo[]; created_at?: string };

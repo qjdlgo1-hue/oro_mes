@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageBlobToDataUrl, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import * as XLSX from "xlsx";
 
 const won = (n: number) => (Math.round(n) || 0).toLocaleString();
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -18,6 +19,8 @@ export default function Support() {
   const [form, setForm] = useState<Inspection | null>(null);
   const [imgCache, setImgCache] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"insp" | "settle">("insp");
+  const [settleAll, setSettleAll] = useState(false);
   const certRef = useRef<HTMLDivElement>(null);
 
   const loadP = () => listProjects().then(setProjects).catch(e => toast.error("과제 불러오기 실패: " + (e.message || e)));
@@ -37,7 +40,7 @@ export default function Support() {
   const src = (path?: string) => (path ? imgCache[path] : undefined);
 
   // ---- projects ----
-  function newProject() { setProjEdit({ name: "", company: "오알오", vendor: "", period_from: "", period_to: "", note: "" }); }
+  function newProject() { setProjEdit({ name: "", announce: "", company: "오알오", vendor: "", period_from: "", period_to: "", note: "" }); }
   function editProject() { if (project) setProjEdit({ ...project }); }
   async function saveProject() {
     if (!projEdit) return; if (!projEdit.name?.trim()) { toast.error("과제명을 입력하세요."); return; }
@@ -73,6 +76,22 @@ export default function Support() {
     if (!form?.inspect_date || !project?.period_from || !project?.period_to) return true;
     return form.inspect_date >= project.period_from && form.inspect_date <= project.period_to;
   }, [form, project]);
+  const settleRows = useMemo(() => {
+    const list = insps.filter(i => settleAll ? true : i.project_id === pid);
+    const out: { date: string; announce: string; task: string; vendor: string; name: string; spec: string; unit: string; qty: number; price: number; amount: number; note: string }[] = [];
+    list.forEach(i => { const prj = projects.find(p => p.id === i.project_id); (i.items || []).forEach(it => { const qty = Number(it.qty) || 0, price = Number(it.price) || 0; out.push({ date: i.inspect_date || "", announce: prj?.announce || "", task: prj?.name || "", vendor: i.vendor || "", name: it.name || "", spec: it.spec || "", unit: it.unit || "", qty, price, amount: qty * price, note: it.note || "" }); }); });
+    return out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  }, [insps, projects, pid, settleAll]);
+  const settleTotal = settleRows.reduce((s2, r) => s2 + r.amount, 0);
+  function exportSettle() {
+    if (!settleRows.length) { toast.error("정산할 데이터가 없습니다."); return; }
+    const aoa: any[][] = [["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"]];
+    settleRows.forEach(r => aoa.push([r.date, r.announce, r.task, r.vendor, r.name, r.spec, r.unit, String(r.qty), String(r.price), String(r.amount), r.note]));
+    aoa.push(["합계", "", "", "", "", "", "", "", "", String(settleTotal), ""]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "정산내용");
+    XLSX.writeFile(wb, `정산내용_${settleAll ? "전체" : (project?.name || "").slice(0, 12)}.xlsx`);
+    toast.success("엑셀 저장 완료");
+  }
 
   function pickUpload(cb: (path: string) => void) {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
@@ -133,7 +152,7 @@ export default function Support() {
           <h3 style={{ margin: 0 }}>🏛️ 지원사업 · 검수조서</h3>
           <select value={pid} onChange={e => { setPid(e.target.value); setForm(null); }} style={{ ...inp, minWidth: 260 }}>
             <option value="">과제 선택…</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.announce ? ` — ${p.announce}` : ""}</option>)}
           </select>
           {canEdit && <>
             <button className="btn ghost" onClick={newProject} disabled={busy}>+ 새 과제</button>
@@ -143,11 +162,12 @@ export default function Support() {
         </div>
         {project && !projEdit &&
           <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            협약기간: {project.period_from || "-"} ~ {project.period_to || "-"} · 기업명: {project.company} · 납품업체(기본): {project.vendor || "-"}
+            공고명: {project.announce || "-"} · 협약기간: {project.period_from || "-"} ~ {project.period_to || "-"} · 기업명: {project.company} · 납품업체(기본): {project.vendor || "-"}
           </p>}
         {projEdit &&
           <div style={{ marginTop: 12, background: "#f5f9ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: 12, display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
-            <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>과제명</label><input style={{ ...inp, width: "100%" }} value={projEdit.name} onChange={e => setProjEdit({ ...projEdit, name: e.target.value })} /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>공고명</label><input style={{ ...inp, width: "100%" }} value={projEdit.announce || ""} onChange={e => setProjEdit({ ...projEdit, announce: e.target.value })} /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>과제명 (필수)</label><input style={{ ...inp, width: "100%" }} value={projEdit.name} onChange={e => setProjEdit({ ...projEdit, name: e.target.value })} /></div>
             <div><label style={lbl}>기업명</label><input style={{ ...inp, width: "100%" }} value={projEdit.company || ""} onChange={e => setProjEdit({ ...projEdit, company: e.target.value })} /></div>
             <div><label style={lbl}>납품업체(기본)</label><input style={{ ...inp, width: "100%" }} value={projEdit.vendor || ""} onChange={e => setProjEdit({ ...projEdit, vendor: e.target.value })} /></div>
             <div><label style={lbl}>협약 시작일</label><input type="date" style={{ ...inp, width: "100%" }} value={projEdit.period_from || ""} onChange={e => setProjEdit({ ...projEdit, period_from: e.target.value })} /></div>
@@ -159,8 +179,13 @@ export default function Support() {
           </div>}
       </div>
 
-      {/* 저장된 검수조서 목록 */}
       {project &&
+        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
+          <button className="btn" style={{ borderRadius: 0, background: tab === "insp" ? "#2563eb" : "#e7ebf1", color: tab === "insp" ? "#fff" : "#374151" }} onClick={() => setTab("insp")}>검수조서</button>
+          <button className="btn" style={{ borderRadius: 0, background: tab === "settle" ? "#2563eb" : "#e7ebf1", color: tab === "settle" ? "#fff" : "#374151" }} onClick={() => setTab("settle")}>정산내용</button>
+        </div>}
+      {/* 저장된 검수조서 목록 */}
+      {project && tab === "insp" &&
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <h4 style={{ margin: 0 }}>검수조서 목록 <span className="muted" style={{ fontSize: 12 }}>· {projInsps.length}건</span></h4>
@@ -180,7 +205,7 @@ export default function Support() {
         </div>}
 
       {/* 편집 폼 */}
-      {form && project &&
+      {form && project && tab === "insp" &&
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
             <h4 style={{ margin: 0 }}>검수조서 작성</h4>
@@ -249,7 +274,7 @@ export default function Support() {
         </div>}
 
       {/* 미리보기 (PDF 캡처 대상) */}
-      {form && project &&
+      {form && project && tab === "insp" &&
         <div className="card" style={{ overflow: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>미리보기 (이 모양대로 PDF 저장됩니다)</div>
           <div ref={certRef}>
@@ -259,6 +284,7 @@ export default function Support() {
             <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 10 }}>
               <tbody>
                 <tr><td style={{ ...bd, background: "#f4f4f4", width: 90, fontWeight: 700 }}>기업명</td><td style={bd}>{project.company}</td><td style={{ ...bd, background: "#f4f4f4", width: 90, fontWeight: 700 }}>협약기간</td><td style={bd}>{project.period_from} ~ {project.period_to}</td></tr>
+                <tr><td style={{ ...bd, background: "#f4f4f4", fontWeight: 700 }}>공고명</td><td style={bd} colSpan={3}>{project.announce || ""}</td></tr>
                 <tr><td style={{ ...bd, background: "#f4f4f4", fontWeight: 700 }}>과제명</td><td style={bd} colSpan={3}>{project.name}</td></tr>
                 <tr><td style={{ ...bd, background: "#f4f4f4", fontWeight: 700 }}>납품업체</td><td style={bd}>{form.vendor}</td><td style={{ ...bd, background: "#f4f4f4", fontWeight: 700 }}>납품장소</td><td style={bd}>{form.deliver_place}</td></tr>
               </tbody>
@@ -308,6 +334,31 @@ export default function Support() {
               </div>
             ))}
           </div>
+        </div>}
+      {project && tab === "settle" &&
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+            <h4 style={{ margin: 0 }}>정산내용 {settleAll ? "(전체 과제)" : ""} <span className="muted" style={{ fontSize: 12 }}>· {settleRows.length}건 · 합계 {won(settleTotal)}원</span></h4>
+            <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}><input type="checkbox" checked={settleAll} onChange={e => setSettleAll(e.target.checked)} /> 전체 과제 합산</label>
+            <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportSettle}>📊 엑셀</button>
+          </div>
+          {settleRows.length === 0 ? <p className="muted">정산할 검수조서 품목이 없습니다. (검수조서를 저장하면 여기에 쌓입니다)</p> :
+            <div style={{ overflow: "auto", maxHeight: "62vh" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                <thead><tr>{["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"].map(h => <th key={h} style={{ ...bd, background: "#f1f3f7" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {settleRows.map((r, idx) => (
+                    <tr key={idx}>
+                      <td style={bd}>{r.date}</td><td style={bd}>{r.announce}</td><td style={bd}>{r.task}</td><td style={bd}>{r.vendor}</td>
+                      <td style={bd}>{r.name}</td><td style={bd}>{r.spec}</td><td style={{ ...bd, textAlign: "center" }}>{r.unit}</td>
+                      <td style={{ ...bd, textAlign: "right" }}>{r.qty}</td><td style={{ ...bd, textAlign: "right" }}>{won(r.price)}</td>
+                      <td style={{ ...bd, textAlign: "right", fontWeight: 700 }}>{won(r.amount)}</td><td style={bd}>{r.note}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ fontWeight: 700, background: "#eef3f9" }}><td style={bd} colSpan={9}>합 계</td><td style={{ ...bd, textAlign: "right" }}>{won(settleTotal)}</td><td style={bd}></td></tr>
+                </tbody>
+              </table>
+            </div>}
         </div>}
     </div>
   );
