@@ -330,3 +330,37 @@ export async function deleteMenuGroup(id: string): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from("menu_groups").delete().eq("id", id); if (error) throw error;
 }
+
+
+// ===== 지원사업 과제 / 검수조서 =====
+export type Project = { id?: string; name: string; company?: string; vendor?: string; period_from?: string; period_to?: string; note?: string; created_at?: string };
+export type InspItem = { name?: string; spec?: string; unit?: string; qty?: number; price?: number; amount?: number; note?: string };
+export type Inspection = { id?: string; project_id: string; insp_no?: string; deliver_place?: string; vendor?: string; inspect_date?: string; inspector?: string; sign_path?: string; items?: InspItem[]; photos?: string[]; created_at?: string };
+
+export async function listProjects(): Promise<Project[]> {
+  if (supabase) { const { data, error } = await supabase.from("projects").select("*").order("created_at"); if (error) throw error; return (data || []) as Project[]; }
+  return lsGet<Project[]>("oro_projects", []);
+}
+export async function upsertProject(p: Project): Promise<Project> {
+  if (supabase) { const { data, error } = await supabase.from("projects").upsert(p).select().single(); if (error) throw error; return data as Project; }
+  const all = lsGet<Project[]>("oro_projects", []); const id = p.id || ("p-" + Date.now()); const np = { ...p, id };
+  const i = all.findIndex(x => x.id === id); if (i >= 0) all[i] = np; else all.push(np); lsSet("oro_projects", all); return np;
+}
+export async function deleteProject(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("projects").delete().eq("id", id); if (error) throw error; return; }
+  lsSet("oro_projects", lsGet<Project[]>("oro_projects", []).filter(x => x.id !== id));
+  lsSet("oro_inspections", lsGet<Inspection[]>("oro_inspections", []).filter(x => x.project_id !== id));
+}
+export async function listInspections(): Promise<Inspection[]> {
+  if (supabase) { const { data, error } = await supabase.from("inspections").select("*").order("created_at", { ascending: false }); if (error) throw error; return (data || []) as Inspection[]; }
+  return lsGet<Inspection[]>("oro_inspections", []);
+}
+export async function upsertInspection(i: Inspection): Promise<Inspection> {
+  if (supabase) { const { data, error } = await supabase.from("inspections").upsert(i).select().single(); if (error) throw error; return data as Inspection; }
+  const all = lsGet<Inspection[]>("oro_inspections", []); const id = i.id || ("i-" + Date.now()); const ni = { ...i, id };
+  const k = all.findIndex(x => x.id === id); if (k >= 0) all[k] = ni; else all.unshift(ni); lsSet("oro_inspections", all); return ni;
+}
+export async function deleteInspection(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("inspections").delete().eq("id", id); if (error) throw error; return; }
+  lsSet("oro_inspections", lsGet<Inspection[]>("oro_inspections", []).filter(x => x.id !== id));
+}
