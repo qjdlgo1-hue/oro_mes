@@ -106,7 +106,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => window.print()}>🖨 인쇄</button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(파랑=자동, 주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시됩니다."}</p>
+        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(파랑=자동, 주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시. 배송예정일 칸에서 날짜를 직접 바꿀 수 있어요(주황·✎=수동, 자동=되돌리기)."}</p>
       </div>
 
       {view === "list" ?
@@ -123,7 +123,14 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                   <tbody>
                     {list.map(r => (
                       <tr key={r.o.id}>
-                        <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "#2563eb" }}>{r.del}{r.manual ? " ✎" : ""}</td>
+                        <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "#2563eb" }}>
+                          {canEdit
+                            ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <input type="date" value={r.del} onChange={e => { if (e.target.value) setDeliver(r.o, e.target.value); }} style={{ padding: "2px 4px", border: "1px solid var(--line)", borderRadius: 4, fontSize: 12 }} />
+                                {r.manual && <button className="btn ghost" style={{ padding: "1px 6px", fontSize: 11 }} onClick={() => setDeliver(r.o, null)}>자동</button>}
+                              </span>
+                            : <>{r.del}{r.manual ? " ✎" : ""}</>}
+                        </td>
                         <td style={td}>{r.o.name}</td>
                         <td style={td}>{r.o.spec}</td>
                         <td style={tdR}>{r.o.qty.toLocaleString()}</td>
