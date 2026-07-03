@@ -68,6 +68,7 @@ export default function Support() {
   const rows = (form?.items || []).map(it => ({ ...it, amount: (Number(it.qty) || 0) * (Number(it.price) || 0) }));
   const sumPrice = rows.reduce((s, r) => s + (Number(r.price) || 0), 0);
   const sumAmount = rows.reduce((s, r) => s + r.amount, 0);
+  const photoChunks = useMemo(() => { const arr = form?.photos || []; const out: { path: string; caption?: string }[][] = []; for (let i = 0; i < arr.length; i += 4) out.push(arr.slice(i, i + 4)); return out; }, [form]);
   const withinPeriod = useMemo(() => {
     if (!form?.inspect_date || !project?.period_from || !project?.period_to) return true;
     return form.inspect_date >= project.period_from && form.inspect_date <= project.period_to;
@@ -102,17 +103,16 @@ export default function Support() {
     try {
       toast.success("PDF 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
-      const canvas = await html2canvas(certRef.current, { scale: 2, backgroundColor: "#ffffff" });
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
-      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = 10; const iw = pw - m * 2;
-      const pagePx = Math.floor((ph - m * 2) * canvas.width / iw); let sY = 0, first = true;
-      while (sY < canvas.height) {
-        const h = Math.min(pagePx, canvas.height - sY);
-        const slice = document.createElement("canvas"); slice.width = canvas.width; slice.height = h;
-        slice.getContext("2d")!.drawImage(canvas, 0, sY, canvas.width, h, 0, 0, canvas.width, h);
-        if (!first) pdf.addPage();
-        pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", m, m, iw, h * iw / canvas.width);
-        sY += h; first = false;
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = 10;
+      const maxW = pw - m * 2, maxH = ph - m * 2;
+      const pages = Array.from(certRef.current.querySelectorAll<HTMLElement>(".pdf-page"));
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: "#ffffff" });
+        let w = maxW, h = canvas.height * w / canvas.width;
+        if (h > maxH) { h = maxH; w = canvas.width * h / canvas.height; }
+        if (i > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", m + (maxW - w) / 2, m, w, h);
       }
       const clean = (x?: string) => (x || "").replace(/[\\/:*?"<>|\s]+/g, "");
       pdf.save(`검수조서_${clean(project?.name).slice(0, 16)}_${form.inspect_date || todayIso()}.pdf`);
@@ -123,6 +123,7 @@ export default function Support() {
   const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 };
   const bd: React.CSSProperties = { border: "1px solid #333", padding: "4px 6px", fontSize: 12, color: "#111" };
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, display: "block", marginBottom: 3 };
+  const pageStyle: React.CSSProperties = { background: "#fff", color: "#000", padding: "28px 26px", width: 720, maxWidth: "100%", margin: "0 auto 16px", boxSizing: "border-box", minHeight: 1000, border: "1px solid #ddd", fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif" };
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -251,7 +252,8 @@ export default function Support() {
       {form && project &&
         <div className="card" style={{ overflow: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>미리보기 (이 모양대로 PDF 저장됩니다)</div>
-          <div ref={certRef} style={{ background: "#fff", color: "#000", padding: 24, width: 720, maxWidth: "100%", margin: "0 auto", fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif" }}>
+          <div ref={certRef}>
+            <div className="pdf-page" style={pageStyle}>
             <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
             <h2 style={{ textAlign: "center", letterSpacing: 10, margin: "4px 0 18px", fontSize: 24 }}>검 수 조 서</h2>
             <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 10 }}>
@@ -290,19 +292,21 @@ export default function Support() {
             <div style={{ textAlign: "right", fontSize: 15 }}>
               검수자 : {form.inspector} {src(form.sign_path) && <img src={src(form.sign_path)} alt="" style={{ height: 34, verticalAlign: "middle", margin: "0 4px" }} />} (인)
             </div>
-            {(form.photos || []).length > 0 &&
-              <div style={{ marginTop: 40, pageBreakBefore: "always" }}>
+            </div>
+            {photoChunks.map((chunk, pi) => (
+              <div className="pdf-page" style={pageStyle} key={pi}>
                 <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
-                <h3 style={{ textAlign: "center", margin: "6px 0 14px" }}>증빙사진</h3>
+                <h3 style={{ textAlign: "center", margin: "6px 0 14px" }}>증빙사진{photoChunks.length > 1 ? ` (${pi + 1}/${photoChunks.length})` : ""}</h3>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                  {(form.photos || []).map(ph => (
+                  {chunk.map(ph => (
                     <figure key={ph.path} style={{ margin: 0, textAlign: "center" }}>
-                      {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: "100%", border: "1px solid #999" }} /> : null}
+                      {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: "100%", maxHeight: 380, objectFit: "contain", border: "1px solid #999" }} /> : null}
                       {ph.caption ? <figcaption style={{ fontSize: 12, color: "#000", marginTop: 4 }}>{ph.caption}</figcaption> : null}
                     </figure>
                   ))}
                 </div>
-              </div>}
+              </div>
+            ))}
           </div>
         </div>}
     </div>
