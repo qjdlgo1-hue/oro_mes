@@ -7,6 +7,7 @@ const won = (n: number) => (Math.round(n) || 0).toLocaleString();
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
 const blankItem = (): InspItem => ({ name: "", spec: "", unit: "EA", qty: 0, price: 0, note: "" });
+const normPhotos = (arr?: any[]): { path: string; caption?: string }[] => (arr || []).map(x => typeof x === "string" ? { path: x } : x);
 
 export default function Support() {
   const canEdit = can("support.edit");
@@ -29,7 +30,7 @@ export default function Support() {
   useEffect(() => {
     const paths: string[] = [];
     if (form?.sign_path) paths.push(form.sign_path);
-    (form?.photos || []).forEach(p => paths.push(p));
+    (form?.photos || []).forEach(ph => paths.push(ph.path));
     paths.forEach(p => { if (p && !imgCache[p]) storageBlobToDataUrl("coc", p).then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); }); });
     // eslint-disable-next-line
   }, [form]);
@@ -58,7 +59,7 @@ export default function Support() {
     if (!project) { toast.error("과제를 먼저 선택하세요."); return; }
     setForm({ project_id: project.id!, insp_no: "", deliver_place: project.company || "오알오", vendor: project.vendor || "", inspect_date: todayIso(), inspector: "", sign_path: "", items: [blankItem()], photos: [] });
   }
-  function loadInsp(i: Inspection) { setForm({ ...i, items: (i.items && i.items.length ? i.items : [blankItem()]), photos: i.photos || [] }); }
+  function loadInsp(i: Inspection) { setForm({ ...i, items: (i.items && i.items.length ? i.items : [blankItem()]), photos: normPhotos(i.photos) }); }
   function setF(patch: Partial<Inspection>) { setForm(f => f ? { ...f, ...patch } : f); }
   function setItem(idx: number, patch: Partial<InspItem>) { setForm(f => { if (!f) return f; const items = [...(f.items || [])]; items[idx] = { ...items[idx], ...patch }; return { ...f, items }; }); }
   function addItem() { setForm(f => f ? { ...f, items: [...(f.items || []), blankItem()] } : f); }
@@ -78,8 +79,9 @@ export default function Support() {
     inp.click();
   }
   const addSign = () => pickUpload(path => setF({ sign_path: path }));
-  const addPhoto = () => pickUpload(path => setForm(f => f ? { ...f, photos: [...(f.photos || []), path] } : f));
-  const delPhoto = (path: string) => setForm(f => f ? { ...f, photos: (f.photos || []).filter(p => p !== path) } : f);
+  const addPhoto = () => pickUpload(path => setForm(f => f ? { ...f, photos: [...(f.photos || []), { path, caption: "" }] } : f));
+  const delPhoto = (path: string) => setForm(f => f ? { ...f, photos: (f.photos || []).filter(ph => ph.path !== path) } : f);
+  const setCaption = (path: string, cap: string) => setForm(f => f ? { ...f, photos: (f.photos || []).map(ph => ph.path === path ? { ...ph, caption: cap } : ph) } : f);
 
   async function saveInsp() {
     if (!form) return;
@@ -233,10 +235,11 @@ export default function Support() {
               <label style={lbl}>증빙사진</label>
               <button className="btn ghost" onClick={addPhoto} disabled={busy}>+ 사진 추가</button>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-                {(form.photos || []).map(p => (
-                  <div key={p} style={{ position: "relative" }}>
-                    {src(p) ? <img src={src(p)} alt="" style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line)" }} /> : <div style={{ width: 90, height: 90, background: "#eee", borderRadius: 6 }} />}
-                    <button className="btn" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", background: "#c0392b", fontSize: 11 }} onClick={() => delPhoto(p)}>×</button>
+                {(form.photos || []).map(ph => (
+                  <div key={ph.path} style={{ position: "relative", width: 120 }}>
+                    {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line)" }} /> : <div style={{ width: 120, height: 90, background: "#eee", borderRadius: 6 }} />}
+                    <button className="btn" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", background: "#c0392b", fontSize: 11 }} onClick={() => delPhoto(ph.path)}>×</button>
+                    <input value={ph.caption || ""} onChange={e => setCaption(ph.path, e.target.value)} placeholder="캡션(설명)" style={{ ...inp, width: 120, padding: 4, fontSize: 11, marginTop: 3 }} />
                   </div>
                 ))}
               </div>
@@ -291,8 +294,13 @@ export default function Support() {
               <div style={{ marginTop: 40, pageBreakBefore: "always" }}>
                 <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
                 <h3 style={{ textAlign: "center", margin: "6px 0 14px" }}>증빙사진</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {(form.photos || []).map(p => src(p) ? <img key={p} src={src(p)} alt="" style={{ width: "100%", border: "1px solid #999" }} /> : null)}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  {(form.photos || []).map(ph => (
+                    <figure key={ph.path} style={{ margin: 0, textAlign: "center" }}>
+                      {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: "100%", border: "1px solid #999" }} /> : null}
+                      {ph.caption ? <figcaption style={{ fontSize: 12, color: "#000", marginTop: 4 }}>{ph.caption}</figcaption> : null}
+                    </figure>
+                  ))}
                 </div>
               </div>}
           </div>
