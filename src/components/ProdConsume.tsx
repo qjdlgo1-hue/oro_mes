@@ -62,6 +62,19 @@ export default function ProdConsumeView() {
   const prodByMonth = useMemo(() => aggSum(prodRows, r => r.ym, r => Number(r.prod_qty) || 0).sort((a, b) => a.name < b.name ? -1 : 1), [prodRows]);
   const prodByItem = useMemo(() => aggSum(prodRows, r => r.prod_name, r => Number(r.prod_qty) || 0).sort((a, b) => b.value - a.value), [prodRows]);
   const matByItem = useMemo(() => aggSum(consRows, r => r.mat_name || "", r => Number(r.act_qty) || 0).sort((a, b) => b.value - a.value), [consRows]);
+  const matMonthly = useMemo(() => {
+    const mm = [...new Set(consRows.map(r => r.ym).filter(Boolean))].sort();
+    const top = matByItem.slice(0, 8).map(m => m.name); const topSet = new Set(top); const keys = [...top, "기타"];
+    const data = mm.map(m => { const row: any = { name: m }; keys.forEach(k => row[k] = 0); consRows.filter(r => r.ym === m).forEach(r => { const mn = r.mat_name || ""; row[topSet.has(mn) ? mn : "기타"] += Number(r.act_qty) || 0; }); return row; });
+    return { data, keys };
+  }, [consRows, matByItem]);
+  const matrix = useMemo(() => {
+    const mm = [...new Set(consRows.map(r => r.ym).filter(Boolean))].sort();
+    const mats: Record<string, Record<string, number>> = {};
+    consRows.forEach(r => { const mn = r.mat_name || "(기타)"; const m = r.ym; if (!m) return; (mats[mn] || (mats[mn] = {})); mats[mn][m] = (mats[mn][m] || 0) + (Number(r.act_qty) || 0); });
+    const mrows = Object.entries(mats).map(([name, byM]) => ({ name, byM, total: Object.values(byM).reduce((s2, v) => s2 + v, 0) })).sort((a, b) => b.total - a.total);
+    return { months: mm, rows: mrows };
+  }, [consRows]);
   const stdVs = useMemo(() => {
     const m: Record<string, { std: number; act: number; loss: number }> = {};
     consRows.forEach(r => { const k = r.mat_name || "(기타)"; const e = m[k] || (m[k] = { std: 0, act: 0, loss: 0 }); e.std += Number(r.std_qty) || 0; e.act += Number(r.act_qty) || 0; e.loss += Number(r.amount) || 0; });
@@ -145,11 +158,26 @@ export default function ProdConsumeView() {
           </div>}
 
         {view === "mat" &&
-          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}>
-            <div className="card"><h4 style={{ marginTop: 0 }}>원재료·반제품별 실제소모 (상위)</h4><HBar data={matByItem} unitTxt="" color="#1aa260" /></div>
-            <div className="card" style={{ gridColumn: "1 / -1" }}><h4 style={{ marginTop: 0 }}>소모 표</h4>
-              <div style={{ overflow: "auto", maxHeight: "50vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th></tr></thead><tbody>{matByItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}>
+              <div className="card"><h4 style={{ marginTop: 0 }}>원재료·반제품별 실제소모 (기간 합계, 상위)</h4><HBar data={matByItem} unitTxt="" color="#1aa260" /></div>
+              <div className="card"><h4 style={{ marginTop: 0 }}>소모 표 (기간 합계)</h4>
+                <div style={{ overflow: "auto", maxHeight: "44vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th></tr></thead><tbody>{matByItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div>
+              </div>
             </div>
+            <div className="card">
+              <h4 style={{ marginTop: 0 }}>월별 원재료 소모 추이 <span className="muted" style={{ fontSize: 12 }}>(상위 8 + 기타, 누적)</span></h4>
+              {matMonthly.data.length === 0 ? <p className="muted">월별 데이터가 없습니다 (날짜 없는 요약본은 월별 분석 불가).</p> :
+                <div style={{ width: "100%", height: 320 }}><ResponsiveContainer><BarChart data={matMonthly.data} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Legend />{matMonthly.keys.map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={PIE[i % PIE.length]} />)}</BarChart></ResponsiveContainer></div>}
+            </div>
+            {matrix.months.length > 0 &&
+              <div className="card">
+                <h4 style={{ marginTop: 0 }}>원재료 × 월 소모 매트릭스 <span className="muted" style={{ fontSize: 12 }}>(발주·재고 계획용)</span></h4>
+                <div style={{ overflow: "auto", maxHeight: "56vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}>
+                  <thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th>{matrix.months.map(m => <th key={m} style={th}>{m}</th>)}<th style={th}>합계</th></tr></thead>
+                  <tbody>{matrix.rows.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td>{matrix.months.map(m => <td key={m} style={td}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}<td style={{ ...td, fontWeight: 700 }}>{nf1(r.total)}</td></tr>)}</tbody>
+                </table></div>
+              </div>}
           </div>}
 
         {view === "std" &&
