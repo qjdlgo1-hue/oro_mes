@@ -50,7 +50,7 @@ export default function Support() {
     setBusy(false);
   }
   async function removeProject() {
-    if (!project || !confirm(`과제 "${project.name}" 및 관련 검수조서를 삭제할까요?`)) return;
+    if (!project || !confirm(`공고 "${project.announce || project.name}" 및 관련 검수조서를 삭제할까요?`)) return;
     setBusy(true);
     try { await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨"); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
@@ -151,13 +151,13 @@ export default function Support() {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <h3 style={{ margin: 0 }}>🏛️ 지원사업 · 검수조서</h3>
           <select value={pid} onChange={e => { setPid(e.target.value); setForm(null); }} style={{ ...inp, minWidth: 260 }}>
-            <option value="">과제 선택…</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.announce ? ` — ${p.announce}` : ""}</option>)}
+            <option value="">공고 선택…</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.announce || p.name}</option>)}
           </select>
           {canEdit && <>
-            <button className="btn ghost" onClick={newProject} disabled={busy}>+ 새 과제</button>
-            {project && <button className="btn ghost" onClick={editProject} disabled={busy}>과제 수정</button>}
-            {project && <button className="btn" style={{ background: "#c0392b" }} onClick={removeProject} disabled={busy}>과제 삭제</button>}
+            <button className="btn ghost" onClick={newProject} disabled={busy}>+ 새 공고</button>
+            {project && <button className="btn ghost" onClick={editProject} disabled={busy}>공고 수정</button>}
+            {project && <button className="btn" style={{ background: "#c0392b" }} onClick={removeProject} disabled={busy}>공고 삭제</button>}
           </>}
         </div>
         {project && !projEdit &&
