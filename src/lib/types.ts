@@ -17,6 +17,7 @@ export type PlanEntry = {
   span: number;       // 생산 일수
   done: boolean;
   qty?: number | null;   // 생산수량(미지정 시 수주량 사용)
+  deliver_date?: string | null; // 배송일 수동 지정(없으면 생산완료일 다음 영업일)
 };
 export type CocData = {
   order_id: string;

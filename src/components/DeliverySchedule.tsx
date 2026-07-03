@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Order, PlanEntry } from "../lib/types";
-import { listPlans } from "../lib/db";
+import { listPlans, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
 import { nextBusinessDay } from "../lib/holidays";
 import { toast } from "../lib/toast";
+import { can } from "../lib/perm";
 
-type Row = { o: Order; base: string; del: string };
+type Row = { o: Order; base: string; del: string; manual: boolean };
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const p2 = (n: number) => String(n).padStart(2, "0");
 
@@ -16,6 +17,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
   const [toYm, setToYm] = useState("");
   const [cust, setCust] = useState("__all__");
   const [selDay, setSelDay] = useState<string | null>(null);
+  const canEdit = can("plan.edit");
   const [cal, setCal] = useState(() => {
     const ms = [...new Set(orders.map(o => o.ym))].sort(); const l = ms[ms.length - 1];
     if (l) return { y: +l.slice(0, 4), m: +l.slice(5, 7) };
@@ -31,7 +33,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
 
   const allRows = useMemo<Row[]>(() => orders
     .filter(o => cust === "__all__" || (o.customer || "(미상)") === cust)
-    .map(o => { const p = plans[o.id]; const base = (p ? (completionDate(p) || o.order_date) : o.order_date); return { o, base, del: nextBusinessDay(base) }; }),
+    .map(o => { const p = plans[o.id]; const base = (p ? (completionDate(p) || o.order_date) : o.order_date); const ov = p?.deliver_date || ""; return { o, base, del: ov || nextBusinessDay(base), manual: !!ov }; }),
     [orders, plans, cust]);
 
   const listRows = useMemo(() => allRows.filter(r => r.o.ym >= lo && r.o.ym <= hi)
@@ -55,6 +57,14 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
   const prevM = () => { setSelDay(null); setCal(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); };
   const nextM = () => { setSelDay(null); setCal(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); };
 
+  async function setDeliver(o: Order, iso: string | null) {
+    if (!canEdit) { toast.error("배송일 변경 권한이 없습니다."); return; }
+    const bp = plans[o.id] || { order_id: o.id, start_date: o.order_date, span: 1, done: false };
+    const np = { ...bp, deliver_date: iso };
+    setPlans(prev => ({ ...prev, [o.id]: np }));
+    try { await upsertPlan(np); logAudit("배송일 변경", "plan", o.id, { deliver_date: iso }); toast.success(iso ? `배송일 → ${iso}` : "배송일 자동으로 복귀"); }
+    catch (e: any) { toast.error("저장 실패: " + (e?.message || e)); listPlans().then(setPlans); }
+  }
   const periodLabel = lo === hi ? lo : `${lo} ~ ${hi}`;
   function copyText(title: string, list: Row[]) {
     const lines = list.map(r => `${r.del}  ${r.o.customer || ""}  ${r.o.name} (${r.o.spec})  ${r.o.qty.toLocaleString()}g`);
@@ -96,7 +106,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => window.print()}>🖨 인쇄</button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜를 누르면 그 날 배송 건이 아래에 나옵니다." : "고객사별로 묶여 표시됩니다."}</p>
+        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(파랑=자동, 주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시됩니다."}</p>
       </div>
 
       {view === "list" ?
@@ -113,7 +123,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                   <tbody>
                     {list.map(r => (
                       <tr key={r.o.id}>
-                        <td style={{ ...td, fontWeight: 700, color: "#2563eb" }}>{r.del}</td>
+                        <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "#2563eb" }}>{r.del}{r.manual ? " ✎" : ""}</td>
                         <td style={td}>{r.o.name}</td>
                         <td style={td}>{r.o.spec}</td>
                         <td style={tdR}>{r.o.qty.toLocaleString()}</td>
@@ -150,7 +160,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td className="fixcol c-spec" style={{ left: 184 }} title={r.o.name}>{r.o.name}</td>
                         <td className="fixcol c-cust" style={{ left: 344 }} title={r.o.spec}>{r.o.spec}</td>
                         <td className="fixcol c-qty" style={{ left: 464 }}>{r.o.qty.toLocaleString()}</td>
-                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const isDel = d === dd; return <td key={d} className="day" style={{ background: isDel ? "#2563eb" : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: isDel ? "pointer" : "default" }} title={isDel ? `${r.del} · ${r.o.name} ${r.o.qty}g` : ""} onClick={() => { if (isDel) setSelDay(r.del); }}>{isDel ? "●" : ""}</td>; })}
+                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "#2563eb"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={() => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else setDeliver(r.o, iso); }}>{isDel ? "●" : ""}</td>; })}
                       </tr>
                     );
                   })}
