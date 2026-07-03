@@ -49,9 +49,9 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     return m;
   }, [allRows, calYm]);
   const nDays = new Date(cal.y, cal.m, 0).getDate();
-  const firstDow = new Date(cal.y, cal.m - 1, 1).getDay();
-  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)];
-  const maxCnt = Math.max(1, ...Object.values(byDay).map(a => a.length));
+  const days = Array.from({ length: nDays }, (_, i) => i + 1);
+  const calRowsList = useMemo(() => allRows.filter(r => r.del.slice(0, 7) === calYm)
+    .sort((a, b) => (a.o.customer || "") < (b.o.customer || "") ? -1 : (a.o.customer || "") > (b.o.customer || "") ? 1 : (a.del < b.del ? -1 : 1)), [allRows, calYm]);
   const prevM = () => { setSelDay(null); setCal(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); };
   const nextM = () => { setSelDay(null); setCal(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); };
 
@@ -127,25 +127,42 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
           )))
         :
         <div className="card">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 4 }}>
-            {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "#2f6cb0" : "#6b7280" }}>{w}</div>)}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
-            {cells.map((d, i) => {
-              if (d === null) return <div key={"b" + i} />;
-              const iso = `${calYm}-${p2(d)}`; const items = byDay[iso] || []; const cnt = items.length;
-              const dow = new Date(cal.y, cal.m - 1, d).getDay(); const inten = cnt / maxCnt;
-              return (
-                <button key={d} onClick={() => setSelDay(iso)} style={{
-                  minHeight: 62, border: selDay === iso ? "2px solid #2563eb" : "1px solid var(--line)", borderRadius: 8,
-                  background: cnt > 0 ? `rgba(37,99,235,${0.10 + 0.5 * inten})` : "#fff", cursor: "pointer",
-                  display: "flex", flexDirection: "column", alignItems: "flex-start", padding: 6, gap: 2
-                }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: dow === 0 ? "#c0392b" : dow === 6 ? "#2f6cb0" : "#1c2128" }}>{d}</span>
-                  {cnt > 0 && <span style={{ fontSize: 11, color: inten > 0.5 ? "#fff" : "#1f4e78", fontWeight: 700 }}>{cnt}건</span>}
-                </button>
-              );
-            })}
+          <div className="board" style={{ maxHeight: "70vh" }}>
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th className="fixcol c-no">NO</th>
+                  <th className="fixcol c-name" style={{ left: 34 }}>고객사</th>
+                  <th className="fixcol c-spec" style={{ left: 184 }}>품목</th>
+                  <th className="fixcol c-cust" style={{ left: 344 }}>규격</th>
+                  <th className="fixcol c-qty" style={{ left: 464 }}>수량</th>
+                  {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); return <th key={d} className={"day" + (dow === 0 ? " sun" : dow === 6 ? " sat" : "")} style={{ cursor: "pointer" }} onClick={() => setSelDay(`${calYm}-${p2(d)}`)}><div className="dn">{d}</div><div className="wd">{WD[dow]}</div></th>; })}
+                </tr>
+              </thead>
+              <tbody>
+                {calRowsList.length === 0 ? <tr><td className="fixcol c-no" /><td colSpan={4 + nDays} style={{ padding: 12, color: "#6b7280" }}>이 달 배송 예정 건이 없습니다.</td></tr> :
+                  calRowsList.map((r, idx) => {
+                    const dd = +r.del.slice(8, 10);
+                    return (
+                      <tr key={r.o.id}>
+                        <td className="fixcol c-no">{idx + 1}</td>
+                        <td className="fixcol c-name" style={{ left: 34 }} title={r.o.customer}>{r.o.customer}</td>
+                        <td className="fixcol c-spec" style={{ left: 184 }} title={r.o.name}>{r.o.name}</td>
+                        <td className="fixcol c-cust" style={{ left: 344 }} title={r.o.spec}>{r.o.spec}</td>
+                        <td className="fixcol c-qty" style={{ left: 464 }}>{r.o.qty.toLocaleString()}</td>
+                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const isDel = d === dd; return <td key={d} className="day" style={{ background: isDel ? "#2563eb" : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: isDel ? "pointer" : "default" }} title={isDel ? `${r.del} · ${r.o.name} ${r.o.qty}g` : ""} onClick={() => { if (isDel) setSelDay(r.del); }}>{isDel ? "●" : ""}</td>; })}
+                      </tr>
+                    );
+                  })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td className="fixcol c-no" /><td className="fixcol c-name" style={{ left: 34 }} /><td className="fixcol c-spec" style={{ left: 184 }} /><td className="fixcol c-cust" style={{ left: 344 }} />
+                  <td className="fixcol c-qty" style={{ left: 464 }}>건수</td>
+                  {days.map(d => { const c = (byDay[`${calYm}-${p2(d)}`] || []).length; return <td key={d} className="day" style={{ fontWeight: c ? 700 : 400, color: c ? "#1f4e78" : "#ccc" }}>{c || ""}</td>; })}
+                </tr>
+              </tfoot>
+            </table>
           </div>
           {selDay &&
             <div style={{ marginTop: 12, borderTop: "2px solid var(--line)", paddingTop: 10 }}>
