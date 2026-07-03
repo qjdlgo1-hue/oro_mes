@@ -368,9 +368,9 @@ export async function deleteInspection(id: string): Promise<void> {
 
 
 // ===== 생산·소모 (생산입고/소모현황) =====
-export type ProdConsume = { id?: string; ym: string; idate: string; prod_code: string; prod_name: string; mat_code?: string; mat_name?: string; prod_qty?: number; std_qty?: number; act_qty?: number; mat_price?: number; diff?: number; amount?: number; sig: string; created_at?: string };
+export type ProdConsume = { id?: string; ym: string; idate?: string | null; prod_code: string; prod_name: string; mat_code?: string; mat_name?: string; prod_qty?: number; std_qty?: number; act_qty?: number; mat_price?: number; diff?: number; amount?: number; sig: string; created_at?: string };
 export function pcSig(r: Omit<ProdConsume, "sig" | "id">): string {
-  return [r.idate, r.prod_code, r.mat_code || "", r.prod_qty ?? "", r.std_qty ?? "", r.act_qty ?? "", r.amount ?? ""].join("|");
+  return [r.idate ?? "", r.prod_code, r.mat_code || "", r.prod_qty ?? "", r.std_qty ?? "", r.act_qty ?? "", r.amount ?? ""].join("|");
 }
 export async function listProdConsume(): Promise<ProdConsume[]> {
   if (supabase) { const { data, error } = await supabase.from("prod_consume").select("*").order("idate"); if (error) throw error; return (data || []) as ProdConsume[]; }

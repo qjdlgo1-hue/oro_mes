@@ -21,7 +21,7 @@ export default function ProdConsumeView() {
   const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e)));
   useEffect(() => { load(); }, []);
 
-  const months = useMemo(() => [...new Set(rows.map(r => r.ym))].sort(), [rows]);
+  const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const scoped = useMemo(() => ym ? rows.filter(r => r.ym === ym) : rows, [rows, ym]);
   const prodRows = useMemo(() => scoped.filter(r => !r.mat_code && (Number(r.prod_qty) || 0) > 0), [scoped]);
   const consRows = useMemo(() => scoped.filter(r => !!r.mat_code), [scoped]);

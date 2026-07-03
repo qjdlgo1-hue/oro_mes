@@ -25,10 +25,11 @@ export function parseProdConsume(rows: any[][]): ProdConsume[] {
   const out: ProdConsume[] = [];
   for (let i = h + 1; i < rows.length; i++) {
     const r = rows[i] || []; const g = (k: string) => (col[k] >= 0 ? r[col[k]] : undefined);
-    const dt = pDate(g("date")); const pc = String(g("pc") ?? "").trim();
-    if (!dt || !pc) continue;
+    const pc = String(g("pc") ?? "").trim();
+    if (!pc || pc.includes("계")) continue;
+    const dt = pDate(g("date"));
     const mc = String(g("mc") ?? "").trim();
-    const base = { ym: dt.ym, idate: dt.iso, prod_code: pc, prod_name: String(g("pn") ?? "").trim(), mat_code: mc || undefined, mat_name: String(g("mn") ?? "").trim() || undefined, prod_qty: toNum(g("pq")), std_qty: toNum(g("std")), act_qty: toNum(g("act")), mat_price: toNum(g("mp")), diff: toNum(g("diff")), amount: toNum(g("amt")) };
+    const base = { ym: dt ? dt.ym : "", idate: dt ? dt.iso : null, prod_code: pc, prod_name: String(g("pn") ?? "").trim(), mat_code: mc || undefined, mat_name: String(g("mn") ?? "").trim() || undefined, prod_qty: toNum(g("pq")), std_qty: toNum(g("std")), act_qty: toNum(g("act")), mat_price: toNum(g("mp")), diff: toNum(g("diff")), amount: toNum(g("amt")) };
     out.push({ ...base, id: uid(), sig: pcSig(base) });
   }
   return out;
