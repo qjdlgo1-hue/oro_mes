@@ -316,7 +316,7 @@ export default function Support() {
             <div style={{ textAlign: "center", margin: "26px 0 8px", fontSize: 15 }}>상기와 같이 검수함.</div>
             <div style={{ textAlign: "center", fontSize: 15, marginBottom: 16 }}>{dateKo(form.inspect_date)}</div>
             <div style={{ textAlign: "right", fontSize: 15 }}>
-              검수자 : {form.inspector} {src(form.sign_path) && <img src={src(form.sign_path)} alt="" style={{ height: 34, verticalAlign: "middle", margin: "0 4px" }} />} (인)
+              검수자 : {form.inspector} &nbsp; <span style={{ position: "relative", display: "inline-block", padding: "0 6px", minWidth: 40, textAlign: "center" }}>{src(form.sign_path) && <img src={src(form.sign_path)} alt="" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%)", height: 48, pointerEvents: "none" }} />}(인)</span>
             </div>
             </div>
             {photoChunks.map((chunk, pi) => (
