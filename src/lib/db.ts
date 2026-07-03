@@ -105,7 +105,7 @@ export type InoutKind = "in" | "out";
 export type InoutRow = {
   id?: string; kind: InoutKind; ym: string; idate: string;
   item_code: string; name: string; spec?: string; qty: number;
-  amount?: number | null; customer?: string; trade_type?: string; gubun?: string; note?: string; sig: string;
+  amount?: number | null; customer?: string; trade_type?: string; gubun?: string; cust_code?: string; vat?: number | null; total?: number | null; currency?: string; fx_rate?: number | null; note?: string; sig: string;
 };
 // 중복 판별 키(같은 행 재붙여넣기 방지)
 export function inoutSig(r: Omit<InoutRow, "sig">): string {

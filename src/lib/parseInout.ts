@@ -17,7 +17,7 @@ export function parseInout(kind: InoutKind, text: string): InoutRow[] {
   const lines = text.split(/\r?\n/).map(l => l.replace(/ /g, " ")).filter(l => l.trim());
   if (!lines.length) return [];
 
-  let hi = -1, di = -1, ci = -1, ni = -1, si = -1, qi = -1, ai = -1, ui = -1, ti = -1, gi = -1;
+  let hi = -1, di = -1, ci = -1, ni = -1, si = -1, qi = -1, ai = -1, ui = -1, ti = -1, gi = -1, cc = -1, vi = -1, htot = -1, cu = -1, fx = -1;
   for (let i = 0; i < Math.min(lines.length, 6); i++) {
     const c = splitCells(lines[i]);
     const f = (kw: string) => c.findIndex(x => x.replace(/\s/g, "").includes(kw));
@@ -29,6 +29,11 @@ export function parseInout(kind: InoutKind, text: string): InoutRow[] {
       ui = f("거래처명");          // 판매현황: 첫 번째 거래처명
       ti = c.findIndex(x => x.replace(/[\s.]/g, "").includes("내외자"));   // 내.외자구분
       gi = f("품목구분");
+      cc = f("거래처코드");
+      vi = f("부가세");
+      htot = f("합계");
+      cu = c.findIndex(x => x.replace(/\s/g, "").includes("외화명"));
+      fx = c.findIndex(x => x.includes("환율"));
       break;
     }
   }
@@ -53,7 +58,12 @@ export function parseInout(kind: InoutKind, text: string): InoutRow[] {
     const customer = (kind === "out" && ui >= 0) ? (c[ui] || "") : "";
     const trade_type = (kind === "out" && ti >= 0) ? (c[ti] || "") : "";
     const gubun = gi >= 0 ? (c[gi] || "").replace(/[\[\]\s]/g, "") : "";
-    const base = { kind, ym: dt.ym, idate: dt.iso, item_code: code, name, spec, qty, amount, customer, trade_type, gubun, note: "" };
+    const cust_code = (kind === "out" && cc >= 0) ? String(c[cc] || "").trim() : "";
+    const vat = (kind === "out" && vi >= 0) ? toNum(c[vi]) : null;
+    const total = (kind === "out" && htot >= 0) ? toNum(c[htot]) : null;
+    const currency = (kind === "out" && cu >= 0) ? String(c[cu] || "").trim() : "";
+    const fx_rate = (kind === "out" && fx >= 0) ? toNum(c[fx]) : null;
+    const base = { kind, ym: dt.ym, idate: dt.iso, item_code: code, name, spec, qty, amount, customer, trade_type, gubun, cust_code, vat, total, currency, fx_rate, note: "" };
     out.push({ ...base, id: uid(), sig: inoutSig(base) });
   }
   return out;
