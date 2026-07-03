@@ -99,7 +99,7 @@ export default function App() {
     switch (tab) {
       case "today": return <Today orders={orders} />;
       case "import": return <ImportOrders orders={orders} onChange={refresh} />;
-      case "plan": return <ProductionPlan orders={orders} />;
+      case "plan": return <ProductionPlan orders={orders} onChange={refresh} />;
       case "coc": return <CocIssue orders={orders} />;
       case "prodin": return <DataImport kind="in" />;
       case "sales": return <DataImport kind="out" />;
