@@ -119,43 +119,6 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {view !== "pc" && ovp.length > 0 &&
-        <div className="card">
-          <h4 style={{ marginTop: 0 }}>월별 수주 vs 생산(계획) 요약 <span className="muted" style={{ fontSize: 12 }}>· 수주=주문수량, 생산=생산계획수량</span></h4>
-          <div style={{ width: "100%", height: 260 }}>
-            <ResponsiveContainer>
-              <BarChart data={ovp} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={70} />
-                <Tooltip formatter={(v: any) => Number(v).toLocaleString() + " g"} />
-                <Legend />
-                <Bar dataKey="수주" fill="#94a3b8" />
-                <Bar dataKey="생산" fill="#2563eb" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div style={{ overflow: "auto", maxHeight: "38vh", marginTop: 8 }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>
-                <th style={{ ...th, textAlign: "left" }}>월</th>
-                <th style={th}>수주(g)</th>
-                <th style={th}>생산(g)</th>
-                <th style={th}>차이</th>
-              </tr></thead>
-              <tbody>
-                {ovp.map(r => (
-                  <tr key={r.name}>
-                    <td style={{ ...td, textAlign: "left" }}>{r.name}</td>
-                    <td style={td}>{r["수주"].toLocaleString()}</td>
-                    <td style={td}>{r["생산"].toLocaleString()}</td>
-                    <td style={{ ...td, fontWeight: 700, color: r.diff > 0 ? "#1aa260" : r.diff < 0 ? "#c0392b" : "#6b7280" }}>{r.diff > 0 ? "+" : ""}{r.diff.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>}
       {/* 상단 토글 + 컨트롤 */}
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
