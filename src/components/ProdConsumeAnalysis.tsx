@@ -15,6 +15,7 @@ export default function ProdConsumeAnalysis() {
   const [ym, setYm] = usePersistState("pc.ym", "");
   const [selMat, setSelMat] = useState<string | null>(null);
   const [matrixAll, setMatrixAll] = useState(false); // 매트릭스: 기본 최근 12개월, 체크 시 전체 기간
+  const [prodAll, setProdAll] = useState(false);     // 생산실적 월별 차트: 동일 패턴
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
   const yw = isMobile ? 78 : 120;
@@ -104,7 +105,17 @@ export default function ProdConsumeAnalysis() {
 
       {view === "prod" &&
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}>
-          <div className="card"><h4 style={{ marginTop: 0 }}>월별 생산량</h4><div style={{ width: "100%", height: 260 }}><ResponsiveContainer><BarChart data={prodByMonth}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="#2563eb" /></BarChart></ResponsiveContainer></div></div>
+          <div className="card">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+              <h4 style={{ margin: 0 }}>월별 생산량</h4>
+              {prodByMonth.length > 12 &&
+                <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+                  <input type="checkbox" checked={prodAll} onChange={e => setProdAll(e.target.checked)} />
+                  전체 기간 보기{!prodAll && ` (이전 ${prodByMonth.length - 12}개월 숨김)`}
+                </label>}
+            </div>
+            <div style={{ width: "100%", height: 260 }}><ResponsiveContainer><BarChart data={prodAll ? prodByMonth : prodByMonth.slice(-12)}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="#2563eb" /></BarChart></ResponsiveContainer></div>
+          </div>
           <div className="card"><h4 style={{ marginTop: 0 }}>품목별 생산량 (상위)</h4><HBar data={prodByItem} /></div>
           <div className="card" style={{ gridColumn: "1 / -1" }}><h4 style={{ marginTop: 0 }}>품목별 생산량 표</h4><div style={{ overflow: "auto", maxHeight: "40vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={th}>생산량</th></tr></thead><tbody>{prodByItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div></div>
         </div>}
