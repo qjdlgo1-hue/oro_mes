@@ -329,6 +329,7 @@ export async function saveMenuConfig(groups: MenuGroupRow[], placements: { item_
 export async function deleteMenuGroup(id: string): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from("menu_groups").delete().eq("id", id); if (error) throw error;
+  const { error: pe } = await supabase.from("menu_placement").update({ group_id: null }).eq("group_id", id); if (pe) throw pe;
 }
 
 

@@ -15,8 +15,10 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
   useEffect(() => {
     getMenuConfig().then(c => {
       const gs = [...c.groups].sort((a, b) => a.sort - b.sort);
-      const p: any = { ...c.placement }; const firstG = gs[0]?.id || null;
-      TAB_DEFS.forEach((t, i) => { if (!p[t.key]) p[t.key] = { group_id: firstG, sort: 100 + i }; });
+      const gids = new Set(gs.map(g => g.id));
+      const p: any = { ...c.placement };
+      Object.keys(p).forEach(k => { if (p[k].group_id && !gids.has(p[k].group_id)) p[k] = { ...p[k], group_id: null }; });
+      TAB_DEFS.forEach((t, i) => { if (!p[t.key]) p[t.key] = { group_id: null, sort: 100 + i }; });
       setMgroups(gs); setPlace(p);
     }).catch(e => toast.error("메뉴 불러오기 실패: " + (e.message || e)));
   }, []);
@@ -122,7 +124,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
           ))}
           {itemsOf(null).length > 0 &&
             <div style={{ border: "1px dashed #c0392b", borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: "#c0392b", marginBottom: 6 }}>미분류 (그룹 지정 필요)</div>
+              <div style={{ fontWeight: 700, color: "#c0392b", marginBottom: 6 }}>미분류 (그룹 지정 필요) <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— 사이드바에는 '기타' 그룹으로 표시됩니다</span></div>
               {itemsOf(null).map(t => (
                 <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
                   <span style={{ fontSize: 16 }}>{t.icon}</span><span style={{ flex: 1 }}>{t.label}</span>
