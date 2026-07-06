@@ -4,13 +4,15 @@ import { parseInout } from "../lib/parseInout";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
 import { confirmDialog } from "../lib/confirm";
+import { nf1 as fmt } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
+import MonthPicker from "./MonthPicker";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
 const CFG: Record<InoutKind, Cfg> = {
   in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "#2563eb" },
   out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "#1aa260" },
 };
-const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 export default function DataImport({ kind }: { kind: InoutKind }) {
   const cfg = CFG[kind];
@@ -19,7 +21,9 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<InoutRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [selYm, setSelYm] = useState<string>("");
+  const [ymMap, setYmMap] = usePersistState<Record<string, string>>("inout.ym", {});
+  const selYm = ymMap[kind] || "";
+  const setSelYm = (v: string) => setYmMap(m => ({ ...m, [kind]: v }));
   const [loaded, setLoaded] = useState(false);
 
   const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
@@ -40,7 +44,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   }, [rows]);
 
   const months = byMonth.map(([ym]) => ym);
-  const curYm = selYm === "__all__" ? "__all__" : (selYm || months[0] || "");
+  const curYm = selYm === "__all__" ? "__all__" : ((months.includes(selYm) ? selYm : "") || months[0] || "");
   const detail = useMemo(() => {
     const f = curYm === "__all__" ? rows : rows.filter(r => r.ym === curYm);
     return [...f].sort((a, b) => a.idate < b.idate ? -1 : a.idate > b.idate ? 1 : (a.item_code < b.item_code ? -1 : 1));
@@ -134,10 +138,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
           <h4 style={{ margin: 0 }}>가져온 데이터</h4>
           {months.length > 0 &&
-            <select value={curYm} onChange={e => setSelYm(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}>
-              {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
-              <option value="__all__">전체</option>
-            </select>}
+            <MonthPicker months={[...months].sort()} value={curYm} onChange={setSelYm} allowAll allValue="__all__" />}
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}건 · 수량 합계 {fmt(detailQty)}</span>
         </div>
         {detail.length === 0 ? <p className="muted">{loaded ? "표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요." : "불러오는 중…"}</p> :

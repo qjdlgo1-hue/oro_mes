@@ -75,7 +75,6 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     else toast.error("이 브라우저에서 자동 복사 불가");
   }
 
-  const seg = (a: boolean): React.CSSProperties => ({ borderRadius: 0, fontSize: 13, background: a ? "#2563eb" : "#e7ebf1", color: a ? "#fff" : "#374151" });
   const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "left" };
   const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13 };
   const tdR: React.CSSProperties = { ...td, textAlign: "right" };
@@ -86,9 +85,9 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <h3 style={{ margin: 0 }}>🚚 배송 스케줄</h3>
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
-            <button className="btn" style={seg(view === "list")} onClick={() => setView("list")}>목록형</button>
-            <button className="btn" style={seg(view === "cal")} onClick={() => setView("cal")}>캘린더형</button>
+          <div className="seg">
+            <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>목록형</button>
+            <button className={view === "cal" ? "on" : ""} onClick={() => setView("cal")}>캘린더형</button>
           </div>
           <select value={cust} onChange={e => setCust(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}>
             <option value="__all__">전체 고객사</option>
@@ -102,9 +101,10 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
             </label>
             :
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <button className="btn ghost" onClick={prevM}>◀</button>
+              <button className="btn ghost" onClick={prevM} aria-label="이전 달">◀</button>
               <b>{cal.y}년 {cal.m}월</b>
-              <button className="btn ghost" onClick={nextM}>▶</button>
+              <button className="btn ghost" onClick={nextM} aria-label="다음 달">▶</button>
+              <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => { const d = new Date(); setSelDay(null); setCal({ y: d.getFullYear(), m: d.getMonth() + 1 }); }}>오늘</button>
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => window.print()}>🖨 인쇄</button>
         </div>
@@ -125,7 +125,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                   <tbody>
                     {list.map(r => (
                       <tr key={r.o.id}>
-                        <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "#2563eb" }}>
+                        <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "var(--accent)" }}>
                           {canEdit
                             ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                                 <input type="date" value={r.del} onChange={e => { if (e.target.value) setDeliver(r.o, e.target.value); }} style={{ padding: "2px 4px", border: "1px solid var(--line)", borderRadius: 4, fontSize: 12 }} />
@@ -169,7 +169,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td className="fixcol c-spec" style={{ left: 184 }} title={r.o.name}>{r.o.name}</td>
                         <td className="fixcol c-cust" style={{ left: 344 }} title={r.o.spec}>{r.o.spec}</td>
                         <td className="fixcol c-qty" style={{ left: 464 }}>{r.o.qty.toLocaleString()}</td>
-                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "#2563eb"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={async () => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else { if (await confirmDialog({ title: "배송일 이동", message: `${r.o.customer} · ${r.o.name}\n배송일을 ${r.del} → ${iso} 로 옮길까요?`, confirmLabel: "이동" })) setDeliver(r.o, iso); } }}>{isDel ? "●" : ""}</td>; })}
+                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "var(--accent)"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={async () => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else { if (await confirmDialog({ title: "배송일 이동", message: `${r.o.customer} · ${r.o.name}\n배송일을 ${r.del} → ${iso} 로 옮길까요?`, confirmLabel: "이동" })) setDeliver(r.o, iso); } }}>{isDel ? "●" : ""}</td>; })}
                       </tr>
                     );
                   })}
@@ -178,7 +178,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                 <tr>
                   <td className="fixcol c-no" /><td className="fixcol c-name" style={{ left: 34 }} /><td className="fixcol c-spec" style={{ left: 184 }} /><td className="fixcol c-cust" style={{ left: 344 }} />
                   <td className="fixcol c-qty" style={{ left: 464 }}>건수</td>
-                  {days.map(d => { const c = (byDay[`${calYm}-${p2(d)}`] || []).length; return <td key={d} className="day" style={{ fontWeight: c ? 700 : 400, color: c ? "#1f4e78" : "#ccc" }}>{c || ""}</td>; })}
+                  {days.map(d => { const c = (byDay[`${calYm}-${p2(d)}`] || []).length; return <td key={d} className="day" style={{ fontWeight: c ? 700 : 400, color: c ? "var(--accent)" : "#ccc" }}>{c || ""}</td>; })}
                 </tr>
               </tfoot>
             </table>

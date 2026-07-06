@@ -1,7 +1,8 @@
-:root{--bg:#f4f6fa;--panel:#fff;--line:#e3e8f0;--line2:#eef2f7;--navy:#1f4e78;--accent:#2f6cb0;
---muted:#6b7280;--wknd:#fbf2f2;--today:#fff7e6;--done:#d9d9d9;}
+/* ===== 디자인 토큰 (단일 정의 — ORO HR 톤: 라이트 + 블루) ===== */
+:root{--bg:#f4f5f7;--panel:#ffffff;--line:#e3e6ea;--line2:#eef0f3;--navy:#1f2330;--accent:#2563eb;
+--muted:#6b7280;--wknd:#fbf2f2;--today:#fff7e6;--done:#d9d9d9;--danger:#c0392b;--ok:#1aa260;--warn:#f59e0b;}
 *{box-sizing:border-box;}
-body{margin:0;font-family:"맑은 고딕","Malgun Gothic",system-ui,sans-serif;background:var(--bg);color:#1f2937;}
+body{margin:0;font-family:-apple-system,"Segoe UI","Malgun Gothic","맑은 고딕",sans-serif;background:var(--bg);color:var(--navy);}
 header.app{background:var(--navy);color:#fff;padding:10px 18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
 header.app h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.5px;}
 .tabs{display:flex;gap:6px;margin-left:8px;}
@@ -160,11 +161,6 @@ header.app{ position:sticky; top:0; z-index:50; min-height:52px; }
 }
 
 /* ============ ORO HR 톤 통일 (라이트 + 블루 #2563eb) ============ */
-:root{
-  --bg:#f4f5f7; --panel:#ffffff; --line:#e3e6ea; --line2:#eef0f3;
-  --navy:#1f2330; --accent:#2563eb; --muted:#6b7280;
-}
-body{ font-family:-apple-system,"Segoe UI","Malgun Gothic","맑은 고딕",sans-serif; color:var(--navy); }
 /* 라이트 헤더 (다크바 제거) */
 header.app{ background:#ffffff; color:var(--navy); border-bottom:1px solid var(--line); box-shadow:none; }
 header.app h1{ color:var(--navy); }
@@ -192,3 +188,14 @@ tfoot td.fixcol{ background:#eef2f6 !important; }
 /* HR 바로가기 링크 */
 .xlink{ color:var(--accent); text-decoration:none; font-size:13px; font-weight:600; padding:5px 11px; border:1px solid var(--line); border-radius:6px; background:#fff; white-space:nowrap; }
 .xlink:hover{ background:#eff6ff; }
+
+/* ===== 공통 UI (표/세그먼트/위험 버튼) ===== */
+button.btn.danger{ background:var(--danger); color:#fff; border:none; }
+.tbl{ border-collapse:collapse; width:100%; }
+.tbl th{ background:#f1f3f7; color:#374151; font-size:12px; font-weight:700; padding:6px 8px; text-align:left; position:sticky; top:0; z-index:2; border-bottom:1px solid var(--line); }
+.tbl td{ padding:5px 8px; border-bottom:1px solid var(--line2); font-size:13px; }
+.tbl th.r,.tbl td.r{ text-align:right; } .tbl th.c,.tbl td.c{ text-align:center; }
+.seg{ display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.seg button{ border:none; border-radius:0; background:#e7ebf1; color:#374151; font-family:inherit; font-size:13px; padding:7px 13px; cursor:pointer; }
+.seg button.on{ background:var(--accent); color:#fff; font-weight:700; }
+.seg.sub button.on{ background:#6b7f96; }

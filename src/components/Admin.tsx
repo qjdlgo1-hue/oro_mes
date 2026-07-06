@@ -114,7 +114,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
                 <input value={g.name} onChange={e => renameGroup(g.id, e.target.value)} style={{ fontWeight: 700, padding: 6, border: "1px solid var(--line)", borderRadius: 6, flex: 1 }} />
                 <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={gi === 0} onClick={() => moveGroup(gi, -1)}>▲</button>
                 <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={gi === mgroups.length - 1} onClick={() => moveGroup(gi, 1)}>▼</button>
-                <button className="btn" style={{ background: "#c0392b", padding: "2px 9px" }} onClick={() => removeGroup(g.id)}>삭제</button>
+                <button className="btn danger" style={{ padding: "2px 9px" }} onClick={() => removeGroup(g.id)}>삭제</button>
               </div>
               {itemsOf(g.id).map((t, ii, arr) => (
                 <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>

@@ -88,7 +88,7 @@ export default function ProdInOut() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0 }}>생산입고 vs 출하(판매) 비교</h3>
           <label style={{ fontSize: 13, color: "var(--muted)" }}>대상 월&nbsp;
-            <input value={month} onChange={e => setMonth(e.target.value)} placeholder="2026-06" style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, width: 100 }} />
+            <input type="month" value={month} onChange={e => { if (e.target.value) setMonth(e.target.value); }} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }} />
           </label>
           <button className="btn" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀 저장</button>
         </div>

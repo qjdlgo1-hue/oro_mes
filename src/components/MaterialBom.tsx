@@ -3,6 +3,8 @@ import { Order } from "../lib/types";
 import { listBom, upsertBom, logAudit, BomMap } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import { usePersistState } from "../lib/usePersist";
+import MonthPicker from "./MonthPicker";
 
 const BATCH = 50; // 50g 생산 기준
 const num = (n: number) => (Math.round(n * 100) / 100).toLocaleString("ko-KR");
@@ -10,7 +12,7 @@ const num = (n: number) => (Math.round(n * 100) / 100).toLocaleString("ko-KR");
 export default function MaterialBom({ orders }: { orders: Order[] }) {
   const canEdit = can("bom.edit");
   const [bom, setBom] = useState<BomMap>({});
-  const [ym, setYm] = useState("");
+  const [ym, setYm] = usePersistState("bom.ym", "");
   const [q, setQ] = useState("");
   const bomRef = useRef<HTMLDivElement>(null);
 
@@ -82,21 +84,18 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
 
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>월별 원재료 소비 <span className="muted">(발주량 ÷ 50 × 사용량)</span></h3>
-          <select value={curYm} onChange={e => setYm(e.target.value)} style={{ padding: 6 }}>
-            {months.length === 0 && <option>{curYm}</option>}
-            {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
-          </select>
+          <h3 style={{ margin: 0 }}>월별 원재료 소비 <span className="muted">(수주량 ÷ 50 × 사용량)</span></h3>
+          <MonthPicker months={[...months].sort()} value={curYm} onChange={setYm} />
         </div>
         {consume.length === 0 ? <p className="muted">이 달 생산(주문)이 없습니다.</p> :
           <div style={{ overflow: "auto", maxHeight: "55vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>{["거래처", "품목", "생산량(g)", "AgCN(g)", "PGC(g)"].map(h => <th key={h} style={{ ...TH, textAlign: h.includes("(g)") ? "right" : "left" }}>{h}</th>)}</tr></thead>
+              <thead><tr>{["거래처", "품목", "수주량(g)", "AgCN(g)", "PGC(g)"].map(h => <th key={h} style={{ ...TH, textAlign: h.includes("(g)") ? "right" : "left" }}>{h}</th>)}</tr></thead>
               <tbody>
                 {consume.map((r, i) => (
                   <tr key={i}>
                     <td style={TD}>{r.customer}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: "#2f6cb0", cursor: "pointer", textDecoration: "underline" }} title="위 BOM 입력으로 이동" onClick={() => focusProduct(r.name)}>{r.name}{!r.hasBom && <span style={{ color: "#c0392b", fontSize: 11, textDecoration: "none" }}> ⚠BOM미입력</span>}</td>
+                    <td style={{ ...TD, fontWeight: 700, color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }} title="위 BOM 입력으로 이동" onClick={() => focusProduct(r.name)}>{r.name}{!r.hasBom && <span style={{ color: "#c0392b", fontSize: 11, textDecoration: "none" }}> ⚠BOM미입력</span>}</td>
                     <td style={{ ...TD, textAlign: "right" }}>{num(r.qty)}</td>
                     <td style={{ ...TD, textAlign: "right" }}>{num(r.agcn)}</td>
                     <td style={{ ...TD, textAlign: "right" }}>{num(r.pgc)}</td>

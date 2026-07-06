@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell } from "recharts";
 import { ProdConsume, listProdConsume } from "../lib/db";
+import { nf, nf1, nf3 } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
+import MonthPicker from "./MonthPicker";
 
-const nf = (n: number) => Math.round(n).toLocaleString();
-const nf1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 const PIE = ["#2563eb", "#f59e0b", "#1aa260", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0", "#6b7280", "#14b8a6"];
 type PV = "prod" | "mat" | "std" | "unit";
 
 export default function ProdConsumeAnalysis() {
   const [rows, setRows] = useState<ProdConsume[]>([]);
-  const [view, setView] = useState<PV>("prod");
-  const [ym, setYm] = useState("");
+  const [view, setView] = usePersistState<PV>("pc.view", "prod");
+  const [ym, setYm] = usePersistState("pc.ym", "");
   const [selMat, setSelMat] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { listProdConsume().then(setRows).catch(() => {}).finally(() => setLoaded(true)); }, []);
@@ -62,7 +63,6 @@ export default function ProdConsumeAnalysis() {
 
   const totalProd = prodRows.reduce((s, r) => s + (Number(r.prod_qty) || 0), 0);
   const totalLoss = consRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const seg = (a: boolean): React.CSSProperties => ({ borderRadius: 0, fontSize: 13, background: a ? "#2563eb" : "#e7ebf1", color: a ? "#fff" : "#374151" });
   const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
   const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
@@ -87,12 +87,12 @@ export default function ProdConsumeAnalysis() {
       <div className="card" style={{ padding: 10 }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <b>🧪 생산·소모 분석</b>
-          <select value={ym} onChange={e => setYm(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}><option value="">전체 월</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", flexWrap: "wrap" }}>
-            <button className="btn" style={seg(view === "prod")} onClick={() => setView("prod")}>생산실적</button>
-            <button className="btn" style={seg(view === "mat")} onClick={() => setView("mat")}>원재료 소모</button>
-            <button className="btn" style={seg(view === "std")} onClick={() => setView("std")}>표준대비(수율·로스)</button>
-            <button className="btn" style={seg(view === "unit")} onClick={() => setView("unit")}>원단위(BOM)</button>
+          <MonthPicker months={months} value={ym} onChange={setYm} allowAll />
+          <div className="seg" style={{ flexWrap: "wrap" }}>
+            <button className={view === "prod" ? "on" : ""} onClick={() => setView("prod")}>생산실적</button>
+            <button className={view === "mat" ? "on" : ""} onClick={() => setView("mat")}>원재료 소모</button>
+            <button className={view === "std" ? "on" : ""} onClick={() => setView("std")}>표준대비(수율·로스)</button>
+            <button className={view === "unit" ? "on" : ""} onClick={() => setView("unit")}>원단위(BOM)</button>
           </div>
           <span className="muted" style={{ fontSize: 12, marginLeft: "auto" }}>생산합 {nf(totalProd)} · 로스 {nf(totalLoss)}원</span>
         </div>
@@ -147,7 +147,7 @@ export default function ProdConsumeAnalysis() {
 
       {view === "unit" &&
         <div className="card"><h4 style={{ marginTop: 0 }}>원단위 실측 (제품 1단위당 원재료 소모 = 실제 BOM)</h4><div style={{ overflow: "auto", maxHeight: "62vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th><th style={th}>생산량</th><th style={th}>원단위</th></tr></thead>
-          <tbody>{unitData.map((r, i) => <tr key={i}><td style={tdL}>{r.prod}</td><td style={tdL}>{r.mat}</td><td style={td}>{nf1(r.act)}</td><td style={td}>{nf1(r.prodQty)}</td><td style={{ ...td, fontWeight: 700, color: "#2563eb" }}>{(Math.round(r.unit * 1000) / 1000).toLocaleString()}</td></tr>)}</tbody></table></div>
+          <tbody>{unitData.map((r, i) => <tr key={i}><td style={tdL}>{r.prod}</td><td style={tdL}>{r.mat}</td><td style={td}>{nf1(r.act)}</td><td style={td}>{nf1(r.prodQty)}</td><td style={{ ...td, fontWeight: 700, color: "#2563eb" }}>{r.prodQty > 0 ? nf3(r.unit) : "계산불가"}</td></tr>)}</tbody></table></div>
           <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>원단위 = 실제소모 ÷ 생산량. 기존 원재료(BOM) 탭 추정치와 비교·보정.</p></div>}
     </div>
   );

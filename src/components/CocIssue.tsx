@@ -7,6 +7,7 @@ import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { supabase } from "../lib/supabase";
 import { useIsMobile } from "../lib/useIsMobile";
+import MonthPicker from "./MonthPicker";
 
 const TODAY = new Date();
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -193,10 +194,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
       <div className="sidebar no-print">
         <h3>주문 목록</h3>
         <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          <select value={ym} onChange={e => { const v = e.target.value; setCur({ y: +v.slice(0, 4), m: +v.slice(5, 7) }); setSel(null); }} style={{ width: "100%", padding: 6 }}>
-            {months.length === 0 && <option>{ym}</option>}
-            {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
-          </select>
+          <MonthPicker months={months} value={ym} onChange={v => { setCur({ y: +v.slice(0, 4), m: +v.slice(5, 7) }); setSel(null); }} />
           <div style={{ display: "flex", gap: 6 }}>
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setLogo}>로고{settings.logo ? " ✓" : ""}</button>
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setStamp}>도장{settings.stamp ? " ✓" : ""}</button>
@@ -248,7 +246,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
               {F("customer", "고객사")}{F("model", "모델명")}{F("size", "사이즈")}{F("comp", "조성")}
               {F("netwt", "중량(g)")}
-              <div><label style={lb}>생산일</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={effProd} disabled={locked} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260" }}>{prodManual ? <>직접수정 {!locked && <span style={{ color: "#2f6cb0", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span>}</> : "생산계획 자동"}</div></div>
+              <div><label style={lb}>생산일</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={effProd} disabled={locked} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260" }}>{prodManual ? <>직접수정 {!locked && <span style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span>}</> : "생산계획 자동"}</div></div>
               <div><label style={lb}>유효기간</label><input style={{ ...fI, background: "#f3f4f6" }} value={effExp} readOnly /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 10 }}>

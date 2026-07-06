@@ -306,7 +306,7 @@ export default function Receipts() {
                       {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "#6b7280", fontWeight: 400 }}>{r.memo}</span></div> : null}
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         {receiptImgs(r).length > 0 && <button className="btn ghost" style={{ flex: 1 }} onClick={() => openViewer(r)}>📎 원본 {receiptImgs(r).length}장</button>}
-                        {canEdit && <button className="btn" style={{ background: "#c0392b", flex: 1 }} onClick={() => del(r)}>삭제</button>}
+                        {canEdit && <button className="btn danger" style={{ flex: 1 }} onClick={() => del(r)}>삭제</button>}
                       </div>
                     </div>
                   );
@@ -329,7 +329,7 @@ export default function Receipts() {
                           <td style={cell}>{r.account}</td>
                           <td style={{ ...cell, color: warn ? "#b45309" : "#6b7280" }}>{warn ? `⚠ ${r.memo}` : r.memo}</td>
                           <td style={{ ...cell, textAlign: "center" }}>{receiptImgs(r).length ? <button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => openViewer(r)}>{receiptImgs(r).length}장</button> : <span style={{ color: "#c0392b" }}>없음</span>}</td>
-                          <td style={cell}>{canEdit && <button className="btn" style={{ background: "#c0392b", padding: "1px 7px", fontSize: 12 }} onClick={() => del(r)}>×</button>}</td>
+                          <td style={cell}>{canEdit && <button className="btn danger" style={{ padding: "1px 7px", fontSize: 12 }} aria-label="증빙 삭제" onClick={() => del(r)}>×</button>}</td>
                         </tr>
                       );
                     })}

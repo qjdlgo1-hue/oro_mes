@@ -92,7 +92,7 @@ export default function Today({ orders }: { orders: Order[] }) {
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 1040, gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
       <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
-        <span><b style={{ color: "#1f4e78", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
+        <span><b style={{ color: "var(--accent)", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "var(--accent)" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
         <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 12px", fontSize: 12 }} onClick={load} disabled={syncing}>{syncing ? "갱신 중…" : "🔄 새로고침"}</button>
         {lastSync && <span style={{ fontSize: 11 }}>갱신 {lastSync.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30초마다 자동</span>}
         {syncFail && <span style={{ fontSize: 11, color: "#c0392b", fontWeight: 700 }}>⚠ 갱신 실패 — 최신 데이터가 아닐 수 있음</span>}
@@ -102,7 +102,7 @@ export default function Today({ orders }: { orders: Order[] }) {
         {groups.late.map(g => <Row key={g.o.id} {...g} pl={g.p} late />)}
       </Section>
 
-      <Section title="🔵 오늘 생산" color="#2f6cb0" count={groups.today.length}>
+      <Section title="🔵 오늘 생산" color="var(--accent)" count={groups.today.length}>
         {groups.today.map(g => <Row key={g.o.id} {...g} pl={g.p} />)}
       </Section>
 

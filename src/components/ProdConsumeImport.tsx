@@ -5,16 +5,16 @@ import { parseProdConsume } from "../lib/parseProdConsume";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
-
-const nf = (n: number) => Math.round(n).toLocaleString();
-const nf1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
+import { nf, nf1 } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
+import MonthPicker from "./MonthPicker";
 
 export default function ProdConsumeImport() {
   const canEdit = can("order.import");
   const [rows, setRows] = useState<ProdConsume[]>([]);
   const [preview, setPreview] = useState<ProdConsume[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [ym, setYm] = useState("");
+  const [ym, setYm] = usePersistState("pcImport.ym", "");
   const [loaded, setLoaded] = useState(false);
   const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
   useEffect(() => { load(); }, []);
@@ -69,7 +69,7 @@ export default function ProdConsumeImport() {
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <h4 style={{ margin: 0 }}>저장된 데이터</h4>
-          {months.length > 0 && <select value={ym} onChange={e => setYm(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}><option value="">전체 월</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>}
+          {months.length > 0 && <MonthPicker months={months} value={ym} onChange={setYm} allowAll />}
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}행</span>
         </div>
         {detail.length === 0 ? <p className="muted">{loaded ? "데이터가 없습니다. 위에서 엑셀을 업로드하세요." : "불러오는 중…"}</p> :

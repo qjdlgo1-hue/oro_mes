@@ -4,8 +4,8 @@ import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
+import { nf as won } from "../lib/fmt";
 
-const won = (n: number) => (Math.round(n) || 0).toLocaleString();
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
 const blankItem = (): InspItem => ({ name: "", spec: "", unit: "EA", qty: 0, price: 0, note: "" });
@@ -168,7 +168,7 @@ export default function Support() {
           {canEdit && <>
             <button className="btn ghost" onClick={newProject} disabled={busy}>+ 새 공고</button>
             {project && <button className="btn ghost" onClick={editProject} disabled={busy}>공고 수정</button>}
-            {project && <button className="btn" style={{ background: "#c0392b" }} onClick={removeProject} disabled={busy}>공고 삭제</button>}
+            {project && <button className="btn danger" onClick={removeProject} disabled={busy}>공고 삭제</button>}
           </>}
         </div>
         {project && !projEdit &&
@@ -191,9 +191,9 @@ export default function Support() {
       </div>
 
       {project &&
-        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
-          <button className="btn" style={{ borderRadius: 0, background: tab === "insp" ? "#2563eb" : "#e7ebf1", color: tab === "insp" ? "#fff" : "#374151" }} onClick={() => setTab("insp")}>검수조서</button>
-          <button className="btn" style={{ borderRadius: 0, background: tab === "settle" ? "#2563eb" : "#e7ebf1", color: tab === "settle" ? "#fff" : "#374151" }} onClick={() => setTab("settle")}>정산내용</button>
+        <div className="seg" style={{ width: "fit-content" }}>
+          <button className={tab === "insp" ? "on" : ""} onClick={() => setTab("insp")}>검수조서</button>
+          <button className={tab === "settle" ? "on" : ""} onClick={() => setTab("settle")}>정산내용</button>
         </div>}
       {/* 저장된 검수조서 목록 */}
       {project && tab === "insp" &&
@@ -275,7 +275,7 @@ export default function Support() {
                 {(form.photos || []).map(ph => (
                   <div key={ph.path} style={{ position: "relative", width: 120 }}>
                     {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line)" }} /> : <div style={{ width: 120, height: 90, background: "#eee", borderRadius: 6 }} />}
-                    <button className="btn" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", background: "#c0392b", fontSize: 11 }} onClick={() => delPhoto(ph.path)}>×</button>
+                    <button className="btn danger" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", fontSize: 11 }} aria-label="사진 삭제" onClick={() => delPhoto(ph.path)}>×</button>
                     <input value={ph.caption || ""} onChange={e => setCaption(ph.path, e.target.value)} placeholder="캡션(설명)" style={{ ...inp, width: 120, padding: 4, fontSize: 11, marginTop: 3 }} />
                   </div>
                 ))}

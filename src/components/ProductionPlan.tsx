@@ -137,15 +137,15 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = 1; d <= nDays; d++) dayTot[d] += dayQty(o, p, d); });
   const weekTot = buckets.map(b => { let s = 0; rows.forEach(o => { const p = planOf(o); if (p.done) return; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); }); return s; });
 
-  const MonthNav = () => <div className="monthnav"><button onClick={prevM}>◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM}>▶</button></div>;
+  const MonthNav = () => <div className="monthnav"><button onClick={prevM} aria-label="이전 달">◀</button><b>{cur.y}년 {cur.m}월</b><button onClick={nextM} aria-label="다음 달">▶</button><button style={{ fontSize: 12 }} onClick={() => { setSelDay(null); setCur({ y: TODAY.getFullYear(), m: TODAY.getMonth() + 1 }); }}>오늘</button></div>;
   const FilterSel = () => <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: 8, borderRadius: 6 }}><option>제품+무형상품</option><option>제품</option><option value="전체">전체(원재료 포함)</option></select>;
   function toggleSort(key: "seq" | "name") { setSortBy(sb => sb.key === key ? { key, dir: (sb.dir === 1 ? -1 : 1) } : { key, dir: 1 }); }
   const arrow = (key: "seq" | "name") => sortBy.key === key ? (sortBy.dir === 1 ? " ▲" : " ▼") : "";
   const SortSel = () => (
-    <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden", alignItems: "center" }}>
-      <span style={{ fontSize: 12, color: "#6b7280", padding: "6px 8px", background: "#f5f7fa" }}>정렬</span>
-      <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: sortBy.key === "seq" ? "#6b7f96" : "#e3e8f0", color: sortBy.key === "seq" ? "#fff" : "#333" }} onClick={() => toggleSort("seq")}>번호순{arrow("seq")}</button>
-      <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: sortBy.key === "name" ? "#6b7f96" : "#e3e8f0", color: sortBy.key === "name" ? "#fff" : "#333" }} onClick={() => toggleSort("name")}>품목순{arrow("name")}</button>
+    <div className="seg sub" style={{ alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: "var(--muted)", padding: "6px 8px", background: "#f5f7fa" }}>정렬</span>
+      <button className={sortBy.key === "seq" ? "on" : ""} style={{ fontSize: 12 }} onClick={() => toggleSort("seq")}>번호순{arrow("seq")}</button>
+      <button className={sortBy.key === "name" ? "on" : ""} style={{ fontSize: 12 }} onClick={() => toggleSort("name")}>품목순{arrow("name")}</button>
     </div>
   );
 
@@ -164,9 +164,9 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
         {qModal}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           <MonthNav />
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-            <button className="btn" style={{ borderRadius: 0, background: mview === "cal" ? "#2f6cb0" : "#cdd8e6", color: mview === "cal" ? "#fff" : "#333" }} onClick={() => setMview("cal")}>캘린더</button>
-            <button className="btn" style={{ borderRadius: 0, background: mview === "list" ? "#2f6cb0" : "#cdd8e6", color: mview === "list" ? "#fff" : "#333" }} onClick={() => setMview("list")}>목록</button>
+          <div className="seg">
+            <button className={mview === "cal" ? "on" : ""} onClick={() => setMview("cal")}>캘린더</button>
+            <button className={mview === "list" ? "on" : ""} onClick={() => setMview("list")}>목록</button>
           </div>
           <FilterSel />
           <SortSel />
@@ -176,7 +176,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
           mview === "cal" ? (
             <div className="card" style={{ padding: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
-                {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "#2f6cb0" : "#6b7280" }}>{w}</div>)}
+                {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "var(--accent)" : "#6b7280" }}>{w}</div>)}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
                 {cells.map((d, i) => {
@@ -186,11 +186,11 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                   const dow = new Date(cur.y, cur.m - 1, d).getDay();
                   return (
                     <button key={d} onClick={() => setSelDay(d)} style={{
-                      aspectRatio: "1/1", border: selDay === d ? "2px solid #1f4e78" : "1px solid var(--line)", borderRadius: 8,
+                      aspectRatio: "1/1", border: selDay === d ? "2px solid var(--accent)" : "1px solid var(--line)", borderRadius: 8,
                       background: t > 0 ? `rgba(26,162,96,${0.15 + 0.55 * intensity})` : (isToday ? "#fff7e6" : "#fff"),
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 2, cursor: "pointer"
                     }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: dow === 0 ? "#c0392b" : dow === 6 ? "#2f6cb0" : "#1c2128" }}>{d}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: dow === 0 ? "#c0392b" : dow === 6 ? "var(--accent)" : "#1c2128" }}>{d}</span>
                       {t > 0 && <span style={{ fontSize: 9, color: intensity > 0.5 ? "#fff" : "#15663f", fontWeight: 700 }}>{Math.round(t).toLocaleString()}</span>}
                     </button>
                   );
@@ -225,7 +225,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <label style={{ fontSize: 12, color: "#6b7280" }}>시작일<input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
                     <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)<input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span} onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })} style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-                    <div style={{ fontSize: 12, color: "#1f4e78" }}>완료일<br /><b>{cp}</b></div>
+                    <div style={{ fontSize: 12, color: "var(--accent)" }}>완료일<br /><b>{cp}</b></div>
                   </div>
                   {canEdit && <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 10, width: "100%" }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료 처리"}</button>}
                 </div>
@@ -244,20 +244,20 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
         <MonthNav />
         <FilterSel />
         <SortSel />
-        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-          <button className="btn" style={{ borderRadius: 0, background: view === "day" ? "#2f6cb0" : "#cdd8e6", color: view === "day" ? "#fff" : "#333" }} onClick={() => setView("day")}>일별</button>
-          <button className="btn" style={{ borderRadius: 0, background: view === "week" ? "#2f6cb0" : "#cdd8e6", color: view === "week" ? "#fff" : "#333" }} onClick={() => setView("week")}>주별</button>
+        <div className="seg">
+          <button className={view === "day" ? "on" : ""} onClick={() => setView("day")}>일별</button>
+          <button className={view === "week" ? "on" : ""} onClick={() => setView("week")}>주별</button>
         </div>
         {view === "week" &&
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-            <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: anchor === "mon" ? "#6b7f96" : "#e3e8f0", color: anchor === "mon" ? "#fff" : "#333" }} onClick={() => setAnchor("mon")}>월요일 시작</button>
-            <button className="btn ghost" style={{ borderRadius: 0, fontSize: 12, background: anchor === "first" ? "#6b7f96" : "#e3e8f0", color: anchor === "first" ? "#fff" : "#333" }} onClick={() => setAnchor("first")}>1일 기준</button>
+          <div className="seg sub">
+            <button className={anchor === "mon" ? "on" : ""} style={{ fontSize: 12 }} onClick={() => setAnchor("mon")}>월요일 시작</button>
+            <button className={anchor === "first" ? "on" : ""} style={{ fontSize: 12 }} onClick={() => setAnchor("first")}>1일 기준</button>
           </div>}
         {view === "day" &&
           <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <span className="muted" style={{ fontSize: 12 }}>열너비</span>
-            <button className="btn ghost" style={{ padding: "4px 10px" }} onClick={() => setDayw(w => Math.max(18, w - 4))}>－</button>
-            <button className="btn ghost" style={{ padding: "4px 10px" }} onClick={() => setDayw(w => Math.min(48, w + 4))}>＋</button>
+            <button className="btn ghost" style={{ padding: "4px 10px" }} aria-label="열너비 줄이기" onClick={() => setDayw(w => Math.max(18, w - 4))}>－</button>
+            <button className="btn ghost" style={{ padding: "4px 10px" }} aria-label="열너비 늘리기" onClick={() => setDayw(w => Math.min(48, w + 4))}>＋</button>
           </div>}
         <span className="muted">· {rows.length}개 주문 {view === "day" ? "· 막대 드래그=이동 / 오른쪽끝=기간 / 더블클릭=완료" : "· 주별은 합계 보기(편집은 일별에서)"}{!canEdit ? " · 보기 전용(편집 권한 없음)" : ""}</span>
       </div>
@@ -296,7 +296,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                         </div>
                       </td>
                     ) : (
-                      buckets.map((b, i) => { let s = 0; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); return <td key={i} className="day" style={{ width: 70, minWidth: 70, background: p.done ? "#eee" : (s ? "#eaf3ea" : "#fff"), color: p.done ? "#999" : "#1f4e78", fontWeight: s ? 700 : 400, textDecoration: p.done ? "line-through" : "none" }}>{s ? Math.round(s).toLocaleString() : ""}</td>; })
+                      buckets.map((b, i) => { let s = 0; for (let d = b.s; d <= b.e; d++) s += dayQty(o, p, d); return <td key={i} className="day" style={{ width: 70, minWidth: 70, background: p.done ? "#eee" : (s ? "#eaf3ea" : "#fff"), color: p.done ? "#999" : "var(--accent)", fontWeight: s ? 700 : 400, textDecoration: p.done ? "line-through" : "none" }}>{s ? Math.round(s).toLocaleString() : ""}</td>; })
                     )}
                   </tr>
                 );
