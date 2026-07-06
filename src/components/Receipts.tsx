@@ -35,6 +35,7 @@ const won = (n: any) => (Number(n) || 0).toLocaleString("ko-KR");
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const emptyForm = (): Receipt => ({ rdate: todayIso(), vendor: "", bizno: "", supply: 0, vat: 0, total: 0, rtype: "카드", account: "복리후생비", memo: "" });
 function quarterOf(rdate: string) { const y = rdate.slice(0, 4); const m = +rdate.slice(5, 7); return `${y}-${m <= 6 ? 1 : 2}기`; }
+const periodLabelOf = (q: string) => { const m = q.match(/^(\d{4})-(\d)기$/); return m ? `${m[1]}년 ${m[2]}기` : q; }; // "2026-1기" → "2026년 1기"
 function fileToBase64(file: File): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(new Error("파일 읽기 실패")); r.readAsDataURL(file); });
 }
@@ -223,7 +224,17 @@ export default function Receipts() {
     <div style={{ display: "grid", gap: 16 }}>
       <div className="card" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
         <div style={{ flex: 1, minWidth: 180 }}><label style={lbl}>회사명</label><input style={{ ...fin, marginBottom: 0 }} value={company} onChange={e => setCompany(e.target.value)} /></div>
-        <div style={{ flex: 1, minWidth: 180 }}><label style={lbl}>대상기간(메모)</label><input style={{ ...fin, marginBottom: 0 }} placeholder="예: 2026년 1기 (1~6월)" value={period} onChange={e => setPeriod(e.target.value)} /></div>
+        <div style={{ flex: 1, minWidth: 180 }}><label style={lbl}>대상기간 <span className="muted" style={{ fontWeight: 400 }}>(분기 필터 선택 시 자동 연동)</span></label>
+          <select style={{ ...fin, marginBottom: 0 }} value={period} onChange={e => setPeriod(e.target.value)}>
+            <option value="">(미지정)</option>
+            {(() => {
+              const years = [...new Set([...rows.map(r => r.rdate.slice(0, 4)), String(new Date().getFullYear())])].sort((a, b) => a < b ? 1 : -1);
+              const opts = years.flatMap(y => [`${y}년 1기`, `${y}년 2기`]);
+              if (period && !opts.includes(period)) opts.unshift(period); // 기존 자유 입력값 보존
+              return opts.map(o => <option key={o} value={o}>{o}</option>);
+            })()}
+          </select>
+        </div>
       </div>
 
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "380px 1fr", alignItems: "start" }} className="rcpt-grid">
@@ -293,7 +304,7 @@ export default function Receipts() {
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             <h3 style={{ margin: 0 }}>≡ 증빙 목록 {shown.length ? `(${shown.length}건)` : ""}</h3>
-            <select value={qFilter} onChange={e => setQFilter(e.target.value)} style={{ padding: 6 }}>{quarters.map(q => <option key={q} value={q}>{q}</option>)}</select>
+            <select value={qFilter} onChange={e => { const v = e.target.value; setQFilter(v); if (v !== "전체") setPeriod(periodLabelOf(v)); }} style={{ padding: 6 }}>{quarters.map(q => <option key={q} value={q}>{q}</option>)}</select>
             <button className="btn green" onClick={exportExcel}>📊 엑셀</button>
             <button className="btn" disabled={pdfBusy} onClick={pdfSummary}>{pdfBusy ? "⏳ 생성 중…" : "📄 PDF 요약본"}</button>
             <button className="btn ghost" disabled={busy} onClick={zipOriginals}>{busy ? "⏳ 압축 중…" : "🗂 원본 ZIP"}</button>

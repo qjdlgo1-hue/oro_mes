@@ -25,6 +25,7 @@ export default function Support() {
   const [imgCache, setImgCache] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"insp" | "settle">("insp");
+  const [showPreview, setShowPreview] = useState(false);
   const [settleAll, setSettleAll] = useState(false);
   const certRef = useRef<HTMLDivElement>(null);
 
@@ -289,11 +290,13 @@ export default function Support() {
           </div>
         </div>}
 
-      {/* 미리보기 (PDF 캡처 대상) */}
+      {/* 미리보기 (PDF 캡처 대상) — 접혀 있어도 PDF 저장이 되도록 화면 밖에 렌더 유지 */}
       {form && project && tab === "insp" &&
         <div className="card" style={{ overflow: "auto" }}>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>미리보기 (이 모양대로 PDF 저장됩니다)</div>
-          <div ref={certRef} style={isMobile ? ({ zoom: Math.min(1, (window.innerWidth - 60) / 720) } as any) : undefined}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)", marginBottom: showPreview ? 6 : 0, cursor: "pointer", userSelect: "none" }} onClick={() => setShowPreview(v => !v)}>
+            <b style={{ color: "var(--navy)" }}>{showPreview ? "▼" : "▶"} 미리보기</b> (이 모양대로 PDF 저장됩니다) — 클릭해서 {showPreview ? "접기" : "펼치기"}
+          </div>
+          <div ref={certRef} style={!showPreview ? { position: "fixed", left: -10000, top: 0, width: 760 } : (isMobile ? ({ zoom: Math.min(1, (window.innerWidth - 60) / 720) } as any) : undefined)}>
             <div className="pdf-page" style={pageStyle}>
             <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
             <h2 style={{ textAlign: "center", letterSpacing: 10, margin: "4px 0 18px", fontSize: 24 }}>검 수 조 서</h2>
