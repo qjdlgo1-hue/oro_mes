@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
@@ -70,6 +71,16 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     catch (e: any) { toast.error("저장 실패: " + (e?.message || e)); listPlans().then(setPlans); }
   }
   const periodLabel = lo === hi ? lo : `${lo} ~ ${hi}`;
+  function exportXlsx() {
+    const list = view === "cal" ? calRowsList : listRows;
+    if (!list.length) { toast.error("내보낼 배송 건이 없습니다."); return; }
+    const aoa: any[][] = [["고객사", "배송예정일", "품목", "규격", "수량(g)", "생산완료일", "지정"],
+      ...list.map(r => [r.o.customer || "", r.del, r.o.name, r.o.spec, r.o.qty, r.base, r.manual ? "수동" : "자동"])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "배송스케줄");
+    XLSX.writeFile(wb, `배송스케줄_${view === "cal" ? calYm : periodLabel.replace(/\s/g, "")}.xlsx`);
+    toast.success("엑셀 저장 완료");
+  }
   function copyText(title: string, list: Row[]) {
     const lines = list.map(r => `${r.del}  ${r.o.customer || ""}  ${r.o.name} (${r.o.spec})  ${r.o.qty.toLocaleString()}g`);
     const txt = [title, ...lines].join("\n");
@@ -108,7 +119,8 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
               <button className="btn ghost" onClick={nextM} aria-label="다음 달">▶</button>
               <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => { const d = new Date(); setSelDay(null); setCal({ y: d.getFullYear(), m: d.getMonth() + 1 }); }}>오늘</button>
             </div>}
-          <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => window.print()}>🖨 인쇄</button>
+          <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀</button>
+          <button className="btn ghost" onClick={() => window.print()}>🖨 인쇄</button>
         </div>
         <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(●파랑=자동, ◆주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시. 배송예정일 칸에서 날짜를 직접 바꿀 수 있어요(◆주황=수동, 자동=되돌리기)."}</p>
       </div>

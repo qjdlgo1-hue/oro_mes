@@ -10,6 +10,19 @@ import { money } from "../lib/fmt";
 
 const ROLES = ["master", "manager", "user"];
 
+// 접을 수 있는 섹션 카드 — 관리자 페이지가 길어 스크롤 부담을 줄임
+function Sec({ title, sub, defaultOpen = false, children }: { title: React.ReactNode; sub?: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0, marginBottom: open ? undefined : 0, cursor: "pointer", userSelect: "none" }} onClick={() => setOpen(o => !o)}>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>{open ? "▼" : "▶"}</span> {title} {sub && <span className="muted" style={{ fontWeight: 400 }}>{sub}</span>}
+      </h3>
+      {open && children}
+    </div>
+  );
+}
+
 export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }: { onRoleChange: () => void; onMenuOrderChange: () => void; onDataChange?: () => void }) {
   const isMobile = useIsMobile();
   const [mgroups, setMgroups] = useState<MenuGroupRow[]>([]);
@@ -136,8 +149,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>메뉴 구성 <span className="muted">(그룹·순서 — PC 사이드바·모바일 메뉴 공통)</span></h3>
+      <Sec title="메뉴 구성" sub="(그룹·순서 — PC 사이드바·모바일 메뉴 공통)">
         <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
           {mgroups.map((g, gi) => (
             <div key={g.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
@@ -174,10 +186,9 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           </div>
           <p className="muted" style={{ fontSize: 12 }}>저장 후 각 사용자는 새로고침/로그인 때 반영됩니다. (권한·메뉴표시로 숨긴 메뉴는 안 보입니다)</p>
         </div>
-      </div>
+      </Sec>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>사용자 / 역할</h3>
+      <Sec title="사용자 / 역할" defaultOpen>
         {!loaded && <div className="muted" style={{ padding: 8 }}>불러오는 중…</div>}
         {loaded && users.length === 0 && <div className="muted" style={{ padding: 8 }}>사용자가 없습니다.</div>}
         {isMobile ? (
@@ -208,10 +219,9 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           </tbody>
         </table>
         )}
-      </div>
+      </Sec>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>신규 사용자 추가</h3>
+      <Sec title="신규 사용자 추가">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input placeholder="이메일" value={nf.email} onChange={e => setNf({ ...nf, email: e.target.value })} style={{ padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} />
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -224,10 +234,11 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           <button className="btn green" disabled={busy} onClick={createUser}>추가</button>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>계정은 즉시 생성되고 이메일 인증 없이 바로 로그인 가능합니다. 비밀번호는 서버에서 암호화 저장됩니다.</p>
-      </div>
+      </Sec>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>🗑 휴지통 <span className="muted" style={{ fontSize: 12 }}>(삭제된 주문·증빙 — 복구하거나 영구 삭제)</span></h3>
+      <Sec key={trash.orders.length + trash.receipts.length > 0 ? "trash-y" : "trash-n"}
+        title={`🗑 휴지통${trash.orders.length + trash.receipts.length > 0 ? ` (${trash.orders.length + trash.receipts.length})` : ""}`}
+        sub="(삭제된 주문·증빙 — 복구하거나 영구 삭제)" defaultOpen={trash.orders.length + trash.receipts.length > 0}>
         {trash.orders.length === 0 && trash.receipts.length === 0 ? <p className="muted">휴지통이 비어 있습니다.</p> :
           <div style={{ display: "grid", gap: 6 }}>
             {trash.orders.map(o => (
@@ -252,7 +263,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
             ))}
           </div>}
         <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>주문을 복구하면 연결된 생산계획·COC도 함께 돌아옵니다. 증빙 원본 사진은 영구 삭제 전까지 보존됩니다.</p>
-      </div>
+      </Sec>
 
       <Matrix title="권한 매트릭스 (작업 허용)" items={CAPS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} />
       <Matrix title="메뉴 표시 (탭 보이기)" items={MENUS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} note="권한이 없으면 자동으로 숨겨지고, 여기서 추가로 수동 숨김도 됩니다." />
@@ -265,8 +276,7 @@ function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
   TH: React.CSSProperties; TD: React.CSSProperties; toggle: (role: string, cap: string, val: boolean) => void; note?: string;
 }) {
   return (
-    <div className="card">
-      <h3 style={{ marginTop: 0 }}>{title} <span className="muted">(Master는 항상 전체)</span></h3>
+    <Sec title={title} sub="(Master는 항상 전체)">
       <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 320 }}>
         <thead><tr>
@@ -291,6 +301,6 @@ function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
       </table>
       </div>
       {note && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{note}</p>}
-    </div>
+    </Sec>
   );
 }

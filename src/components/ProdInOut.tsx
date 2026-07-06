@@ -9,9 +9,9 @@ const toNum = (s: string) => { const v = parseFloat((s || "").replace(/,/g, ""))
 
 // 이카운트 화면/엑셀 붙여넣기(헤더 포함) → 품목코드별 수량 합계.
 // 헤더에서 품목코드/품목명/수량 열을 자동 인식. 없으면 코드 패턴(C0001 등)으로 보조 인식.
-function parseByItem(text: string): { rows: Agg[]; total: number; lines: number } {
+function parseByItem(text: string): { rows: Agg[]; total: number; lines: number; guessed: boolean } {
   const lines = text.split(/\r?\n/).map(l => l.replace(/ /g, " ")).filter(l => l.trim());
-  if (!lines.length) return { rows: [], total: 0, lines: 0 };
+  if (!lines.length) return { rows: [], total: 0, lines: 0, guessed: false };
 
   let headerIdx = -1, ci = -1, ni = -1, qi = -1;
   for (let i = 0; i < Math.min(lines.length, 6); i++) {
@@ -43,7 +43,9 @@ function parseByItem(text: string): { rows: Agg[]; total: number; lines: number 
   }
   const rows = [...map.values()].sort((a, b) => (a.code || a.name) < (b.code || b.name) ? -1 : 1);
   const total = rows.reduce((s, r) => s + r.qty, 0);
-  return { rows, total, lines: counted };
+  // 헤더(품목코드/수량 열)를 못 찾아 추정으로 합산한 경우 — 화면에 경고 표시용
+  const guessed = rows.length > 0 && (headerIdx < 0 || ci < 0 || qi < 0);
+  return { rows, total, lines: counted, guessed };
 }
 
 const ym = () => { const t = new Date(); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`; };
@@ -103,11 +105,13 @@ export default function ProdInOut() {
           <h4 style={{ marginTop: 0 }}>📥 생산입고 데이터</h4>
           <textarea value={inText} onChange={e => setInText(e.target.value)} placeholder="이카운트 [생산입고 조회] 표 붙여넣기..." style={box} />
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>인식: <b>{inAgg.rows.length}</b>개 품목 · 합계 <b>{fmt(inAgg.total)}</b></p>
+          {inAgg.guessed && <p style={{ fontSize: 12, color: "#b45309", background: "#fff7e6", borderRadius: 6, padding: "6px 8px" }}>⚠ 표 머리글(품목코드/수량)을 찾지 못해 <b>추정 값</b>으로 합산했습니다. 숫자가 틀릴 수 있으니 머리글까지 포함해 다시 복사하세요.</p>}
         </div>
         <div className="card">
           <h4 style={{ marginTop: 0 }}>📤 출하(판매현황) 데이터</h4>
           <textarea value={outText} onChange={e => setOutText(e.target.value)} placeholder="이카운트 [판매현황] 표 붙여넣기..." style={box} />
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>인식: <b>{outAgg.rows.length}</b>개 품목 · 합계 <b>{fmt(outAgg.total)}</b></p>
+          {outAgg.guessed && <p style={{ fontSize: 12, color: "#b45309", background: "#fff7e6", borderRadius: 6, padding: "6px 8px" }}>⚠ 표 머리글(품목코드/수량)을 찾지 못해 <b>추정 값</b>으로 합산했습니다. 숫자가 틀릴 수 있으니 머리글까지 포함해 다시 복사하세요.</p>}
         </div>
       </div>
 

@@ -13,8 +13,6 @@ type View = "in" | "out" | "pc";
 type Unit = "year" | "quarter" | "month";
 type Trade = "all" | "내자" | "외자";
 
-const PIE = ["#2563eb", "#f59e0b", "#1aa260", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0"];
-
 export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const [view, setView] = usePersistState<View>("dash.view", "in");
   const [unit, setUnit] = usePersistState<Unit>("dash.unit", "month");
@@ -217,7 +215,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
                   <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v: any) => nf(v) + (isIn ? " g" : " 원")} />
-                  <Bar dataKey="value" fill="#2563eb">{byItem.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
+                  <Bar dataKey="value" fill="var(--accent)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -232,7 +230,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
                     <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: any) => nf(v) + " 원"} />
-                    <Bar dataKey="value" fill="#1aa260">{byCust.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
+                    <Bar dataKey="value" fill="#1aa260" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
