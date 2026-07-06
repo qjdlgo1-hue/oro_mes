@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan, updateOrder, logAudit } from "../lib/db";
@@ -66,7 +67,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
     const prev = plans;
     setPlans(cur => ({ ...cur, [p.order_id]: p })); setTick(t => t + 1);
     try { await upsertPlan(p); }
-    catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일정 저장 실패(권한/네트워크 확인): " + (e?.message || e)); }
+    catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일정 저장 실패(권한/네트워크 확인): " + errMsg(e)); }
   }
   function prevM() { setSelDay(null); setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
   function nextM() { setSelDay(null); setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
@@ -96,7 +97,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
       if (syncOrder) { await updateOrder(o.id, { qty: v }); await commit({ ...base, qty: null }); logAudit("주문+생산수량 변경", "order", o.id, { qty: v }); onChange?.(); }
       else { await commit({ ...base, qty: v }); logAudit("생산수량 변경", "plan", o.id, { qty: v }); }
       toast.success(`저장 완료 (${v.toLocaleString()}g${syncOrder ? ", 주문 반영" : ""})`);
-    } catch (e: any) { toast.error("저장 실패: " + (e?.message || e)); }
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setEditId(null); setSyncOrder(false);
   }
   async function resetQty() { const o = orders.find(x => x.id === editId); if (!o) return; await commit({ ...planOf(o), qty: null }); logAudit("생산수량 초기화", "plan", o.id, {}); setEditId(null); }

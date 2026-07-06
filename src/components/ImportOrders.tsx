@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry, CocData } from "../lib/types";
@@ -25,7 +26,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     const ord: Order = { ...no, id, ym: no.order_date.slice(0, 7), qty: Number(no.qty) };
     setBusy(true);
     try { await appendOrders([ord]); await logAudit("주문 직접추가", "order", id, { name: ord.name, qty: ord.qty }); toast.success("주문 추가됨 (수동입력)"); setNo(blankOrder()); onChange(); }
-    catch (e: any) { toast.error("추가 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
     setBusy(false);
   }
   const [pasteText, setPasteText] = useState("");
@@ -95,7 +96,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       const buf = await f.arrayBuffer();
       const wb = XLSX.read(buf, { cellDates: true });
       doPreview(parseRows(XLSX.utils.sheet_to_json<any[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true })));
-    } catch (er: any) { toast.error("엑셀 읽기 실패: " + (er.message || er)); }
+    } catch (er: any) { toast.error("엑셀 읽기 실패: " + errMsg(er)); }
     e.target.value = "";
   }
 
@@ -108,7 +109,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       await logAudit("주문 동기화", "order", "", { added: toAdd.length, months: [...new Set(toAdd.map(o => o.ym))] });
       toast.success(`신규 ${toAdd.length}건 추가 완료 (중복 ${dupCount}건은 유지)`);
       setPreview([]); setPasteText(""); onChange();
-    } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function loadSample() {
@@ -117,7 +118,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       const ms = [...new Set(sampleOrders.map(o => o.ym))];
       for (const m of ms) await replaceMonth(m, sampleOrders.filter(o => o.ym === m));
       toast.success("데모 데이터(2026 1~6월) 불러오기 완료"); onChange();
-    } catch (e: any) { toast.error("실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -129,7 +130,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       await updateOrder(id, patch);
       await logAudit("주문 수정", "order", id, patch);
       toast.success("수정 저장됨 (생산계획·COC 연결 유지)"); setEditId(null); onChange();
-    } catch (e: any) { toast.error("수정 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("수정 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function removeOrder(o: Order) {
@@ -146,7 +147,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       await deleteOrder(o.id);
       await logAudit("주문 삭제", "order", o.id, { name: o.name, qty: o.qty, date: o.order_date });
       toast.success("휴지통으로 이동됨 (관리자 페이지에서 복구 가능)"); onChange();
-    } catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -177,6 +178,23 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
             <div style={{ marginTop: 12, padding: 10, background: "#f5f9ff", borderRadius: 8 }}>
               <div style={{ fontSize: 13, marginBottom: 8 }}>
                 <b style={{ color: "#1aa260" }}>신규 {newCount}건</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}건</b>
+              </div>
+              <div style={{ overflow: "auto", maxHeight: 240, border: "1px solid var(--line)", borderRadius: 8, background: "#fff", marginBottom: 8 }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                  <thead><tr>{["상태", "주문일", "구분", "품목명", "규격", "수량", "거래처"].map(h =>
+                    <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0, textAlign: "left" }}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {marked.slice(0, 30).map(({ o, dup }, i) => (
+                      <tr key={i} style={dup ? { opacity: .5 } : undefined}>
+                        <td style={cell}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                        <td style={cell}>{o.order_date}</td><td style={cell}>{o.gubun}</td>
+                        <td style={{ ...cell, fontWeight: 700 }}>{o.name}</td><td style={cell}>{o.spec}</td>
+                        <td style={{ ...cell, textAlign: "right" }}>{o.qty.toLocaleString()}</td><td style={cell}>{o.customer}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {marked.length > 30 && <div className="muted" style={{ padding: "6px 8px", fontSize: 11 }}>… 외 {marked.length - 30}건</div>}
               </div>
               <button className="btn green" onClick={syncNew} disabled={busy || !canImport}>동기화 — 신규 {newCount}건 추가</button>
               <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>

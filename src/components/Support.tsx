@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageBlobToDataUrl, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
@@ -27,7 +28,7 @@ export default function Support() {
   const [settleAll, setSettleAll] = useState(false);
   const certRef = useRef<HTMLDivElement>(null);
 
-  const loadP = () => listProjects().then(setProjects).catch(e => toast.error("과제 불러오기 실패: " + (e.message || e)));
+  const loadP = () => listProjects().then(setProjects).catch(e => toast.error("과제 불러오기 실패: " + errMsg(e)));
   const loadI = () => listInspections().then(setInsps).catch(() => {});
   useEffect(() => { loadP(); loadI(); }, []);
 
@@ -50,7 +51,7 @@ export default function Support() {
     if (!projEdit) return; if (!projEdit.name?.trim()) { toast.error("과제명을 입력하세요."); return; }
     setBusy(true);
     try { const saved = await upsertProject(projEdit); await loadP(); setPid(saved.id!); setProjEdit(null); logAudit("과제 저장", "project", saved.id || "", { name: saved.name }); toast.success("과제 저장됨"); }
-    catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function removeProject() {
@@ -64,7 +65,7 @@ export default function Support() {
     if (!ok) return;
     setBusy(true);
     try { await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -107,7 +108,7 @@ export default function Support() {
 
   function pickUpload(cb: (path: string) => void) {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-    inp.onchange = async () => { const file = inp.files?.[0]; if (!file) return; setBusy(true); try { const path = await storageUpload("coc", file); const u = await storageBlobToDataUrl("coc", path); if (u) setImgCache(c => ({ ...c, [path]: u })); cb(path); } catch (e: any) { toast.error("업로드 실패: " + (e.message || e)); } setBusy(false); };
+    inp.onchange = async () => { const file = inp.files?.[0]; if (!file) return; setBusy(true); try { const path = await storageUpload("coc", file); const u = await storageBlobToDataUrl("coc", path); if (u) setImgCache(c => ({ ...c, [path]: u })); cb(path); } catch (e: any) { toast.error("업로드 실패: " + errMsg(e)); } setBusy(false); };
     inp.click();
   }
   const addSign = () => pickUpload(path => setF({ sign_path: path }));
@@ -120,14 +121,14 @@ export default function Support() {
     if (!withinPeriod && !(await confirmDialog({ title: "협약기간 확인", message: "검수일자가 협약기간을 벗어납니다. 그래도 저장할까요?", confirmLabel: "저장" }))) return;
     setBusy(true);
     try { const saved = await upsertInspection({ ...form, items: rows }); await loadI(); setForm({ ...saved, items: saved.items && saved.items.length ? saved.items : [blankItem()], photos: saved.photos || [] }); logAudit("검수조서 저장", "inspection", saved.id || "", {}); toast.success("검수조서 저장됨"); }
-    catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function removeInsp(i: Inspection) {
     if (!(await confirmDialog({ title: "검수조서 삭제", message: `${i.inspect_date || "-"} 검수조서(${(i.items || []).length}품목)를 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
     setBusy(true);
     try { await deleteInspection(i.id!); await loadI(); if (form?.id === i.id) setForm(null); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function savePdf() {
@@ -150,7 +151,7 @@ export default function Support() {
       const clean = (x?: string) => (x || "").replace(/[\\/:*?"<>|\s]+/g, "");
       pdf.save(`검수조서_${clean(project?.name).slice(0, 16)}_${form.inspect_date || todayIso()}.pdf`);
       logAudit("검수조서 PDF", "inspection", form.id || "", {});
-    } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("PDF 생성 실패: " + errMsg(e)); }
     finally { setBusy(false); }
   }
 

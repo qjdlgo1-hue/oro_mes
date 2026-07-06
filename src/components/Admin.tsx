@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useState } from "react";
 import { CAPS, MENUS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
 import { logAudit } from "../lib/db";
@@ -35,7 +36,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       Object.keys(p).forEach(k => { if (p[k].group_id && !gids.has(p[k].group_id)) p[k] = { ...p[k], group_id: null }; });
       TAB_DEFS.forEach((t, i) => { if (!p[t.key]) p[t.key] = { group_id: null, sort: 100 + i }; });
       setMgroups(gs); setPlace(p);
-    }).catch(e => toast.error("메뉴 불러오기 실패: " + (e.message || e)));
+    }).catch(e => toast.error("메뉴 불러오기 실패: " + errMsg(e)));
   }, []);
   const itemsOf = (gid: string | null) => TAB_DEFS.filter(t => (place[t.key]?.group_id ?? null) === gid).sort((a, b) => (place[a.key]?.sort || 0) - (place[b.key]?.sort || 0));
   const renameGroup = (id: string, name: string) => setMgroups(gs => gs.map(g => g.id === id ? { ...g, name } : g));
@@ -45,7 +46,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
     const g = mgroups.find(x => x.id === id);
     if (!(await confirmDialog({ title: "그룹 삭제", message: `'${g?.name || ""}' 그룹을 삭제할까요?\n속한 메뉴는 '미분류'로 이동합니다.`, danger: true, confirmLabel: "삭제" }))) return;
     try { await deleteMenuGroup(id); setMgroups(gs => gs.filter(g => g.id !== id)); setPlace(p => { const n: any = { ...p }; Object.keys(n).forEach(k => { if (n[k].group_id === id) n[k] = { ...n[k], group_id: null }; }); return n; }); toast.success("그룹 삭제됨"); onMenuOrderChange(); }
-    catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
   function moveItem(key: string, dir: number) {
     const gid = place[key]?.group_id ?? null; const arr = itemsOf(gid); const i = arr.findIndex(t => t.key === key); const j = i + dir; if (j < 0 || j >= arr.length) return;
@@ -60,7 +61,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       await saveMenuConfig(gs, placements);
       await logAudit("메뉴 구성 변경", "menu", "", { groups: gs.length });
       toast.success("메뉴 구성 저장됨 (새로고침/로그인 시 반영)"); onMenuOrderChange();
-    } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
   }
   const [users, setUsers] = useState<any[]>([]);
   const [matrix, setMatrix] = useState<Record<string, boolean>>({}); // `${role}:${cap}` -> bool
@@ -75,7 +76,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       setUsers(u);
       const mm: Record<string, boolean> = {}; m.forEach((r: any) => { mm[`${r.role}:${r.capability}`] = r.allowed; });
       setMatrix(mm);
-    } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("불러오기 실패: " + errMsg(e)); }
     setLoaded(true);
   }
   useEffect(() => { load(); }, []);
@@ -90,7 +91,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       if (kind === "order") await restoreOrder(it.id); else await restoreReceipt(it.id);
       await logAudit("휴지통 복구", kind, it.id, { name: it.name || it.vendor });
       toast.success("복구됨"); await loadTrash(); onDataChange?.();
-    } catch (e: any) { toast.error("복구 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("복구 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function purgeItem(kind: "order" | "receipt", it: any) {
@@ -106,7 +107,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       else await purgeReceipt(it.id, (it.image_paths && it.image_paths.length ? it.image_paths : (it.image_path ? [it.image_path] : [])));
       await logAudit("휴지통 영구삭제", kind, it.id, { name: it.name || it.vendor });
       toast.success("영구 삭제됨"); await loadTrash();
-    } catch (e: any) { toast.error("영구 삭제 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("영구 삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -115,13 +116,13 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
   async function changeRole(u: any, role: string) {
     setBusy(true);
     try { await setRole(u.id, role); await logAudit("역할 변경", "profile", u.id, { email: u.email, role }); toast.success(`${u.email} → ${role}`); await load(); onRoleChange(); }
-    catch (e: any) { toast.error("실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function toggle(role: string, cap: string, val: boolean) {
     setMatrix(m => ({ ...m, [`${role}:${cap}`]: val }));
     try { await setPermission(role, cap, val); await logAudit("권한 변경", "perm", `${role}.${cap}`, { allowed: val }); }
-    catch (e: any) { toast.error("권한 저장 실패: " + (e.message || e)); load(); }
+    catch (e: any) { toast.error("권한 저장 실패: " + errMsg(e)); load(); }
   }
   async function createUser() {
     if (!nf.email || !nf.password) { toast.error("이메일과 비밀번호를 입력하세요."); return; }
@@ -131,7 +132,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       await adminCreateUser(nf.email.trim(), nf.password, nf.role);
       await logAudit("사용자 생성", "user", nf.email, { role: nf.role });
       toast.success(`사용자 생성 완료: ${nf.email}`); setNf({ email: "", password: "", role: "user" }); await load();
-    } catch (e: any) { toast.error("생성 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("생성 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function resetPw(u: any) {
@@ -140,7 +141,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
     if (pw.length < 6) { toast.error("비밀번호는 6자 이상."); return; }
     setBusy(true);
     try { await adminResetPassword(u.id, pw); await logAudit("비번 재설정", "user", u.id, { email: u.email }); toast.success("비밀번호 변경됨"); }
-    catch (e: any) { toast.error("실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("실패: " + errMsg(e)); }
     setBusy(false);
   }
 

@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Receipt } from "../lib/types";
@@ -54,7 +55,7 @@ export default function Receipts() {
   function receiptImgs(r: Receipt): string[] { return (r.image_paths && r.image_paths.length ? r.image_paths : (r.image_path ? [r.image_path] : [])) as string[]; }
   async function openViewer(r: Receipt) {
     try { const paths = receiptImgs(r); const urls = await Promise.all(paths.map(async p => ({ path: p, url: (await receiptSignedUrl(p)) || "" }))); setViewer({ r, urls }); }
-    catch (e: any) { toast.error("원본 열기 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("원본 열기 실패: " + errMsg(e)); }
   }
   function pickOneFile(cb: (f: File) => void) { const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.onchange = () => { const f = i.files?.[0]; if (f) cb(f); }; i.click(); }
   async function addPhotoTo(r: Receipt) {
@@ -70,7 +71,7 @@ export default function Receipts() {
         const url = (await receiptSignedUrl(path)) || "";
         setViewer(v => v && v.r.id === r.id ? { r: { ...v.r, image_paths: next }, urls: [...v.urls, { path, url }] } : v);
         await reload();
-      } catch (e: any) { toast.error("추가 실패: " + (e.message || e)); }
+      } catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
       setBusy(false);
     });
   }
@@ -82,7 +83,7 @@ export default function Receipts() {
   const attachRef = useRef<HTMLInputElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
 
-  async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); } setLoaded(true); }
+  async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + errMsg(e)); } setLoaded(true); }
   useEffect(() => { reload(); }, []);
   useEffect(() => {
     if (!viewer) return;
@@ -116,7 +117,7 @@ export default function Receipts() {
       await addReceipt({ ...rec, supply, vat, total: Number(rec.total), company, period }, file);
       await logAudit("증빙 추가", "receipt", "", { vendor: rec.vendor, total: rec.total, image: !!file });
       toast.success("목록에 추가됨" + (file ? " (원본 저장)" : "")); if (!r) { setForm(emptyForm()); setFormFile(null); } await reload();
-    } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function del(r: Receipt) {
@@ -130,12 +131,12 @@ export default function Receipts() {
     if (!ok) return;
     setBusy(true);
     try { await deleteReceipt(r.id, receiptImgs(r)); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("휴지통으로 이동됨 (관리자 페이지에서 복구 가능)"); await reload(); }
-    catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function viewOriginal(path: string) {
     try { const url = await receiptSignedUrl(path); if (url) window.open(url, "_blank"); else toast.error("원본을 열 수 없습니다."); }
-    catch (e: any) { toast.error("원본 열기 실패: " + (e.message || e)); }
+    catch (e: any) { toast.error("원본 열기 실패: " + errMsg(e)); }
   }
 
   async function processFiles(files: File[]) {
@@ -152,7 +153,7 @@ export default function Receipts() {
         let total = Number(rec["합계"]) || 0, supply = Number(rec["공급가액"]) || 0, vat = Number(rec["부가세"]) || 0;
         if (total && !supply) { supply = Math.round(total / 1.1); vat = total - supply; }
         found.push({ rdate: rec["거래일자"] || todayIso(), vendor: rec["거래처명"] || "", bizno: rec["사업자번호"] || "", supply, vat, total, rtype: rec["증빙유형"] || "카드", account: rec["계정과목"] || "기타", memo: rec["비고"] || "", file: files[i] });
-      } catch (err: any) { toast.error(`${i + 1}번째 사진 인식 실패: ${err.message || err}`); }
+      } catch (err: any) { toast.error(`${i + 1}번째 사진 인식 실패: ${errMsg(err)}`); }
     }
     setScanning(""); setQueue(q => [...q, ...found]);
     if (found.length) toast.success(`${found.length}건 인식됨 — 확인 후 추가하세요 (원본 자동 보관)`);
@@ -192,7 +193,7 @@ export default function Receipts() {
         sY += h; first = false;
       }
       pdf.save(`증빙요약_${periodLabel || todayIso()}.pdf`);
-    } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("PDF 생성 실패: " + errMsg(e)); }
     finally { setPdfBusy(false); }
   }
 
@@ -210,7 +211,7 @@ export default function Receipts() {
       const out = await zip.generateAsync({ type: "blob" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(out); a.download = `증빙원본_${periodLabel || "전체"}.zip`; a.click();
       logAudit("증빙 원본 ZIP", "receipt", "", { count: withImg.length, q: periodLabel });
-    } catch (e: any) { toast.error("ZIP 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("ZIP 실패: " + errMsg(e)); }
     setBusy(false);
   }
 

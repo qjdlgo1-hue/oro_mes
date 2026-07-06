@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Order } from "../lib/types";
 import { listBom, upsertBom, logAudit, BomMap } from "../lib/db";
@@ -16,7 +17,7 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
   const [q, setQ] = useState("");
   const bomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { listBom().then(setBom).catch(e => toast.error("불러오기 실패: " + (e.message || e))); }, []);
+  useEffect(() => { listBom().then(setBom).catch(e => toast.error("불러오기 실패: " + errMsg(e))); }, []);
 
   const prodOrders = useMemo(() => orders.filter(o => o.gubun === "제품" || o.gubun === "무형상품"), [orders]);
   const products = useMemo(() => {
@@ -31,7 +32,7 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
     const prev = bom[name] || { agcn: 0, pgc: 0 };
     const next = { ...prev, [field]: field === "note" ? v : Number(v) || 0 };
     setBom(b => ({ ...b, [name]: next }));
-    upsertBom(name, { [field]: next[field] } as any).then(() => logAudit("BOM 수정", "bom", name, { [field]: next[field] })).catch(e => toast.error("저장 실패: " + (e.message || e)));
+    upsertBom(name, { [field]: next[field] } as any).then(() => logAudit("BOM 수정", "bom", name, { [field]: next[field] })).catch(e => toast.error("저장 실패: " + errMsg(e)));
   }
 
   const months = useMemo(() => [...new Set(orders.map(o => o.ym))].sort((a, b) => a < b ? 1 : -1), [orders]);
