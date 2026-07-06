@@ -373,12 +373,28 @@ export function pcSig(r: Omit<ProdConsume, "sig" | "id">): string {
   return [r.idate ?? "", r.prod_code, r.mat_code || "", r.prod_qty ?? "", r.std_qty ?? "", r.act_qty ?? "", r.amount ?? ""].join("|");
 }
 export async function listProdConsume(): Promise<ProdConsume[]> {
-  if (supabase) { const { data, error } = await supabase.from("prod_consume").select("*").order("idate"); if (error) throw error; return (data || []) as ProdConsume[]; }
+  if (supabase) {
+    const all: ProdConsume[] = []; const size = 1000;
+    for (let from = 0; ; from += size) {
+      const { data, error } = await supabase.from("prod_consume").select("*").order("idate").range(from, from + size - 1);
+      if (error) throw error;
+      const batch = (data || []) as ProdConsume[];
+      all.push(...batch);
+      if (batch.length < size) break;
+    }
+    return all;
+  }
   return lsGet<ProdConsume[]>("oro_prodconsume", []);
 }
 export async function appendProdConsume(rows: ProdConsume[]): Promise<void> {
   if (!rows.length) return;
-  if (supabase) { const { error } = await supabase.from("prod_consume").upsert(rows, { onConflict: "sig", ignoreDuplicates: true }); if (error) throw error; return; }
+  if (supabase) {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("prod_consume").upsert(rows.slice(i, i + 500), { onConflict: "sig", ignoreDuplicates: true });
+      if (error) throw error;
+    }
+    return;
+  }
   const all = lsGet<ProdConsume[]>("oro_prodconsume", []); const seen = new Set(all.map(r => r.sig)); lsSet("oro_prodconsume", [...all, ...rows.filter(r => !seen.has(r.sig))]);
 }
 export async function clearProdConsume(): Promise<void> {

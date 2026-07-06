@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from "recharts";
 import * as XLSX from "xlsx";
 import { InoutRow, listInout, listPlans } from "../lib/db";
+import ProdConsumeAnalysis from "./ProdConsumeAnalysis";
 import { Order, PlanEntry } from "../lib/types";
 import { toast } from "../lib/toast";
 
-type View = "in" | "out";
+type View = "in" | "out" | "pc";
 type Unit = "year" | "quarter" | "month";
 type Trade = "all" | "내자" | "외자";
 
@@ -118,7 +119,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      {ovp.length > 0 &&
+      {view !== "pc" && ovp.length > 0 &&
         <div className="card">
           <h4 style={{ marginTop: 0 }}>월별 수주 vs 생산(계획) 요약 <span className="muted" style={{ fontSize: 12 }}>· 수주=주문수량, 생산=생산계획수량</span></h4>
           <div style={{ width: "100%", height: 260 }}>
@@ -159,9 +160,11 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
-            <button className="btn" style={seg(isIn)} onClick={() => setView("in")}>🏭 생산</button>
-            <button className="btn" style={seg(!isIn)} onClick={() => setView("out")}>💰 판매</button>
+            <button className="btn" style={seg(view === "in")} onClick={() => setView("in")}>🏭 생산</button>
+            <button className="btn" style={seg(view === "out")} onClick={() => setView("out")}>💰 판매</button>
+            <button className="btn" style={seg(view === "pc")} onClick={() => setView("pc")}>🧪 생산·소모</button>
           </div>
+          {view !== "pc" && <>
           <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
             {(["year", "quarter", "month"] as Unit[]).map(u => (
               <button key={u} className="btn" style={seg(unit === u)} onClick={() => setUnit(u)}>{u === "year" ? "연도별" : u === "quarter" ? "분기별" : "월별"}</button>
@@ -187,13 +190,14 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
               ))}
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀</button>
+          </>}
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>
+        {view !== "pc" && <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>
           {isIn ? "생산입고 수량(g) 기준" : "판매 공급가액(부가세 제외) 기준"} · 막대를 누르면 {unit === "year" ? "분기" : unit === "quarter" ? "월" : "상세"}로 펼쳐집니다.
-        </p>
+        </p>}
       </div>
 
-      {empty ? <div className="card"><p className="muted">데이터가 없습니다. '{isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.</p></div> :
+      {view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">데이터가 없습니다. '{isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.</p></div> :
       <>
         {/* KPI */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
