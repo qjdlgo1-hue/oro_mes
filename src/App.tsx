@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Order } from "./lib/types";
-import { listOrders, backendName, getMenuConfig, MenuGroupRow, MenuPlacement } from "./lib/db";
+import { Order, PlanEntry } from "./lib/types";
+import { listOrders, listPlans, backendName, getMenuConfig, MenuGroupRow, MenuPlacement } from "./lib/db";
+import { completionDate } from "./lib/plan";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
 import { ConfirmHost } from "./lib/confirm";
@@ -15,6 +16,11 @@ function parseHash(): { tab: TabKey | null; param: string | null } {
   const [t, param] = window.location.hash.replace(/^#/, "").split("/");
   return { tab: TAB_KEY_SET.has(t) ? (t as TabKey) : null, param: param || null };
 }
+// 메인 메뉴(그룹) 아이콘 — 이름 매핑, 없으면 첫 항목 아이콘
+const GROUP_ICONS: Record<string, string> = {
+  "현장": "🏭", "가져오기": "📥", "데이터": "📥", "분석": "📊", "대시보드": "📊",
+  "경영지원": "📁", "관리": "📁", "시스템": "⚙️", "기록": "🗂️", "기타": "📂", "메뉴": "📂",
+};
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
@@ -35,6 +41,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>(() => parseHash().tab || "today");
   const [cocFocus, setCocFocus] = useState<string | null>(() => parseHash().param);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabase);
@@ -43,6 +50,31 @@ export default function App() {
   const [placement, setPlacement] = useState<MenuPlacement>({});
   const { can, role, loaded: permLoaded } = useCaps();
   const isMobile = useIsMobile();
+
+  // 레일: 📌 고정(기억) + 호버 인텐트(스침 오작동 방지: 열림 150ms / 닫힘 300ms 지연)
+  const [pinned, setPinned] = useState(() => { try { return localStorage.getItem("oro_rail_pin") === "1"; } catch { return false; } });
+  const [railOpen, setRailOpen] = useState(false);
+  const tOpen = useRef<number | null>(null);
+  const tClose = useRef<number | null>(null);
+  const railEnter = () => { if (tClose.current) window.clearTimeout(tClose.current); tOpen.current = window.setTimeout(() => setRailOpen(true), 150); };
+  const railLeave = () => { if (tOpen.current) window.clearTimeout(tOpen.current); tClose.current = window.setTimeout(() => setRailOpen(false), 300); };
+  const togglePin = () => setPinned(p => { try { localStorage.setItem("oro_rail_pin", p ? "0" : "1"); } catch { /* 무시 */ } return !p; });
+
+  // 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시
+  const [subHidden, setSubHidden] = useState(false);
+  useEffect(() => {
+    if (!isMobile) { setSubHidden(false); return; }
+    let last = window.scrollY;
+    const onS = () => {
+      const y = window.scrollY;
+      if (y < 40) setSubHidden(false);
+      else if (y > last + 6) setSubHidden(true);
+      else if (y < last - 6) setSubHidden(false);
+      last = y;
+    };
+    window.addEventListener("scroll", onS, { passive: true });
+    return () => window.removeEventListener("scroll", onS);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -53,7 +85,10 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setOrders(await listOrders()); } catch (e) { console.error(e); }
+    try {
+      const [os, pl] = await Promise.all([listOrders(), listPlans().catch(() => ({}))]);
+      setOrders(os); setPlans(pl as Record<string, PlanEntry>);
+    } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
   const reloadMenu = useCallback(() => { getMenuConfig().then(c => { setGroups(c.groups); setPlacement(c.placement); }).catch(() => {}); }, []);
@@ -73,6 +108,17 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
+
+  const curLabel = (TAB_DEFS.find(t => t.key === tab)?.label) || "";
+  useEffect(() => { document.title = curLabel ? `${curLabel} · ORO MES` : "ORO MES"; }, [curLabel]);
+
+  // 지연 생산 배지(현장): 완료 전인데 완료예정일이 지난 계획 수
+  const lateCount = useMemo(() => {
+    const t = new Date(); const p = (n: number) => String(n).padStart(2, "0");
+    const today = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+    const oset = new Set(orders.map(o => o.id));
+    return Object.values(plans).filter(pl => !pl.done && oset.has(pl.order_id) && (completionDate(pl) || "9999") < today).length;
+  }, [plans, orders]);
 
   if (!authReady) return <div className="wrap muted">불러오는 중…</div>;
   if (hasSupabase && !session) return <Login />;
@@ -107,7 +153,10 @@ export default function App() {
   if (navGroups.length === 0) navGroups = [{ id: "_all", name: "메뉴", items: visible }];
   else if (unplaced.length) navGroups = [...navGroups, { id: "_etc", name: "기타", items: unplaced }];
 
-  const curLabel = (TAB_DEFS.find(t => t.key === tab)?.label) || "";
+  const iconOf = (g: { name: string; items: { icon: string }[] }) => GROUP_ICONS[g.name] || g.items[0]?.icon || "📂";
+  const curGroup = navGroups.find(g => g.items.some(i => i.key === tab)) || navGroups[0];
+  const hasPop = (g: { items: { key: string }[] }) => g.items.some(i => i.key === "today");
+
   const NavList = ({ onPick }: { onPick: () => void }) => (
     <>
       {navGroups.map(g => (
@@ -119,6 +168,15 @@ export default function App() {
             </button>
           ))}
         </div>
+      ))}
+    </>
+  );
+
+  const SubTabs = () => (
+    <>
+      <span className="subnav-grp">{iconOf(curGroup)} {curGroup?.name}</span>
+      {curGroup?.items.map(t => (
+        <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => nav(t.key)}>{t.label}</button>
       ))}
     </>
   );
@@ -143,32 +201,71 @@ export default function App() {
     }
   };
 
+  // ===== 모바일: 상단 헤더(햄버거) + 보조 탭(스크롤 올리면 표시) + 드로어 =====
+  if (isMobile) {
+    return (
+      <>
+        <header className="app">
+          <button className="hamb" onClick={() => setDrawer(true)} aria-label="메뉴">☰</button>
+          <h1>ORO MES</h1>
+          <span className="curtab">{curLabel}</span>
+          <span className="badge" style={{ marginLeft: "auto" }}>
+            {session?.user?.email && role}
+            {supabase && session && <button className="btn ghost" style={{ marginLeft: 8, padding: "3px 10px", fontSize: 12 }}
+              onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
+          </span>
+        </header>
+
+        <nav className={"subnav subnav-m" + (subHidden ? " hide" : "")} aria-label="보조 메뉴"><SubTabs /></nav>
+
+        {drawer &&
+          <div className="drawer-overlay" onClick={() => setDrawer(false)}>
+            <div className="drawer" onClick={e => e.stopPropagation()}>
+              <div className="drawer-head"><b>메뉴</b><button onClick={() => setDrawer(false)}>✕</button></div>
+              <NavList onPick={() => setDrawer(false)} />
+              <div style={{ padding: "12px 16px", borderTop: "1px solid var(--line)", marginTop: 8 }}>
+                <a className="xlink" href="https://hr.orocorp.kr">HR 연차 ↗</a>
+              </div>
+            </div>
+          </div>}
+
+        <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
+        <ToastHost />
+        <ConfirmHost />
+      </>
+    );
+  }
+
+  // ===== PC: 아이콘 레일(호버 펼침 + 📌고정) + 상단 보조 탭(항상 고정) =====
+  const railWide = pinned || railOpen;
   return (
     <>
-      <header className="app">
-        {isMobile && <button className="hamb" onClick={() => setDrawer(true)} aria-label="메뉴">☰</button>}
-        <h1>ORO MES</h1>
-        {isMobile && <span className="curtab">{curLabel}</span>}
-        <a className="xlink" href="https://hr.orocorp.kr" style={{ marginLeft: "auto" }}>HR 연차 ↗</a>
-        <span className="badge" style={{ marginLeft: 10 }}>
-          {!isMobile && <>{backendName} · 주문 {orders.length}건 </>}
-          {session?.user?.email && <>{isMobile ? role : `· ${session.user.email} (${role})`}</>}
-          {supabase && session && <button className="btn ghost" style={{ marginLeft: 10, padding: "3px 10px", fontSize: 12 }}
-            onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
-        </span>
-      </header>
+      <nav className={"mrail" + (railWide ? " open" : "")} aria-label="메인 메뉴"
+        onMouseEnter={railEnter} onMouseLeave={railLeave}>
+        <div className="mrail-brand">{railWide ? "ORO MES" : "ORO"}</div>
+        {navGroups.map(g => (
+          <button key={g.id} className={"mrail-item" + (g.id === curGroup?.id ? " on" : "")} title={g.name}
+            onClick={() => { if (!g.items.some(i => i.key === tab) && g.items[0]) nav(g.items[0].key); }}>
+            <span className="ic">{iconOf(g)}{hasPop(g) && lateCount > 0 && <span className="bdg" title={`지연 생산 ${lateCount}건`}>{lateCount}</span>}</span>
+            <span className="lb">{g.name}</span>
+          </button>
+        ))}
+        <div className="mrail-pin">
+          <button className={pinned ? "on" : ""} onClick={togglePin} title="메뉴를 항상 펼쳐두기">{pinned ? "📌 고정됨" : railWide ? "📌 고정" : "📌"}</button>
+        </div>
+      </nav>
 
-      {isMobile && drawer &&
-        <div className="drawer-overlay" onClick={() => setDrawer(false)}>
-          <div className="drawer" onClick={e => e.stopPropagation()}>
-            <div className="drawer-head"><b>메뉴</b><button onClick={() => setDrawer(false)}>✕</button></div>
-            <NavList onPick={() => setDrawer(false)} />
-          </div>
-        </div>}
-
-      <div className="shell">
-        {!isMobile && <nav className="sidebar-nav"><NavList onPick={() => {}} /></nav>}
-        <div className="content"><div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div></div>
+      <div className={"mrail-main" + (pinned ? " wide" : "")}>
+        <div className="subnav" role="navigation" aria-label="보조 메뉴">
+          <SubTabs />
+          <span className="subnav-right">
+            <span className="muted">{backendName} · 주문 {orders.length}건{session?.user?.email ? ` · ${session.user.email} (${role})` : ""}</span>
+            <a className="xlink" href="https://hr.orocorp.kr">HR ↗</a>
+            {supabase && session && <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }}
+              onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
+          </span>
+        </div>
+        <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
       </div>
       <ToastHost />
       <ConfirmHost />
