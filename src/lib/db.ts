@@ -310,6 +310,28 @@ export async function storageBlobToDataUrl(bucket: string, path: string): Promis
   const b = await storageBlob(bucket, path); if (!b) return null;
   return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(b); });
 }
+// base64 대신 blob URL — 대용량 사진을 문자열로 메모리에 들고 있지 않아 모바일에서 훨씬 가벼움
+export async function storageObjectUrl(bucket: string, path: string): Promise<string | null> {
+  const b = await storageBlob(bucket, path); if (!b) return null;
+  return URL.createObjectURL(b);
+}
+// 업로드 전 사진 축소(긴 변 maxW, JPEG) — 폰 원본(수 MB)을 그대로 올리지 않게
+export async function downscaleImage(file: File, maxW = 1600, quality = 0.85): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    URL.revokeObjectURL(url);
+    const sc = Math.min(1, maxW / Math.max(img.width, img.height));
+    if (sc >= 1 && file.size < 700 * 1024) return file; // 이미 작으면 그대로
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    const blob = await new Promise<Blob | null>(res => c.toBlob(res, "image/jpeg", quality));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch { return file; }
+}
 
 // ---- 원재료(BOM) ----
 export type BomMap = Record<string, { agcn: number; pgc: number; note?: string }>;

@@ -1,6 +1,6 @@
 import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageBlobToDataUrl, logAudit } from "../lib/db";
+import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageObjectUrl, downscaleImage, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
@@ -26,6 +26,7 @@ export default function Support() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"insp" | "settle">("insp");
   const [showPreview, setShowPreview] = useState(false);
+  const [pdfRender, setPdfRender] = useState(false); // PDF 생성 순간에만 미리보기를 임시 마운트
   const [settleAll, setSettleAll] = useState(false);
   const certRef = useRef<HTMLDivElement>(null);
 
@@ -43,7 +44,7 @@ export default function Support() {
     let warned = false;
     paths.forEach(p => {
       if (!p || imgCache[p]) return;
-      storageBlobToDataUrl("coc", p)
+      storageObjectUrl("coc", p) // blob URL: base64보다 메모리를 훨씬 적게 씀(모바일 새로고침 방지)
         .then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); })
         .catch(e => { console.warn("이미지 로드 실패:", p, e); if (!warned) { warned = true; toast.error("서명/증빙사진 원본을 불러오지 못했습니다 — 파일이 삭제됐거나 네트워크 문제일 수 있습니다."); } });
     });
@@ -115,7 +116,16 @@ export default function Support() {
 
   function pickUpload(cb: (path: string) => void) {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-    inp.onchange = async () => { const file = inp.files?.[0]; if (!file) return; setBusy(true); try { const path = await storageUpload("coc", file); const u = await storageBlobToDataUrl("coc", path); if (u) setImgCache(c => ({ ...c, [path]: u })); cb(path); } catch (e: any) { toast.error("업로드 실패: " + errMsg(e)); } setBusy(false); };
+    inp.onchange = async () => {
+      const raw = inp.files?.[0]; if (!raw) return; setBusy(true);
+      try {
+        const file = await downscaleImage(raw); // 폰 원본을 긴 변 1600px JPEG로 축소 후 업로드
+        const path = await storageUpload("coc", file);
+        const u = await storageObjectUrl("coc", path); if (u) setImgCache(c => ({ ...c, [path]: u }));
+        cb(path);
+      } catch (e: any) { toast.error("업로드 실패: " + errMsg(e)); }
+      setBusy(false);
+    };
     inp.click();
   }
   const addSign = () => pickUpload(path => setF({ sign_path: path }));
@@ -139,10 +149,12 @@ export default function Support() {
     setBusy(false);
   }
   async function savePdf() {
-    if (!form || !certRef.current || busy) return;
+    if (!form || busy) return;
     setBusy(true);
     try {
       toast.info("PDF 만드는 중…");
+      if (!showPreview) { setPdfRender(true); await new Promise(r => setTimeout(r, 250)); } // 접힘 상태면 잠시 마운트
+      if (!certRef.current) throw new Error("미리보기를 준비하지 못했습니다. 다시 시도하세요.");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = 10;
@@ -159,7 +171,7 @@ export default function Support() {
       pdf.save(`검수조서_${clean(project?.name).slice(0, 16)}_${form.inspect_date || todayIso()}.pdf`);
       logAudit("검수조서 PDF", "inspection", form.id || "", {});
     } catch (e: any) { toast.error("PDF 생성 실패: " + errMsg(e)); }
-    finally { setBusy(false); }
+    finally { setPdfRender(false); setBusy(false); }
   }
 
   const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 };
@@ -296,12 +308,13 @@ export default function Support() {
           </div>
         </div>}
 
-      {/* 미리보기 (PDF 캡처 대상) — 접혀 있어도 PDF 저장이 되도록 화면 밖에 렌더 유지 */}
+      {/* 미리보기 (PDF 캡처 대상) — 접힘 상태에서는 렌더하지 않음(모바일 메모리 보호), PDF 생성 순간에만 임시 마운트 */}
       {form && project && tab === "insp" &&
         <div className="card" style={{ overflow: "auto" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)", marginBottom: showPreview ? 6 : 0, cursor: "pointer", userSelect: "none" }} onClick={() => setShowPreview(v => !v)}>
             <b style={{ color: "var(--navy)" }}>{showPreview ? "▼" : "▶"} 미리보기</b> (이 모양대로 PDF 저장됩니다) — 클릭해서 {showPreview ? "접기" : "펼치기"}
           </div>
+          {(showPreview || pdfRender) &&
           <div ref={certRef} style={!showPreview ? { position: "fixed", left: -10000, top: 0, width: 760 } : (isMobile ? ({ zoom: Math.min(1, (window.innerWidth - 60) / 720) } as any) : undefined)}>
             <div className="pdf-page" style={pageStyle}>
             <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
@@ -358,7 +371,7 @@ export default function Support() {
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
         </div>}
       {project && tab === "settle" &&
         <div className="card">

@@ -38,6 +38,24 @@ import MaterialBom from "./components/MaterialBom";
 import Admin from "./components/Admin";
 import Login from "./components/Login";
 
+// 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시 — 스크롤 상태를 여기에 가둬서 앱 전체가 스크롤마다 리렌더되지 않게 함
+function MobileSubnav({ children }: { children: React.ReactNode }) {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onS = () => {
+      const y = window.scrollY;
+      if (y < 40) setHidden(false);
+      else if (y > last + 6) setHidden(true);
+      else if (y < last - 6) setHidden(false);
+      last = y;
+    };
+    window.addEventListener("scroll", onS, { passive: true });
+    return () => window.removeEventListener("scroll", onS);
+  }, []);
+  return <nav className={"subnav subnav-m" + (hidden ? " hide" : "")} aria-label="보조 메뉴">{children}</nav>;
+}
+
 export default function App() {
   const [tab, setTab] = useState<TabKey>(() => parseHash().tab || "today");
   const [cocFocus, setCocFocus] = useState<string | null>(() => parseHash().param);
@@ -60,22 +78,6 @@ export default function App() {
   const railEnter = () => { if (tClose.current) window.clearTimeout(tClose.current); tOpen.current = window.setTimeout(() => setRailOpen(true), 150); };
   const railLeave = () => { if (tOpen.current) window.clearTimeout(tOpen.current); tClose.current = window.setTimeout(() => setRailOpen(false), 300); };
   const togglePin = () => setPinned(p => { try { localStorage.setItem("oro_rail_pin", p ? "0" : "1"); } catch { /* 무시 */ } return !p; });
-
-  // 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시
-  const [subHidden, setSubHidden] = useState(false);
-  useEffect(() => {
-    if (!isMobile) { setSubHidden(false); return; }
-    let last = window.scrollY;
-    const onS = () => {
-      const y = window.scrollY;
-      if (y < 40) setSubHidden(false);
-      else if (y > last + 6) setSubHidden(true);
-      else if (y < last - 6) setSubHidden(false);
-      last = y;
-    };
-    window.addEventListener("scroll", onS, { passive: true });
-    return () => window.removeEventListener("scroll", onS);
-  }, [isMobile]);
 
   useEffect(() => {
     if (!supabase) { setAuthReady(true); return; }
@@ -217,7 +219,7 @@ export default function App() {
           </span>
         </header>
 
-        <nav className={"subnav subnav-m" + (subHidden ? " hide" : "")} aria-label="보조 메뉴"><SubTabs /></nav>
+        <MobileSubnav><SubTabs /></MobileSubnav>
 
         {drawer &&
           <div className="drawer-overlay" onClick={() => setDrawer(false)}>
