@@ -100,7 +100,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   // 이미지(Storage) → dataURL 해소
   useEffect(() => {
     if (!order) return; const d = cocs[order.id]?.data || {};
-    (["imgL_path", "imgR_path"] as const).forEach(k => { const p = (d as any)[k]; if (p && !imgCache[p]) storageBlobToDataUrl("coc", p).then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); }); });
+    (["imgL_path", "imgR_path"] as const).forEach(k => { const p = (d as any)[k]; if (p && !imgCache[p]) storageBlobToDataUrl("coc", p).then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); }).catch(e => console.warn("이미지 로드 실패:", p, e)); });
   }, [sel, cocs]);
   const imgSrc = (key: "imgL" | "imgR") => { const p = data[key + "_path"]; return p ? imgCache[p] : data[key]; };
 

@@ -40,7 +40,13 @@ export default function Support() {
     const paths: string[] = [];
     if (form?.sign_path) paths.push(form.sign_path);
     (form?.photos || []).forEach(ph => paths.push(ph.path));
-    paths.forEach(p => { if (p && !imgCache[p]) storageBlobToDataUrl("coc", p).then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); }); });
+    let warned = false;
+    paths.forEach(p => {
+      if (!p || imgCache[p]) return;
+      storageBlobToDataUrl("coc", p)
+        .then(u => { if (u) setImgCache(c => ({ ...c, [p]: u })); })
+        .catch(e => { console.warn("이미지 로드 실패:", p, e); if (!warned) { warned = true; toast.error("서명/증빙사진 원본을 불러오지 못했습니다 — 파일이 삭제됐거나 네트워크 문제일 수 있습니다."); } });
+    });
     // eslint-disable-next-line
   }, [form]);
   const src = (path?: string) => (path ? imgCache[path] : undefined);
