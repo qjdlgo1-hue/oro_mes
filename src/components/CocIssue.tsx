@@ -147,6 +147,22 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
     logAudit("COC 잠금 해제", "coc", order.id, { issueNo: data.issueNo });
     toast.info("잠금 해제됨 — 수정 후 '재발행'을 눌러 버전을 올리세요");
   }
+  // 같은 모델의 최근 발행 성적서에서 규격·검사자·캡션을 복사 (측정 결과값은 제외)
+  function copyPrev() {
+    if (!order || locked) return;
+    const cand = Object.values(cocs)
+      .filter(c => c.order_id !== order.id && (c.data as any)?.issueNo)
+      .map(c => ({ c, o: orders.find(x => x.id === c.order_id) }))
+      .filter(x => x.o && x.o.name === order.name)
+      .sort((a, b) => (((a.c.data as any).issuedAt || "") < ((b.c.data as any).issuedAt || "") ? 1 : -1))[0];
+    if (!cand) { toast.error(`'${order.name}' 모델의 발행 이력이 없습니다.`); return; }
+    const src = cand.c.data as Record<string, string>;
+    const KEYS = ["gravSpec", "pdSpec", "goldSpec", "silverSpec", "silverRes", "certBy", "method1", "method2", "capL", "capR"];
+    const patch: Record<string, string> = {};
+    KEYS.forEach(k => { if (src[k] != null && src[k] !== "") patch[k] = src[k]; });
+    setMany(patch);
+    toast.success(`${src.issueNo} (${src.issuedAt || "-"}) 에서 규격·검사자 복사됨 — 측정 결과만 입력하세요`);
+  }
 
   async function savePdf() {
     if (!order || !certRef.current || pdfBusy) return;
@@ -242,6 +258,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
               </h3>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn ghost" onClick={() => setLang(l => l === "ko" ? "en" : "ko")}>{lang === "ko" ? "EN" : "국문"}</button>
+                {!locked && <button className="btn ghost" title="같은 모델의 최근 발행 성적서에서 규격·검사자·캡션 복사" onClick={copyPrev}>↻ 이전 성적서</button>}
                 {locked
                   ? <button className="btn ghost" onClick={unlock}>🔒 잠금 해제 후 수정</button>
                   : <button className="btn" onClick={issue}>{data.issueNo ? "📋 재발행 (v+1)" : "📋 발행 확정"}</button>}

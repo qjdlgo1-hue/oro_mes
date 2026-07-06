@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts";
 import { ProdConsume, listProdConsume } from "../lib/db";
 import { nf, nf1, nf3 } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
@@ -77,7 +77,7 @@ export default function ProdConsumeAnalysis() {
           <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
           <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v: any) => nf(Number(v))} />
-          <Bar dataKey="value" fill={color} cursor={onPick ? "pointer" : undefined} onClick={(d: any) => onPick && d && onPick(d.name)}>{data.slice(0, 12).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
+          <Bar dataKey="value" fill={color} cursor={onPick ? "pointer" : undefined} onClick={(d: any) => onPick && d && onPick(d.name)} />
         </BarChart>
       </ResponsiveContainer>
     </div>

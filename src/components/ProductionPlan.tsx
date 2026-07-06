@@ -29,6 +29,8 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   const [selDay, setSelDay] = useState<number | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [qtyDraft, setQtyDraft] = useState("");
+  const [startDraft, setStartDraft] = useState("");
+  const [spanDraft, setSpanDraft] = useState(1);
   const [syncOrder, setSyncOrder] = useState(false);
   const [sortBy, setSortBy] = useState<{ key: "seq" | "name"; dir: 1 | -1 }>({ key: "seq", dir: 1 });
   const canEdit = can("plan.edit");
@@ -71,7 +73,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   const pqty = (o: Order, p: PlanEntry) => (p.qty != null ? Number(p.qty) : o.qty);
   function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? pqty(o, p) / p.span : 0; }
   function toggleDone(o: Order, p: PlanEntry) { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }
-  function openQty(o: Order) { if (!canEdit) return; setQtyDraft(String(pqty(o, planOf(o)))); setSyncOrder(false); setEditId(o.id); }
+  function openQty(o: Order) { if (!canEdit) return; const p = planOf(o); setQtyDraft(String(pqty(o, p))); setStartDraft(p.start_date); setSpanDraft(p.span); setSyncOrder(false); setEditId(o.id); }
   async function saveQty() {
     const o = orders.find(x => x.id === editId); if (!o) return;
     const v = Number(qtyDraft);
@@ -89,9 +91,10 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
     } else if (v === 0) {
       if (!(await confirmDialog({ title: "생산수량 0 저장", message: "생산수량을 0으로 저장합니다. 계속할까요?" }))) return;
     }
+    const base = { ...planOf(o), start_date: startDraft || planOf(o).start_date, span: Math.max(1, Number(spanDraft) || 1) };
     try {
-      if (syncOrder) { await updateOrder(o.id, { qty: v }); await commit({ ...planOf(o), qty: null }); logAudit("주문+생산수량 변경", "order", o.id, { qty: v }); onChange?.(); }
-      else { await commit({ ...planOf(o), qty: v }); logAudit("생산수량 변경", "plan", o.id, { qty: v }); }
+      if (syncOrder) { await updateOrder(o.id, { qty: v }); await commit({ ...base, qty: null }); logAudit("주문+생산수량 변경", "order", o.id, { qty: v }); onChange?.(); }
+      else { await commit({ ...base, qty: v }); logAudit("생산수량 변경", "plan", o.id, { qty: v }); }
       toast.success(`저장 완료 (${v.toLocaleString()}g${syncOrder ? ", 주문 반영" : ""})`);
     } catch (e: any) { toast.error("저장 실패: " + (e?.message || e)); }
     setEditId(null); setSyncOrder(false);
@@ -109,6 +112,15 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
           <label style={{ fontSize: 13, fontWeight: 700 }}>생산수량(g)
             <input type="number" inputMode="numeric" value={qtyDraft} onChange={e => setQtyDraft(e.target.value)} autoFocus style={{ display: "block", width: "100%", padding: 9, border: "1px solid var(--line)", borderRadius: 6, marginTop: 4, fontSize: 16 }} />
           </label>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <label style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>시작일
+              <input type="date" value={startDraft} onChange={e => { if (e.target.value) setStartDraft(e.target.value); }} style={{ display: "block", width: "100%", padding: 8, border: "1px solid var(--line)", borderRadius: 6, marginTop: 4 }} />
+            </label>
+            <label style={{ fontSize: 13, fontWeight: 700, width: 90 }}>기간(일)
+              <input type="number" inputMode="numeric" min={1} value={spanDraft} onChange={e => setSpanDraft(Math.max(1, Number(e.target.value) || 1))} style={{ display: "block", width: "100%", padding: 8, border: "1px solid var(--line)", borderRadius: 6, marginTop: 4 }} />
+            </label>
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>드래그 없이 정확한 날짜를 지정할 수 있어요. 완료일 = 시작일 + 기간 − 1일.</div>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginTop: 12 }}>
             <input type="checkbox" checked={syncOrder} onChange={e => setSyncOrder(e.target.checked)} />
             주문(수주) 수량에도 반영 <span className="muted" style={{ fontSize: 11 }}>(주문·COC·리포트 반영)</span>
