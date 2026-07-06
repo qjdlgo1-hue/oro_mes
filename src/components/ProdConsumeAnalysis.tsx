@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cart
 import { ProdConsume, listProdConsume } from "../lib/db";
 import { nf, nf1, nf3 } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
+import { useIsMobile } from "../lib/useIsMobile";
 import MonthPicker from "./MonthPicker";
 
 const PIE = ["#2563eb", "#f59e0b", "#1aa260", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0", "#6b7280", "#14b8a6"];
@@ -14,6 +15,8 @@ export default function ProdConsumeAnalysis() {
   const [ym, setYm] = usePersistState("pc.ym", "");
   const [selMat, setSelMat] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const isMobile = useIsMobile();
+  const yw = isMobile ? 78 : 120;
   useEffect(() => { listProdConsume().then(setRows).catch(() => {}).finally(() => setLoaded(true)); }, []);
 
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
@@ -72,7 +75,7 @@ export default function ProdConsumeAnalysis() {
       <ResponsiveContainer>
         <BarChart layout="vertical" data={data.slice(0, 12)} margin={{ left: 10, right: 16 }}>
           <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
-          <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+          <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v: any) => nf(Number(v))} />
           <Bar dataKey="value" fill={color} cursor={onPick ? "pointer" : undefined} onClick={(d: any) => onPick && d && onPick(d.name)}>{data.slice(0, 12).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
         </BarChart>
@@ -131,8 +134,8 @@ export default function ProdConsumeAnalysis() {
           {matrix.months.length > 0 &&
             <div className="card">
               <h4 style={{ marginTop: 0 }}>원재료 × 월 소모 매트릭스 <span className="muted" style={{ fontSize: 12 }}>(행 클릭=상세 · 발주계획용)</span></h4>
-              <div style={{ overflow: "auto", maxHeight: "56vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th>{matrix.months.map(m => <th key={m} style={th}>{m}</th>)}<th style={th}>합계</th></tr></thead>
-                <tbody>{matrix.rows.map(r => <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}><td style={tdL}>{r.name}</td>{matrix.months.map(m => <td key={m} style={td}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}<td style={{ ...td, fontWeight: 700 }}>{nf1(r.total)}</td></tr>)}</tbody></table></div>
+              <div style={{ overflow: "auto", maxHeight: "56vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left", left: 0, zIndex: 4 }}>원재료/반제품</th>{matrix.months.map(m => <th key={m} style={th}>{m}</th>)}<th style={th}>합계</th></tr></thead>
+                <tbody>{matrix.rows.map(r => <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}><td style={{ ...tdL, position: "sticky", left: 0, background: selMat === r.name ? "#eff6ff" : "#fff", zIndex: 1 }}>{r.name}</td>{matrix.months.map(m => <td key={m} style={td}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}<td style={{ ...td, fontWeight: 700 }}>{nf1(r.total)}</td></tr>)}</tbody></table></div>
             </div>}
         </div>}
 

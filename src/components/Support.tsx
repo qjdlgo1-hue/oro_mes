@@ -5,6 +5,7 @@ import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
 import { nf as won } from "../lib/fmt";
+import { useIsMobile } from "../lib/useIsMobile";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
@@ -13,6 +14,7 @@ const normPhotos = (arr?: any[]): { path: string; caption?: string }[] => (arr |
 
 export default function Support() {
   const canEdit = can("support.edit");
+  const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
   const [insps, setInsps] = useState<Inspection[]>([]);
   const [pid, setPid] = useState<string>("");
@@ -288,7 +290,7 @@ export default function Support() {
       {form && project && tab === "insp" &&
         <div className="card" style={{ overflow: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>미리보기 (이 모양대로 PDF 저장됩니다)</div>
-          <div ref={certRef}>
+          <div ref={certRef} style={isMobile ? ({ zoom: Math.min(1, (window.innerWidth - 60) / 720) } as any) : undefined}>
             <div className="pdf-page" style={pageStyle}>
             <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
             <h2 style={{ textAlign: "center", letterSpacing: 10, margin: "4px 0 18px", fontSize: 24 }}>검 수 조 서</h2>

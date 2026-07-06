@@ -113,7 +113,7 @@ export default function Today({ orders }: { orders: Order[] }) {
               <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {o.qty.toLocaleString()}g</div>
             </div>
-            <span className="muted" style={{ fontSize: 12 }}>→ [COC 발행] 탭에서 발행</span>
+            <button className="btn ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => { window.location.hash = "coc/" + o.id; }}>📄 발행하기 →</button>
           </div>
         ))}
       </Section>

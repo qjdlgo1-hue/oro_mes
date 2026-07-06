@@ -84,6 +84,12 @@ export default function Receipts() {
 
   async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); } setLoaded(true); }
   useEffect(() => { reload(); }, []);
+  useEffect(() => {
+    if (!viewer) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setViewer(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewer]);
   useEffect(() => { localStorage.setItem("oro_rcpt_company", company); }, [company]);
   useEffect(() => { localStorage.setItem("oro_rcpt_period", period); }, [period]);
 

@@ -8,6 +8,13 @@ import { ConfirmHost } from "./lib/confirm";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile } from "./lib/useIsMobile";
 import { TAB_DEFS, TabKey } from "./lib/tabs";
+
+// URL 해시 ↔ 탭 동기화 (#plan, #coc/<주문id>) — 새로고침·뒤로가기·북마크 지원
+const TAB_KEY_SET = new Set<string>(TAB_DEFS.map(t => t.key));
+function parseHash(): { tab: TabKey | null; param: string | null } {
+  const [t, param] = window.location.hash.replace(/^#/, "").split("/");
+  return { tab: TAB_KEY_SET.has(t) ? (t as TabKey) : null, param: param || null };
+}
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
@@ -25,7 +32,8 @@ import Admin from "./components/Admin";
 import Login from "./components/Login";
 
 export default function App() {
-  const [tab, setTab] = useState<TabKey>("today");
+  const [tab, setTab] = useState<TabKey>(() => parseHash().tab || "today");
+  const [cocFocus, setCocFocus] = useState<string | null>(() => parseHash().param);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -52,6 +60,19 @@ export default function App() {
 
   const signedIn = !hasSupabase || !!session;
   useEffect(() => { if (signedIn) { refresh(); loadPerms(); reloadMenu(); } }, [signedIn, refresh, reloadMenu]);
+
+  useEffect(() => {
+    const onHash = () => { const { tab: t, param } = parseHash(); if (t) { setTab(t); setCocFocus(t === "coc" ? param : null); } };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  const nav = (t: TabKey) => { if (window.location.hash === "#" + t) { setTab(t); return; } window.location.hash = t; };
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDrawer(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
 
   if (!authReady) return <div className="wrap muted">불러오는 중…</div>;
   if (hasSupabase && !session) return <Login />;
@@ -93,7 +114,7 @@ export default function App() {
         <div key={g.id} className="nav-group-block">
           <div className="nav-group">{g.name}</div>
           {g.items.map(t => (
-            <button key={t.key} className={"nav-item" + (tab === t.key ? " active" : "")} onClick={() => { setTab(t.key); onPick(); }}>
+            <button key={t.key} className={"nav-item" + (tab === t.key ? " active" : "")} onClick={() => { nav(t.key); onPick(); }}>
               <span className="ic">{t.icon}</span> {t.label}
             </button>
           ))}
@@ -107,7 +128,7 @@ export default function App() {
       case "today": return <Today orders={orders} />;
       case "import": return <ImportOrders orders={orders} onChange={refresh} />;
       case "plan": return <ProductionPlan orders={orders} onChange={refresh} />;
-      case "coc": return <CocIssue orders={orders} />;
+      case "coc": return <CocIssue orders={orders} focusOrderId={cocFocus} />;
       case "delivery": return <DeliverySchedule orders={orders} />;
       case "support": return <Support />;
       case "prodin": return <DataImport kind="in" />;

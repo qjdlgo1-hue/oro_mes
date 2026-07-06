@@ -21,7 +21,13 @@ export default function ProdConsumeImport() {
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
   const newCount = preview ? preview.filter(r => !existing.has(r.sig)).length : 0;
-  const detail = useMemo(() => { const f = ym ? rows.filter(r => r.ym === ym) : rows; return [...f].sort((a, b) => (a.idate || "") < (b.idate || "") ? -1 : 1); }, [rows, ym]);
+  const [q, setQ] = useState("");
+  const detail = useMemo(() => {
+    let f = ym ? rows.filter(r => r.ym === ym) : rows;
+    const s = q.trim().toLowerCase();
+    if (s) f = f.filter(r => `${r.prod_name || ""} ${r.mat_name || ""}`.toLowerCase().includes(s));
+    return [...f].sort((a, b) => (a.idate || "") < (b.idate || "") ? -1 : 1);
+  }, [rows, ym, q]);
   const totalProd = rows.filter(r => !r.mat_code).reduce((s, r) => s + (Number(r.prod_qty) || 0), 0);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -70,6 +76,7 @@ export default function ProdConsumeImport() {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <h4 style={{ margin: 0 }}>저장된 데이터</h4>
           {months.length > 0 && <MonthPicker months={months} value={ym} onChange={setYm} allowAll />}
+          <input placeholder="🔍 생산/소모품목 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 160 }} />
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}행</span>
         </div>
         {detail.length === 0 ? <p className="muted">{loaded ? "데이터가 없습니다. 위에서 엑셀을 업로드하세요." : "불러오는 중…"}</p> :

@@ -6,6 +6,7 @@ import { can } from "../lib/perm";
 import { confirmDialog } from "../lib/confirm";
 import { nf1 as fmt } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
+import { useSort } from "../lib/useSort";
 import MonthPicker from "./MonthPicker";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
@@ -45,10 +46,14 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
 
   const months = byMonth.map(([ym]) => ym);
   const curYm = selYm === "__all__" ? "__all__" : ((months.includes(selYm) ? selYm : "") || months[0] || "");
+  const [q, setQ] = useState("");
   const detail = useMemo(() => {
-    const f = curYm === "__all__" ? rows : rows.filter(r => r.ym === curYm);
+    let f = curYm === "__all__" ? rows : rows.filter(r => r.ym === curYm);
+    const s = q.trim().toLowerCase();
+    if (s) f = f.filter(r => `${r.item_code || ""} ${r.name || ""} ${r.spec || ""} ${(r as any).customer || ""}`.toLowerCase().includes(s));
     return [...f].sort((a, b) => a.idate < b.idate ? -1 : a.idate > b.idate ? 1 : (a.item_code < b.item_code ? -1 : 1));
-  }, [rows, curYm]);
+  }, [rows, curYm, q]);
+  const { sorted: detailSorted, toggle, arrow } = useSort(detail);
   const detailQty = detail.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
   function doParse() {
@@ -139,29 +144,30 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
           <h4 style={{ margin: 0 }}>가져온 데이터</h4>
           {months.length > 0 &&
             <MonthPicker months={[...months].sort()} value={curYm} onChange={setSelYm} allowAll allValue="__all__" />}
+          <input placeholder="🔍 품목/규격/거래처 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 170 }} />
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}건 · 수량 합계 {fmt(detailQty)}</span>
         </div>
         {detail.length === 0 ? <p className="muted">{loaded ? "표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요." : "불러오는 중…"}</p> :
           <div style={{ overflow: "auto", maxHeight: "58vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                <th style={{ ...th, textAlign: "left" }}>일자</th>
-                <th style={{ ...th, textAlign: "left" }}>품목코드</th>
-                <th style={{ ...th, textAlign: "left" }}>품목명</th>
+                <th style={{ ...th, textAlign: "left", left: 0, zIndex: 4, cursor: "pointer" }} onClick={() => toggle("idate")}>일자{arrow("idate")}</th>
+                <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("item_code")}>품목코드{arrow("item_code")}</th>
+                <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("name")}>품목명{arrow("name")}</th>
                 <th style={{ ...th, textAlign: "left" }}>규격</th>
-                <th style={th}>수량</th>
+                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("qty")}>수량{arrow("qty")}</th>
                 {!isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
-                {isOut && <th style={th}>공급가액</th>}
+                {isOut && <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("amount")}>공급가액{arrow("amount")}</th>}
                 {isOut && <th style={th}>부가세</th>}
                 {isOut && <th style={th}>합계</th>}
-                {isOut && <th style={{ ...th, textAlign: "left" }}>거래처</th>}
+                {isOut && <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("customer")}>거래처{arrow("customer")}</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>통화</th>}
               </tr></thead>
               <tbody>
-                {detail.map((r, i) => (
+                {detailSorted.map((r, i) => (
                   <tr key={r.id || i}>
-                    <td style={tdL}>{r.idate}</td>
+                    <td style={{ ...tdL, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>{r.idate}</td>
                     <td style={tdL}><b>{r.item_code || "-"}</b></td>
                     <td style={tdL}>{r.name || "-"}</td>
                     <td style={tdL}>{r.spec || ""}</td>

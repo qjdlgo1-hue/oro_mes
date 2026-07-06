@@ -46,7 +46,7 @@ function pickDataUrl(maxW: number, cb: (d: string) => void) {
   pickFile(f => { const r = new FileReader(); r.onload = () => { const img = new Image(); img.onload = () => { const c = document.createElement("canvas"); const sc = Math.min(1, maxW / img.width); c.width = img.width * sc; c.height = img.height * sc; c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height); cb(c.toDataURL("image/png")); }; img.src = r.result as string; }; r.readAsDataURL(f); });
 }
 
-export default function CocIssue({ orders }: { orders: Order[] }) {
+export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; focusOrderId?: string | null }) {
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [settings, setSettings] = useState<Settings>({});
@@ -72,6 +72,13 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   });
 
   useEffect(() => { Promise.all([listCocs().then(setCocs), listPlans().then(setPlans)]).finally(() => setLoaded(true)); getSettings().then(setSettings); supabase?.auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
+
+  // POP 등에서 #coc/<주문id> 로 진입하면 해당 주문의 월로 이동 + 자동 선택
+  useEffect(() => {
+    if (!focusOrderId) return;
+    const o = orders.find(x => x.id === focusOrderId);
+    if (o) { setCur({ y: +o.ym.slice(0, 4), m: +o.ym.slice(5, 7) }); setSel(o.id); }
+  }, [focusOrderId, orders]);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => orders.filter(o => o.ym === ym).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, ym]);

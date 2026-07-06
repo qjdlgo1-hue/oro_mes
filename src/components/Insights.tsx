@@ -7,6 +7,7 @@ import { Order, PlanEntry } from "../lib/types";
 import { toast } from "../lib/toast";
 import { nf } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
+import { useIsMobile } from "../lib/useIsMobile";
 
 type View = "in" | "out" | "pc";
 type Unit = "year" | "quarter" | "month";
@@ -23,6 +24,8 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const [inRows, setInRows] = useState<InoutRow[]>([]);
   const [outRows, setOutRows] = useState<InoutRow[]>([]);
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
+  const isMobile = useIsMobile();
+  const yw = isMobile ? 78 : 120; // 모바일에서 Y축 라벨 폭을 줄여 차트 영역 확보
 
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
@@ -212,7 +215,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
               <ResponsiveContainer>
                 <BarChart layout="vertical" data={byItem.slice(0, 10)} margin={{ left: 10, right: 16 }}>
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
-                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v: any) => nf(v) + (isIn ? " g" : " 원")} />
                   <Bar dataKey="value" fill="#2563eb">{byItem.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
                 </BarChart>
@@ -227,7 +230,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                 <ResponsiveContainer>
                   <BarChart layout="vertical" data={byCust.slice(0, 10)} margin={{ left: 10, right: 16 }}>
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: any) => nf(v) + " 원"} />
                     <Bar dataKey="value" fill="#1aa260">{byCust.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
                   </BarChart>

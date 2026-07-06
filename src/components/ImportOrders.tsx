@@ -35,6 +35,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
   const [viewYm, setViewYm] = usePersistState<string>("orders.viewYm", "");
   const [showChanged, setShowChanged] = useState(false);
+  const [q, setQ] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Order>>({});
 
@@ -57,7 +58,12 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   const viewRows = useMemo(() => orders.filter(o => o.ym === curView).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, curView]);
   const pqOf = (o: Order) => (plans[o.id]?.qty != null ? Number(plans[o.id]!.qty) : (Number(o.qty) || 0));
   const isChanged = (o: Order) => plans[o.id]?.qty != null && Number(plans[o.id]!.qty) !== (Number(o.qty) || 0);
-  const displayRows = useMemo(() => showChanged ? viewRows.filter(isChanged) : viewRows, [viewRows, showChanged, plans]);
+  const displayRows = useMemo(() => {
+    let r = showChanged ? viewRows.filter(isChanged) : viewRows;
+    const s = q.trim().toLowerCase();
+    if (s) r = r.filter(o => `${o.name} ${o.spec} ${o.customer} ${o.note || ""}`.toLowerCase().includes(s));
+    return r;
+  }, [viewRows, showChanged, plans, q]);
   const sumSu = viewRows.reduce((s2, o) => s2 + (Number(o.qty) || 0), 0);
   const sumSa = viewRows.reduce((s2, o) => s2 + pqOf(o), 0);
   const changedCnt = viewRows.filter(isChanged).length;
@@ -241,7 +247,8 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           <h3 style={{ margin: 0 }}>저장된 주문 데이터</h3>
           {months.length > 0 &&
             <MonthPicker months={months} value={curView} onChange={setViewYm} />}
-          <span className="muted">{viewRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부</span>
+          <input placeholder="🔍 품목/거래처 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 150 }} />
+          <span className="muted">{displayRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부</span>
           <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}><input type="checkbox" checked={showChanged} onChange={e => setShowChanged(e.target.checked)} /> 변동만 보기</label>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>

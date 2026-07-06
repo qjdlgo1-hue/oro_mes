@@ -6,6 +6,7 @@ import { nextBusinessDay } from "../lib/holidays";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
 import { confirmDialog } from "../lib/confirm";
+import { useIsMobile } from "../lib/useIsMobile";
 
 type Row = { o: Order; base: string; del: string; manual: boolean };
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
@@ -19,6 +20,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
   const [cust, setCust] = useState("__all__");
   const [selDay, setSelDay] = useState<string | null>(null);
   const canEdit = can("plan.edit");
+  const isMobile = useIsMobile();
   const [cal, setCal] = useState(() => {
     const ms = [...new Set(orders.map(o => o.ym))].sort(); const l = ms[ms.length - 1];
     if (l) return { y: +l.slice(0, 4), m: +l.slice(5, 7) };
@@ -108,7 +110,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => window.print()}>🖨 인쇄</button>
         </div>
-        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(파랑=자동, 주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시. 배송예정일 칸에서 날짜를 직접 바꿀 수 있어요(주황·✎=수동, 자동=되돌리기)."}</p>
+        <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(●파랑=자동, ◆주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시. 배송예정일 칸에서 날짜를 직접 바꿀 수 있어요(◆주황=수동, 자동=되돌리기)."}</p>
       </div>
 
       {view === "list" ?
@@ -119,6 +121,24 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                 <h4 style={{ margin: 0 }}>{c} <span className="muted" style={{ fontSize: 12 }}>· {list.length}건</span></h4>
                 <button className="btn ghost" style={{ marginLeft: "auto", fontSize: 12, padding: "4px 10px" }} onClick={() => copyText(`[${c}] 배송 스케줄 (${periodLabel})`, list)}>📋 복사</button>
               </div>
+              {isMobile ? (
+                <div>
+                  {list.map(r => (
+                    <div className="mcard" key={r.o.id}>
+                      <div className="mrow"><span className="k">품목</span><span className="v">{r.o.name}</span></div>
+                      <div className="mrow"><span className="k">규격 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{r.o.spec} · {r.o.qty.toLocaleString()}g</span></div>
+                      <div className="mrow"><span className="k">생산완료일</span><span className="v" style={{ fontWeight: 400 }}>{r.base}</span></div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                        <span style={{ fontSize: 12, color: "var(--muted)" }}>배송예정일{r.manual ? " ◆수동" : ""}</span>
+                        {canEdit
+                          ? <><input type="date" value={r.del} onChange={e => { if (e.target.value) setDeliver(r.o, e.target.value); }} style={{ padding: 8, border: "1px solid var(--line)", borderRadius: 6, fontSize: 16, flex: 1 }} />
+                              {r.manual && <button className="btn ghost" onClick={() => setDeliver(r.o, null)}>자동</button>}</>
+                          : <b style={{ color: r.manual ? "#f59e0b" : "var(--accent)" }}>{r.del}</b>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
               <div style={{ overflow: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%" }}>
                   <thead><tr><th style={th}>배송예정일</th><th style={th}>품목</th><th style={th}>규격</th><th style={{ ...th, textAlign: "right" }}>수량(g)</th><th style={th}>생산완료일</th></tr></thead>
@@ -128,10 +148,11 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td style={{ ...td, fontWeight: 700, color: r.manual ? "#f59e0b" : "var(--accent)" }}>
                           {canEdit
                             ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                <input type="date" value={r.del} onChange={e => { if (e.target.value) setDeliver(r.o, e.target.value); }} style={{ padding: "2px 4px", border: "1px solid var(--line)", borderRadius: 4, fontSize: 12 }} />
+                                <input type="date" value={r.del} aria-label="배송예정일" onChange={e => { if (e.target.value) setDeliver(r.o, e.target.value); }} style={{ padding: "4px 6px", border: "1px solid var(--line)", borderRadius: 4, fontSize: 13 }} />
+                                {r.manual && <span title="수동 지정됨">◆</span>}
                                 {r.manual && <button className="btn ghost" style={{ padding: "1px 6px", fontSize: 11 }} onClick={() => setDeliver(r.o, null)}>자동</button>}
                               </span>
-                            : <>{r.del}{r.manual ? " ✎" : ""}</>}
+                            : <>{r.del}{r.manual ? " ◆" : ""}</>}
                         </td>
                         <td style={td}>{r.o.name}</td>
                         <td style={td}>{r.o.spec}</td>
@@ -141,7 +162,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>)}
             </div>
           )))
         :
@@ -169,7 +190,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td className="fixcol c-spec" style={{ left: 184 }} title={r.o.name}>{r.o.name}</td>
                         <td className="fixcol c-cust" style={{ left: 344 }} title={r.o.spec}>{r.o.spec}</td>
                         <td className="fixcol c-qty" style={{ left: 464 }}>{r.o.qty.toLocaleString()}</td>
-                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "var(--accent)"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={async () => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else { if (await confirmDialog({ title: "배송일 이동", message: `${r.o.customer} · ${r.o.name}\n배송일을 ${r.del} → ${iso} 로 옮길까요?`, confirmLabel: "이동" })) setDeliver(r.o, iso); } }}>{isDel ? "●" : ""}</td>; })}
+                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "var(--accent)"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={async () => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else { if (await confirmDialog({ title: "배송일 이동", message: `${r.o.customer} · ${r.o.name}\n배송일을 ${r.del} → ${iso} 로 옮길까요?`, confirmLabel: "이동" })) setDeliver(r.o, iso); } }}>{isDel ? (r.manual ? "◆" : "●") : ""}</td>; })}
                       </tr>
                     );
                   })}

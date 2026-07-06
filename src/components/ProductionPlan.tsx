@@ -36,6 +36,12 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => { listPlans().then(setPlans).finally(() => setLoaded(true)); }, []);
+  useEffect(() => {
+    if (!editId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setEditId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editId]);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => {
