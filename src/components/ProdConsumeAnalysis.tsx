@@ -103,8 +103,9 @@ export default function ProdConsumeAnalysis() {
         </div>
       </div>
 
-      {view === "prod" &&
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}>
+      {view === "prod" && <>
+        {/* 표를 그리드 밖에 두어 위 두 카드가 화면 폭을 나눠 채우게 함 (빈 열 방지) */}
+        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(340px,1fr))" }}>
           <div className="card">
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
               <h4 style={{ margin: 0 }}>월별 생산량</h4>
@@ -114,11 +115,12 @@ export default function ProdConsumeAnalysis() {
                   전체 기간 보기{!prodAll && ` (이전 ${prodByMonth.length - 12}개월 숨김)`}
                 </label>}
             </div>
-            <div style={{ width: "100%", height: 260 }}><ResponsiveContainer><BarChart data={prodAll ? prodByMonth : prodByMonth.slice(-12)}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="#2563eb" /></BarChart></ResponsiveContainer></div>
+            <div style={{ width: "100%", height: 300 }}><ResponsiveContainer><BarChart data={prodAll ? prodByMonth : prodByMonth.slice(-12)}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="#2563eb" /></BarChart></ResponsiveContainer></div>
           </div>
           <div className="card"><h4 style={{ marginTop: 0 }}>품목별 생산량 (상위)</h4><HBar data={prodByItem} /></div>
-          <div className="card" style={{ gridColumn: "1 / -1" }}><h4 style={{ marginTop: 0 }}>품목별 생산량 표</h4><div style={{ overflow: "auto", maxHeight: "40vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={th}>생산량</th></tr></thead><tbody>{prodByItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div></div>
-        </div>}
+        </div>
+        <div className="card"><h4 style={{ marginTop: 0 }}>품목별 생산량 표</h4><div style={{ overflow: "auto", maxHeight: "40vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={th}>생산량</th></tr></thead><tbody>{prodByItem.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div></div>
+      </>}
 
       {view === "mat" &&
         <div style={{ display: "grid", gap: 16 }}>
