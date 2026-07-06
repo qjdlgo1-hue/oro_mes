@@ -14,6 +14,7 @@ export default function ProdConsumeAnalysis() {
   const [view, setView] = usePersistState<PV>("pc.view", "prod");
   const [ym, setYm] = usePersistState("pc.ym", "");
   const [selMat, setSelMat] = useState<string | null>(null);
+  const [matrixAll, setMatrixAll] = useState(false); // 매트릭스: 기본 최근 12개월, 체크 시 전체 기간
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
   const yw = isMobile ? 78 : 120;
@@ -131,12 +132,41 @@ export default function ProdConsumeAnalysis() {
             {matMonthly.data.length === 0 ? <p className="muted">월별 데이터가 없습니다 (날짜 없는 요약본은 월별 분석 불가).</p> :
               <div style={{ width: "100%", height: 320 }}><ResponsiveContainer><BarChart data={matMonthly.data} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Legend />{matMonthly.keys.map((k, i) => <Bar key={k} dataKey={k} stackId="a" fill={PIE[i % PIE.length]} />)}</BarChart></ResponsiveContainer></div>}
           </div>
-          {matrix.months.length > 0 &&
+          {matrix.months.length > 0 && (() => {
+            // 월 수가 늘어나도 열이 짓눌리지 않게: 기본 최근 12개월 + 전체 토글, 표는 내용 폭만큼 넓어지고 가로 스크롤
+            const shownMonths = matrixAll ? matrix.months : matrix.months.slice(-12);
+            const hiddenCnt = matrix.months.length - shownMonths.length;
+            const rowTotal = (r: { byM: Record<string, number> }) => shownMonths.reduce((s, m) => s + (r.byM[m] || 0), 0);
+            return (
             <div className="card">
-              <h4 style={{ marginTop: 0 }}>원재료 × 월 소모 매트릭스 <span className="muted" style={{ fontSize: 12 }}>(행 클릭=상세 · 발주계획용)</span></h4>
-              <div style={{ overflow: "auto", maxHeight: "56vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left", left: 0, zIndex: 4 }}>원재료/반제품</th>{matrix.months.map(m => <th key={m} style={th}>{m}</th>)}<th style={th}>합계</th></tr></thead>
-                <tbody>{matrix.rows.map(r => <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}><td style={{ ...tdL, position: "sticky", left: 0, background: selMat === r.name ? "#eff6ff" : "#fff", zIndex: 1 }}>{r.name}</td>{matrix.months.map(m => <td key={m} style={td}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}<td style={{ ...td, fontWeight: 700 }}>{nf1(r.total)}</td></tr>)}</tbody></table></div>
-            </div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                <h4 style={{ margin: 0 }}>원재료 × 월 소모 매트릭스 <span className="muted" style={{ fontSize: 12 }}>(행 클릭=상세 · 발주계획용)</span></h4>
+                {matrix.months.length > 12 &&
+                  <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
+                    <input type="checkbox" checked={matrixAll} onChange={e => setMatrixAll(e.target.checked)} />
+                    전체 기간 보기{!matrixAll && ` (이전 ${hiddenCnt}개월 숨김)`}
+                  </label>}
+              </div>
+              <div style={{ overflow: "auto", maxHeight: "56vh" }}>
+                <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
+                  <thead><tr>
+                    <th style={{ ...th, textAlign: "left", left: 0, zIndex: 4, minWidth: 150, whiteSpace: "nowrap" }}>원재료/반제품</th>
+                    {shownMonths.map(m => <th key={m} style={{ ...th, minWidth: 76, whiteSpace: "nowrap" }}>{m}</th>)}
+                    <th style={{ ...th, minWidth: 88, whiteSpace: "nowrap" }}>합계{matrixAll || hiddenCnt <= 0 ? "" : "(표시분)"}</th>
+                  </tr></thead>
+                  <tbody>{matrix.rows.map(r => (
+                    <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}>
+                      <td style={{ ...tdL, position: "sticky", left: 0, background: selMat === r.name ? "#eff6ff" : "#fff", zIndex: 1, whiteSpace: "nowrap" }}>{r.name}</td>
+                      {shownMonths.map(m => <td key={m} style={{ ...td, whiteSpace: "nowrap" }}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}
+                      <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{nf1(matrixAll ? r.total : rowTotal(r))}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>월이 많으면 표가 옆으로 넓어지고 가로 스크롤로 봅니다(원재료 열은 고정). 위 월 선택으로 특정 월만 볼 수도 있어요.</p>
+            </div>
+            );
+          })()}
         </div>}
 
       {view === "std" &&
