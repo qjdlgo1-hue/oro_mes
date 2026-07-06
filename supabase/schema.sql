@@ -41,6 +41,22 @@ alter table receipts add column if not exists deleted_at timestamptz;
 create index if not exists idx_orders_deleted on orders(deleted_at) where deleted_at is not null;
 create index if not exists idx_receipts_deleted on receipts(deleted_at) where deleted_at is not null;
 
+-- 슬립 방지 핑 (GitHub Actions가 2일마다 rpc/ping_keep_alive 호출)
+create table if not exists keep_alive (
+  id bigint generated always as identity primary key,
+  pinged_at timestamptz default now(), note text
+);
+alter table keep_alive enable row level security;
+create or replace function ping_keep_alive() returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare t timestamptz;
+begin
+  insert into keep_alive (note) values ('keep-alive ping') returning pinged_at into t;
+  delete from keep_alive where pinged_at < now() - interval '30 days';
+  return t;
+end; $$;
+grant execute on function ping_keep_alive() to anon, authenticated;
+
 -- 감사 로그
 create table if not exists audit_log (
   id bigint generated always as identity primary key,

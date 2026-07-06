@@ -1,0 +1,27 @@
+
+# Supabase 무료 플랜 슬립 방지: 7일 미사용 시 프로젝트가 일시정지되므로
+# 2일에 한 번 keep_alive 테이블에 핑을 기록한다 (30일 지난 행은 자동 정리).
+# 수동 실행: Actions 탭 → Supabase keep-alive → Run workflow
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "0 3 */2 * *" # 2일마다 UTC 03:00 (KST 12:00)
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase (keep project active)
+        env:
+          # 공개 anon 키 (프런트엔드에 이미 내장된 공개용 키 — RLS로 보호됨)
+          SUPABASE_URL: https://fzoombsxvscndzrhzmwb.supabase.co
+          SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6b29tYnN4dnNjbmR6cmh6bXdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MDkzMDMsImV4cCI6MjA5NjM4NTMwM30.kyuQIWCihIcgO7wN-t-YRwB8FrIWJT3MqApbzLeCamc
+        run: |
+          set -e
+          RES=$(curl -sf -X POST "$SUPABASE_URL/rest/v1/rpc/ping_keep_alive" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "keep-alive ping OK: $RES"
