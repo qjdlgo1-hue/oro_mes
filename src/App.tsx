@@ -129,15 +129,15 @@ export default function App() {
       case "today": return can("menu.pop");
       case "import": return can("menu.import");
       case "plan": return can("menu.plan");
-      case "coc": return can("coc.issue") && can("menu.coc");
+      case "coc": return can("menu.coc"); // 보기만으로 열람 가능(발행은 화면 안에서 coc.issue로 제어)
       case "delivery": return can("menu.delivery");
       case "support": return can("menu.support");
       case "prodin": return can("menu.prodin");
       case "sales": return can("menu.sales");
       case "dash": return can("menu.dash");
       case "prodcon": return can("menu.prodcon");
-      case "report": return can("report.view") && can("menu.report");
-      case "audit": return can("audit.view") && can("menu.audit");
+      case "report": return can("menu.report"); // 보기 스위치가 report.view와 함께 토글됨
+      case "audit": return can("menu.audit");
       case "receipt": return can("menu.receipt");
       case "bom": return can("menu.bom");
       case "admin": return role === "master";

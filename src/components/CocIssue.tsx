@@ -88,7 +88,8 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   const data: Record<string, string> = order ? { ...parseSpecDefaults(order), ...(cocs[order.id]?.data || {}) } : {};
   const t = L[lang];
   const fmt = settings.format || {};
-  const locked = !!data.issueNo && !unlocked; // 발행 확정된 성적서는 잠금 해제 전까지 수정 불가
+  const canIssue = can("coc.issue"); // 없으면 보기 전용(열람·PDF·인쇄만)
+  const locked = !canIssue || (!!data.issueNo && !unlocked); // 발행 확정된 성적서는 잠금 해제 전까지 수정 불가
   const fitScale = isMobile && fit ? Math.min(1, (window.innerWidth - 28) / 760) : 1;
 
   const planProd = order ? completionDate(plans[order.id]) : null;
@@ -133,7 +134,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
     return `ORO-${y}-${String(max + 1).padStart(4, "0")}`;
   }
   function issue() {
-    if (!order) return;
+    if (!order || !canIssue) return;
     const issueNo = data.issueNo || nextIssueNo();
     const version = String((Number(data.version) || 0) + 1);
     setMany({ issueNo, issuedAt: todayIso(), issuedBy: email, version });
@@ -143,7 +144,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
     toast.success(`발행 완료: ${issueNo} (v${version}) — 문서가 잠금 처리되었습니다`);
   }
   function unlock() {
-    if (!order) return;
+    if (!order || !canIssue) return;
     setUnlocked(true);
     logAudit("COC 잠금 해제", "coc", order.id, { issueNo: data.issueNo });
     toast.info("잠금 해제됨 — 수정 후 '재발행'을 눌러 버전을 올리세요");
@@ -219,11 +220,13 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
         <h3>주문 목록</h3>
         <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
           <MonthPicker months={months} value={ym} onChange={v => { setCur({ y: +v.slice(0, 4), m: +v.slice(5, 7) }); setSel(null); }} />
+          {canIssue && <>
           <div style={{ display: "flex", gap: 6 }}>
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setLogo}>로고{settings.logo ? " ✓" : ""}</button>
             <button className="btn ghost" style={{ flex: 1, fontSize: 12 }} onClick={setStamp}>도장{settings.stamp ? " ✓" : ""}</button>
           </div>
           <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => setFmtOpen(o => !o)}>서식 설정 {fmtOpen ? "▲" : "▼"}</button>
+          </>}
           {fmtOpen &&
             <div style={{ padding: 8, background: "#f5f9ff", borderRadius: 8, fontSize: 12 }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
@@ -260,9 +263,11 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn ghost" onClick={() => setLang(l => l === "ko" ? "en" : "ko")}>{lang === "ko" ? "EN" : "국문"}</button>
                 {!locked && <button className="btn ghost" title="같은 모델의 최근 발행 성적서에서 규격·검사자·캡션 복사" onClick={copyPrev}>↻ 이전 성적서</button>}
-                {locked
-                  ? <button className="btn ghost" onClick={unlock}>🔒 잠금 해제 후 수정</button>
-                  : <button className="btn" onClick={issue}>{data.issueNo ? "📋 재발행 (v+1)" : "📋 발행 확정"}</button>}
+                {!canIssue
+                  ? <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>👁 보기 전용 (발행 권한 없음)</span>
+                  : locked
+                    ? <button className="btn ghost" onClick={unlock}>🔒 잠금 해제 후 수정</button>
+                    : <button className="btn" onClick={issue}>{data.issueNo ? "📋 재발행 (v+1)" : "📋 발행 확정"}</button>}
                 <button className="btn green" onClick={savePdf} disabled={pdfBusy}>{pdfBusy ? "⏳ PDF 생성 중…" : "📄 PDF 저장"}</button>
                 <button className="btn ghost" onClick={() => { logAudit("COC 인쇄", "coc", order.id, {}); window.print(); }}>🖨 인쇄</button>
                 {isMobile && <button className="btn ghost" onClick={() => setFit(f => !f)}>{fit ? "실제크기" : "화면맞춤"}</button>}

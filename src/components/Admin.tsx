@@ -1,6 +1,6 @@
 import { errMsg } from "../lib/errmsg";
 import { useEffect, useState } from "react";
-import { CAPS, MENUS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
+import { SCREEN_PERMS, SCREEN_PERM_KEYS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
@@ -119,10 +119,32 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
     catch (e: any) { toast.error("실패: " + errMsg(e)); }
     setBusy(false);
   }
-  async function toggle(role: string, cap: string, val: boolean) {
-    setMatrix(m => ({ ...m, [`${role}:${cap}`]: val }));
-    try { await setPermission(role, cap, val); await logAudit("권한 변경", "perm", `${role}.${cap}`, { allowed: val }); }
-    catch (e: any) { toast.error("권한 저장 실패: " + errMsg(e)); load(); }
+  // 키 여러 개(예: 리포트 보기 = menu.report + report.view)를 스위치 하나로 함께 토글
+  async function toggleKeys(role: string, keys: string[], val: boolean, label: string) {
+    setMatrix(m => { const n = { ...m }; keys.forEach(k => { n[`${role}:${k}`] = val; }); return n; });
+    try {
+      for (const k of keys) await setPermission(role, k, val);
+      await logAudit("권한 변경", "perm", `${role}.${keys.join("+")}`, { allowed: val, label });
+    } catch (e: any) { toast.error("권한 저장 실패: " + errMsg(e)); load(); }
+  }
+  async function applyPreset(role: string, kind: "viewer" | "field" | "full") {
+    const NAMES = { viewer: "보기 전용", field: "현장 작업자", full: "전체 허용(삭제 제외)" } as const;
+    if (!(await confirmDialog({ title: "프리셋 적용", message: `${role} 역할의 화면별 권한 전체를 '${NAMES[kind]}' 구성으로 덮어씁니다.\n기존 개별 설정은 사라집니다.`, confirmLabel: "적용" }))) return;
+    const next: Record<string, boolean> = Object.fromEntries(SCREEN_PERM_KEYS.map(k => [k, false]));
+    if (kind === "viewer") SCREEN_PERMS.forEach(s => s.view.forEach(k => { next[k] = true; }));
+    if (kind === "field") {
+      ["menu.pop", "menu.plan", "menu.delivery", "menu.coc", "menu.dash"].forEach(k => { next[k] = true; });
+      next["plan.edit"] = true; next["coc.issue"] = true;
+    }
+    if (kind === "full") { SCREEN_PERM_KEYS.forEach(k => { next[k] = true; }); next["order.delete"] = false; }
+    setBusy(true);
+    setMatrix(m => { const n = { ...m }; SCREEN_PERM_KEYS.forEach(k => { n[`${role}:${k}`] = next[k]; }); return n; });
+    try {
+      for (const k of SCREEN_PERM_KEYS) await setPermission(role, k, next[k]);
+      await logAudit("권한 프리셋 적용", "perm", role, { preset: kind });
+      toast.success(`${role} → '${NAMES[kind]}' 프리셋 적용됨`);
+    } catch (e: any) { toast.error("프리셋 적용 실패: " + errMsg(e)); load(); }
+    setBusy(false);
   }
   async function createUser() {
     if (!nf.email || !nf.password) { toast.error("이메일과 비밀번호를 입력하세요."); return; }
@@ -185,7 +207,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
             <button className="btn ghost" onClick={addGroup}>＋ 그룹 추가</button>
             <button className="btn green" onClick={saveMenu}>메뉴 구성 저장</button>
           </div>
-          <p className="muted" style={{ fontSize: 12 }}>저장 후 각 사용자는 새로고침/로그인 때 반영됩니다. (권한·메뉴표시로 숨긴 메뉴는 안 보입니다)</p>
+          <p className="muted" style={{ fontSize: 12 }}>저장 후 각 사용자는 새로고침/로그인 때 반영됩니다. (아래 '화면별 권한'에서 보기를 끈 화면은 숨겨집니다)</p>
         </div>
       </Sec>
 
@@ -266,42 +288,89 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
         <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>주문을 복구하면 연결된 생산계획·COC도 함께 돌아옵니다. 증빙 원본 사진은 영구 삭제 전까지 보존됩니다.</p>
       </Sec>
 
-      <Matrix title="권한 매트릭스 (작업 허용)" items={CAPS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} />
-      <Matrix title="메뉴 표시 (탭 보이기)" items={MENUS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} note="권한이 없으면 자동으로 숨겨지고, 여기서 추가로 수동 숨김도 됩니다." />
+      <Sec title="화면별 권한" sub="(보기 + 작업 — Master는 항상 전체)" defaultOpen>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10, fontSize: 12 }}>
+          {ROLES.filter(r => r !== "master").map(role => (
+            <span key={role} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <b>{role} 프리셋:</b>
+              <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12 }} disabled={busy} onClick={() => applyPreset(role, "viewer")}>보기 전용</button>
+              <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12 }} disabled={busy} onClick={() => applyPreset(role, "field")}>현장 작업자</button>
+              <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12 }} disabled={busy} onClick={() => applyPreset(role, "full")}>전체(삭제 제외)</button>
+            </span>
+          ))}
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
+            <thead><tr>
+              <th style={TH}>화면</th>
+              <th style={{ ...TH, textAlign: "center", width: 60 }}>Master</th>
+              <th style={{ ...TH, width: "36%" }}>Manager</th>
+              <th style={{ ...TH, width: "36%" }}>User</th>
+            </tr></thead>
+            <tbody>
+              {(() => {
+                const rows: React.ReactNode[] = [];
+                let lastGrp = "";
+                SCREEN_PERMS.forEach(s => {
+                  if (s.group !== lastGrp) {
+                    lastGrp = s.group;
+                    rows.push(<tr key={"g" + s.group}><td colSpan={4} style={{ ...TD, background: "#eef2f6", fontWeight: 800, fontSize: 12 }}>{s.group}</td></tr>);
+                  }
+                  const shared = s.acts.find(a => a.shared);
+                  rows.push(
+                    <tr key={s.name}>
+                      <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }}>{s.name}
+                        {shared && <span title={`'${shared.shared}'와 같은 권한을 사용합니다 — 한쪽을 바꾸면 함께 바뀝니다`}
+                          style={{ fontWeight: 400, fontSize: 10.5, color: "var(--warn)", background: "#fff7e6", borderRadius: 5, padding: "0 6px", marginLeft: 6, cursor: "help" }}>공유</span>}
+                      </td>
+                      <td style={{ ...TD, textAlign: "center", color: "#1aa260", fontWeight: 700 }}>✓</td>
+                      {["manager", "user"].map(role => {
+                        const viewOn = s.view.every(k => !!matrix[`${role}:${k}`]);
+                        return (
+                          <td key={role} style={TD}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              <PermPill strong on={viewOn} label="보기" onChange={v => toggleKeys(role, s.view, v, `${s.name} 보기`)} />
+                              {s.acts.map(a => (
+                                <PermPill key={a.k} on={!!matrix[`${role}:${a.k}`]} disabled={!viewOn} label={a.label}
+                                  title={a.shared ? `'${a.shared}'와 공유되는 권한` : undefined}
+                                  onChange={v => toggleKeys(role, [a.k], v, `${s.name} ${a.label}`)} />
+                              ))}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                });
+                return rows;
+              })()}
+            </tbody>
+          </table>
+        </div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          '보기'를 끄면 사이드바에서 화면이 숨겨지고 작업도 함께 비활성화됩니다. 리포트·기록은 보기 스위치 하나가 내부 권한까지 함께 처리합니다.
+          COC는 '보기'만 켜면 읽기 전용으로 열람할 수 있습니다. 변경은 즉시 저장되며 대상자는 새로고침 후 반영됩니다.
+        </p>
+      </Sec>
     </div>
   );
 }
 
-function Matrix({ title, items, matrix, TH, TD, toggle, note }: {
-  title: string; items: { key: string; label: string }[]; matrix: Record<string, boolean>;
-  TH: React.CSSProperties; TD: React.CSSProperties; toggle: (role: string, cap: string, val: boolean) => void; note?: string;
+// 통합 권한표의 체크 필 (보기/작업)
+function PermPill({ on, disabled, label, title, onChange, strong }: {
+  on: boolean; disabled?: boolean; label: string; title?: string; strong?: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <Sec title={title} sub="(Master는 항상 전체)">
-      <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 320 }}>
-        <thead><tr>
-          <th style={TH}>항목</th>
-          <th style={{ ...TH, textAlign: "center" }}>Master</th>
-          <th style={{ ...TH, textAlign: "center" }}>Manager</th>
-          <th style={{ ...TH, textAlign: "center" }}>User</th>
-        </tr></thead>
-        <tbody>
-          {items.map(c => (
-            <tr key={c.key}>
-              <td style={TD}>{c.label} <span className="muted" style={{ fontSize: 10 }}>({c.key})</span></td>
-              <td style={{ ...TD, textAlign: "center", color: "#1aa260" }}>\u2713</td>
-              {["manager", "user"].map(role => (
-                <td key={role} style={{ ...TD, textAlign: "center" }}>
-                  <input type="checkbox" checked={!!matrix[`${role}:${c.key}`]} onChange={e => toggle(role, c.key, e.target.checked)} />
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-      {note && <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{note}</p>}
-    </Sec>
+    <label title={title} style={{
+      display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 16, padding: "2px 10px 2px 7px",
+      fontSize: 12, whiteSpace: "nowrap", cursor: disabled ? "default" : "pointer",
+      border: "1px solid " + (on ? "var(--accent)" : "var(--line)"),
+      background: on ? "#eff6ff" : "#fff", color: on ? "var(--accent)" : "inherit",
+      opacity: disabled ? .38 : 1, fontWeight: strong ? 700 : 400,
+    }}>
+      <input type="checkbox" checked={on} disabled={disabled} onChange={e => onChange(e.target.checked)} style={{ margin: 0, accentColor: "var(--accent)" }} />
+      {label}
+    </label>
   );
 }
+
