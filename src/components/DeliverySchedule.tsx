@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry } from "../lib/types";
@@ -68,7 +69,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     const np = { ...bp, deliver_date: iso };
     setPlans(prev => ({ ...prev, [o.id]: np }));
     try { await upsertPlan(np); logAudit("배송일 변경", "plan", o.id, { deliver_date: iso }); toast.success(iso ? `배송일 → ${iso}` : "배송일 자동으로 복귀"); }
-    catch (e: any) { toast.error("저장 실패: " + (e?.message || e)); listPlans().then(setPlans); }
+    catch (e: any) { toast.error("저장 실패: " + errMsg(e)); listPlans().then(setPlans); }
   }
   const periodLabel = lo === hi ? lo : `${lo} ~ ${hi}`;
   function exportXlsx() {

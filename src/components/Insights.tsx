@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from "recharts";
 import * as XLSX from "xlsx";
@@ -28,8 +29,8 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     Promise.all([
-      listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + (e.message || e))),
-      listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + (e.message || e))),
+      listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + errMsg(e))),
+      listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + errMsg(e))),
     ]).finally(() => setLoaded(true));
     listPlans().then(setPlans).catch(() => {});
   }, []);

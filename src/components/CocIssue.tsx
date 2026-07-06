@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Order, CocData, Settings, PlanEntry } from "../lib/types";
 import { listCocs, upsertCoc, getSettings, saveSettings, listPlans, logAudit, storageUpload, storageBlobToDataUrl } from "../lib/db";
@@ -106,7 +107,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   async function flushSave() {
     const c = pendingRef.current; if (!c) return; pendingRef.current = null;
     try { await upsertCoc(c); setSaveState("saved"); }
-    catch (e: any) { setSaveState("error"); toast.error("성적서 저장 실패 — 입력이 서버에 반영되지 않았습니다: " + (e.message || e)); }
+    catch (e: any) { setSaveState("error"); toast.error("성적서 저장 실패 — 입력이 서버에 반영되지 않았습니다: " + errMsg(e)); }
   }
   function queueSave(c: CocData) {
     pendingRef.current = c; setSaveState("saving");
@@ -123,7 +124,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   function setStamp() { pickDataUrl(300, d => { const s = { ...settings, stamp: d }; setSettings(s); saveSettings(s); }); }
   function setFmt(patch: any) { const nf = { ...fmt, ...patch }; const s = { ...settings, format: nf }; setSettings(s); saveSettings(s); }
   async function pickCocImage(key: "imgL" | "imgR") {
-    pickFile(async f => { try { const path = await storageUpload("coc", f); const url = await storageBlobToDataUrl("coc", path); if (url) setImgCache(c => ({ ...c, [path]: url })); setField(key + "_path", path); toast.success("이미지 저장됨"); } catch (e: any) { toast.error("업로드 실패: " + (e.message || e)); } });
+    pickFile(async f => { try { const path = await storageUpload("coc", f); const url = await storageBlobToDataUrl("coc", path); if (url) setImgCache(c => ({ ...c, [path]: url })); setField(key + "_path", path); toast.success("이미지 저장됨"); } catch (e: any) { toast.error("업로드 실패: " + errMsg(e)); } });
   }
 
   function nextIssueNo() {
@@ -190,7 +191,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
       const fname = [fdate, clean(data.customer), clean(data.model), clean(data.netwt)].filter(Boolean).join("_") || "성적서";
       pdf.save(`${fname}.pdf`);
       logAudit("COC PDF 저장", "coc", order.id, { issueNo: data.issueNo });
-    } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("PDF 생성 실패: " + errMsg(e)); }
     finally { setPdfBusy(false); }
   }
 

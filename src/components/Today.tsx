@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
@@ -68,7 +69,7 @@ export default function Today({ orders }: { orders: Order[] }) {
       toast.success(`완료 처리됨: ${oMap[pl.order_id]?.name || ""}`);
     } catch (e: any) {
       setPlans(prev => ({ ...prev, [pl.order_id]: pl })); setTick(t => t + 1);
-      toast.error("완료 저장 실패 — 다시 시도하세요: " + (e.message || e));
+      toast.error("완료 저장 실패 — 다시 시도하세요: " + errMsg(e));
     }
   }
 

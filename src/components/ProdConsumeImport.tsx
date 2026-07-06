@@ -1,3 +1,4 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { ProdConsume, listProdConsume, appendProdConsume, clearProdConsume, logAudit } from "../lib/db";
@@ -17,7 +18,7 @@ export default function ProdConsumeImport() {
   const [busy, setBusy] = useState(false);
   const [ym, setYm] = usePersistState("pcImport.ym", "");
   const [loaded, setLoaded] = useState(false);
-  const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
+  const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + errMsg(e))).finally(() => setLoaded(true));
   useEffect(() => { load(); }, []);
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
@@ -36,18 +37,18 @@ export default function ProdConsumeImport() {
     const f = e.target.files?.[0]; if (!f) return; setBusy(true);
     try { const buf = await f.arrayBuffer(); const wb = XLSX.read(buf); const ws = wb.Sheets[wb.SheetNames[0]]; const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false }) as any[][]; const list = parseProdConsume(aoa);
       if (!list.length) toast.error("인식된 행이 없습니다. '생산입고/소모현황 I' 엑셀인지 확인하세요."); else { setPreview(list); toast.success(`인식: ${list.length}행`); } }
-    catch (er: any) { toast.error("읽기 실패: " + (er.message || er)); }
+    catch (er: any) { toast.error("읽기 실패: " + errMsg(er)); }
     setBusy(false); e.target.value = "";
   }
-  async function addNew() { if (!preview) return; const toAdd = preview.filter(r => !existing.has(r.sig)); if (!toAdd.length) { toast.error("추가할 신규 행이 없습니다 (모두 중복)."); return; } setBusy(true); try { await appendProdConsume(toAdd); logAudit("생산·소모 추가", "prod_consume", "", { added: toAdd.length }); toast.success(`신규 ${toAdd.length}행 추가`); setPreview(null); load(); } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); } setBusy(false); }
+  async function addNew() { if (!preview) return; const toAdd = preview.filter(r => !existing.has(r.sig)); if (!toAdd.length) { toast.error("추가할 신규 행이 없습니다 (모두 중복)."); return; } setBusy(true); try { await appendProdConsume(toAdd); logAudit("생산·소모 추가", "prod_consume", "", { added: toAdd.length }); toast.success(`신규 ${toAdd.length}행 추가`); setPreview(null); load(); } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); } setBusy(false); }
   async function replaceAll() {
     if (!preview) return;
     if (!(await confirmDialog({ title: "전체 교체", message: `기존 생산·소모 데이터 ${rows.length.toLocaleString()}행을 전부 지우고 이 파일(${preview.length.toLocaleString()}행)로 교체합니다.\n복구할 수 없습니다.`, danger: true, confirmLabel: "전체 교체" }))) return;
-    setBusy(true); try { await clearProdConsume(); await appendProdConsume(preview); logAudit("생산·소모 전체교체", "prod_consume", "", { n: preview.length }); toast.success("교체 완료"); setPreview(null); load(); } catch (e: any) { toast.error("실패: " + (e.message || e)); } setBusy(false);
+    setBusy(true); try { await clearProdConsume(); await appendProdConsume(preview); logAudit("생산·소모 전체교체", "prod_consume", "", { n: preview.length }); toast.success("교체 완료"); setPreview(null); load(); } catch (e: any) { toast.error("실패: " + errMsg(e)); } setBusy(false);
   }
   async function clearAll() {
     if (!(await confirmDialog({ title: "전체 삭제", message: `생산·소모 데이터 ${rows.length.toLocaleString()}행을 전부 삭제합니다.\n복구할 수 없습니다.`, danger: true, confirmLabel: "전체 삭제" }))) return;
-    setBusy(true); try { await clearProdConsume(); toast.success("삭제됨"); load(); } catch (e: any) { toast.error(e.message || e); } setBusy(false);
+    setBusy(true); try { await clearProdConsume(); toast.success("삭제됨"); load(); } catch (e: any) { toast.error(errMsg(e)); } setBusy(false);
   }
 
   const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
@@ -66,6 +67,21 @@ export default function ProdConsumeImport() {
         {preview &&
           <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: 12 }}>
             <b>인식 {preview.length}행</b> · 신규 {newCount} · 중복 {preview.length - newCount}
+            <div style={{ overflow: "auto", maxHeight: 240, border: "1px solid var(--line)", borderRadius: 8, background: "#fff", marginTop: 8 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr><th style={{ ...th, textAlign: "center" }}>상태</th><th style={{ ...th, textAlign: "left" }}>일자</th><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={{ ...th, textAlign: "left" }}>소모품목</th><th style={th}>생산수량</th><th style={th}>실제소모</th></tr></thead>
+                <tbody>
+                  {preview.slice(0, 30).map((r, i) => { const dup = existing.has(r.sig); return (
+                    <tr key={i} style={dup ? { opacity: .5 } : undefined}>
+                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                      <td style={tdL}>{r.idate || "-"}</td><td style={tdL}>{r.prod_name}</td><td style={tdL}>{r.mat_name || ""}</td>
+                      <td style={td}>{r.prod_qty ? nf1(Number(r.prod_qty)) : ""}</td><td style={td}>{r.act_qty ? nf1(Number(r.act_qty)) : ""}</td>
+                    </tr>
+                  ); })}
+                </tbody>
+              </table>
+              {preview.length > 30 && <div className="muted" style={{ padding: "6px 8px", fontSize: 12 }}>… 외 {preview.length - 30}행</div>}
+            </div>
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
               <button className="btn green" onClick={addNew} disabled={busy || !canEdit}>신규만 추가 ({newCount})</button>
               <button className="btn" onClick={replaceAll} disabled={busy || !canEdit}>전체 교체</button>

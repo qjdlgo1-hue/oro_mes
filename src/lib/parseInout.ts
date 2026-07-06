@@ -29,6 +29,7 @@ export function parseInout(kind: InoutKind, text: string): InoutRow[] {
       ui = f("거래처명");          // 판매현황: 첫 번째 거래처명
       ti = c.findIndex(x => x.replace(/[\s.]/g, "").includes("내외자"));   // 내.외자구분
       gi = f("품목구분");
+      if (gi < 0) gi = c.findIndex(x => x.replace(/\s/g, "") === "구분"); // 이카운트 서식에 따라 '구분'만 있는 경우
       cc = f("거래처코드");
       vi = f("부가세");
       htot = f("합계");

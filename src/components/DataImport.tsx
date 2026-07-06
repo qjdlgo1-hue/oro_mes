@@ -1,5 +1,6 @@
+import { errMsg } from "../lib/errmsg";
 import { useEffect, useMemo, useState } from "react";
-import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, logAudit } from "../lib/db";
+import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, listOrders, logAudit } from "../lib/db";
 import { parseInout } from "../lib/parseInout";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
@@ -28,7 +29,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   const setSelYm = (v: string) => setYmMap(m => ({ ...m, [kind]: v }));
   const [loaded, setLoaded] = useState(false);
 
-  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
+  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + errMsg(e))).finally(() => setLoaded(true));
   useEffect(() => { setLoaded(false); load(); /* eslint-disable-next-line */ }, [kind]);
 
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
@@ -68,11 +69,20 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     if (!newRows.length) { toast.error("추가할 신규 데이터가 없습니다 (모두 중복)."); return; }
     setBusy(true);
     try {
-      await appendInout(newRows);
+      // 구분이 비어 있으면 주문 데이터의 품목코드→구분 매핑으로 자동 보완 (대시보드 품목구분 필터용)
+      let rowsToAdd = newRows;
+      if (newRows.some(r => !(r.gubun || "").trim())) {
+        try {
+          const gmap = new Map<string, string>();
+          (await listOrders()).forEach(o => { if (o.item_code && o.gubun && !gmap.has(o.item_code)) gmap.set(o.item_code, o.gubun); });
+          rowsToAdd = newRows.map(r => (r.gubun || "").trim() ? r : { ...r, gubun: gmap.get(r.item_code) || "" });
+        } catch { /* 매핑 실패 시 원본 그대로 저장 */ }
+      }
+      await appendInout(rowsToAdd);
       await logAudit(kind === "in" ? "생산입고 누적추가" : "판매현황 누적추가", "inout", "", { added: newRows.length, months: [...new Set(newRows.map(r => r.ym))] });
       toast.success(`신규 ${newRows.length}건 추가 완료 (중복 ${dupCount}건 제외)`);
       setText(""); setPreview([]); load();
-    } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function delMonth(ym: string) {
@@ -83,7 +93,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
       await deleteInoutMonth(kind, ym);
       await logAudit(kind === "in" ? "생산입고 월삭제" : "판매현황 월삭제", "inout", ym, {});
       toast.success(`${ym} 삭제됨`); load();
-    } catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -106,11 +116,35 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
             <button className="btn" onClick={doParse} disabled={busy}>인식</button>
             {preview.length > 0 && <button className="btn green" onClick={addNew} disabled={busy || !canEdit}>누적 추가 — 신규 {newRows.length}건</button>}
           </div>
-          {preview.length > 0 &&
+          {preview.length > 0 && <>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
               인식 {preview.length}건 · <b style={{ color: "#1aa260" }}>신규 {newRows.length}</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}</b>
               {!canEdit && " · 추가 권한 없음"}
-            </p>}
+            </p>
+            <div style={{ overflow: "auto", maxHeight: 260, border: "1px solid var(--line)", borderRadius: 8 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                <thead><tr>
+                  <th style={{ ...th, textAlign: "center" }}>상태</th>
+                  <th style={{ ...th, textAlign: "left" }}>일자</th>
+                  <th style={{ ...th, textAlign: "left" }}>품목코드</th>
+                  <th style={{ ...th, textAlign: "left" }}>품목명</th>
+                  <th style={th}>수량</th>
+                  {isOut && <th style={{ ...th, textAlign: "left" }}>거래처</th>}
+                </tr></thead>
+                <tbody>
+                  {marked.slice(0, 30).map(({ r, dup }, i) => (
+                    <tr key={i} style={dup ? { opacity: .5 } : undefined}>
+                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                      <td style={tdL}>{r.idate}</td><td style={tdL}>{r.item_code}</td><td style={tdL}>{r.name}</td>
+                      <td style={td}>{fmt(Number(r.qty) || 0)}</td>
+                      {isOut && <td style={tdL}>{r.customer || ""}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {marked.length > 30 && <div className="muted" style={{ padding: "6px 8px", fontSize: 12 }}>… 외 {marked.length - 30}건 (전체는 추가 후 아래 표에서 확인)</div>}
+            </div>
+          </>}
         </div>
 
         <div className="card">
