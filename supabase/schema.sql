@@ -57,6 +57,28 @@ begin
 end; $$;
 grant execute on function ping_keep_alive() to anon, authenticated;
 
+-- 주간 백업 (pg_cron: 매주 일 18:00 UTC = 월 03:00 KST, backup 스키마 스냅샷 60일 보관)
+create extension if not exists pg_cron;
+create schema if not exists backup;
+create or replace function backup.snapshot() returns text
+language plpgsql security definer set search_path = public as $$
+declare t text; ts text := to_char(now(), 'YYYYMMDD'); n int := 0; r record;
+begin
+  foreach t in array array['orders','plans','cocs','receipts','inout_rows','prod_consume','bom',
+    'projects','inspections','app_settings','role_permissions','menu_groups','menu_placement','profiles','audit_log'] loop
+    execute format('drop table if exists backup.%I', t || '_' || ts);
+    execute format('create table backup.%I as table public.%I', t || '_' || ts, t);
+    n := n + 1;
+  end loop;
+  for r in select tablename from pg_tables where schemaname = 'backup' and tablename ~ '_[0-9]{8}$' loop
+    if to_date(right(r.tablename, 8), 'YYYYMMDD') < current_date - 60 then
+      execute format('drop table backup.%I', r.tablename);
+    end if;
+  end loop;
+  return ts || ' snapshot: ' || n || ' tables';
+end; $$;
+-- select cron.schedule('weekly-backup', '0 18 * * 0', $$select backup.snapshot()$$);
+
 -- 감사 로그
 create table if not exists audit_log (
   id bigint generated always as identity primary key,
