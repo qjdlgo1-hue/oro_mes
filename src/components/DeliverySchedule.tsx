@@ -5,6 +5,7 @@ import { completionDate } from "../lib/plan";
 import { nextBusinessDay } from "../lib/holidays";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
+import { confirmDialog } from "../lib/confirm";
 
 type Row = { o: Order; base: string; del: string; manual: boolean };
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
@@ -23,7 +24,8 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     if (l) return { y: +l.slice(0, 4), m: +l.slice(5, 7) };
     const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() + 1 };
   });
-  useEffect(() => { listPlans().then(setPlans); }, []);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { listPlans().then(setPlans).finally(() => setLoaded(true)); }, []);
 
   const months = useMemo(() => [...new Set(orders.map(o => o.ym))].sort(), [orders]);
   const customers = useMemo(() => [...new Set(orders.map(o => o.customer || "(미상)"))].sort(), [orders]);
@@ -110,7 +112,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
       </div>
 
       {view === "list" ?
-        (groups.length === 0 ? <div className="card"><p className="muted">해당 기간의 배송 건이 없습니다.</p></div> :
+        (groups.length === 0 ? <div className="card"><p className="muted">{loaded ? "해당 기간의 배송 건이 없습니다." : "불러오는 중…"}</p></div> :
           groups.map(([c, list]) => (
             <div className="card" key={c}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -167,7 +169,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td className="fixcol c-spec" style={{ left: 184 }} title={r.o.name}>{r.o.name}</td>
                         <td className="fixcol c-cust" style={{ left: 344 }} title={r.o.spec}>{r.o.spec}</td>
                         <td className="fixcol c-qty" style={{ left: 464 }}>{r.o.qty.toLocaleString()}</td>
-                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "#2563eb"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={() => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else setDeliver(r.o, iso); }}>{isDel ? "●" : ""}</td>; })}
+                        {days.map(d => { const dow = new Date(cal.y, cal.m - 1, d).getDay(); const iso = `${calYm}-${p2(d)}`; const isDel = d === dd; const dc = r.manual ? "#f59e0b" : "#2563eb"; return <td key={d} className="day" style={{ background: isDel ? dc : (dow === 0 || dow === 6 ? "var(--wknd)" : "#fff"), color: "#fff", cursor: canEdit || isDel ? "pointer" : "default" }} title={isDel ? `${r.del} 배송 (${r.manual ? "수동" : "자동"})${canEdit ? " · 다시 클릭=자동복귀" : ""}` : (canEdit ? `${iso}로 옮기기` : "")} onClick={async () => { if (!canEdit) { if (isDel) setSelDay(r.del); return; } if (isDel) { if (r.manual) setDeliver(r.o, null); else setSelDay(r.del); } else { if (await confirmDialog({ title: "배송일 이동", message: `${r.o.customer} · ${r.o.name}\n배송일을 ${r.del} → ${iso} 로 옮길까요?`, confirmLabel: "이동" })) setDeliver(r.o, iso); } }}>{isDel ? "●" : ""}</td>; })}
                       </tr>
                     );
                   })}

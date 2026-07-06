@@ -5,6 +5,7 @@ import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
 import { toast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirm";
 
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
 const TODAY = new Date();
@@ -32,8 +33,9 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   const [sortBy, setSortBy] = useState<{ key: "seq" | "name"; dir: 1 | -1 }>({ key: "seq", dir: 1 });
   const canEdit = can("plan.edit");
   const isMobile = useIsMobile();
+  const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => { listPlans().then(setPlans); }, []);
+  useEffect(() => { listPlans().then(setPlans).finally(() => setLoaded(true)); }, []);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => {
@@ -68,8 +70,19 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
     const o = orders.find(x => x.id === editId); if (!o) return;
     const v = Number(qtyDraft);
     if (qtyDraft.trim() === "" || isNaN(v) || v < 0) { toast.error("생산수량(0 이상)을 입력하세요."); return; }
-    const msg = syncOrder ? `주문(수주) 수량도 ${v.toLocaleString()}g${v === 0 ? " (0=취소)" : ""} 으로 변경됩니다. 계속할까요?` : (v === 0 ? "생산수량을 0으로 저장합니다. 계속할까요?" : null);
-    if (msg && !confirm(msg)) return;
+    if (syncOrder) {
+      const zero = v === 0;
+      const ok = await confirmDialog({
+        title: zero ? "⚠ 주문 취소(수량 0)" : "주문 수량 변경",
+        message: zero
+          ? `주문(수주) 수량을 0으로 변경합니다.\n사실상 수주 취소이며 COC·리포트에도 반영됩니다.\n되돌리려면 수량을 다시 입력해야 합니다.`
+          : `주문(수주) 수량도 ${v.toLocaleString()}g 으로 변경됩니다.\n주문·COC·리포트에 모두 반영됩니다. 계속할까요?`,
+        danger: zero, confirmLabel: zero ? "0으로 변경" : "변경",
+      });
+      if (!ok) return;
+    } else if (v === 0) {
+      if (!(await confirmDialog({ title: "생산수량 0 저장", message: "생산수량을 0으로 저장합니다. 계속할까요?" }))) return;
+    }
     try {
       if (syncOrder) { await updateOrder(o.id, { qty: v }); await commit({ ...planOf(o), qty: null }); logAudit("주문+생산수량 변경", "order", o.id, { qty: v }); onChange?.(); }
       else { await commit({ ...planOf(o), qty: v }); logAudit("생산수량 변경", "plan", o.id, { qty: v }); }
@@ -159,7 +172,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
           <SortSel />
         </div>
 
-        {rows.length === 0 ? <div className="card nodata">이 달 주문이 없습니다.</div> :
+        {rows.length === 0 ? <div className="card nodata">{loaded ? "이 달 주문이 없습니다." : "불러오는 중…"}</div> :
           mview === "cal" ? (
             <div className="card" style={{ padding: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
@@ -249,7 +262,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
         <span className="muted">· {rows.length}개 주문 {view === "day" ? "· 막대 드래그=이동 / 오른쪽끝=기간 / 더블클릭=완료" : "· 주별은 합계 보기(편집은 일별에서)"}{!canEdit ? " · 보기 전용(편집 권한 없음)" : ""}</span>
       </div>
 
-      {rows.length === 0 ? <div className="card nodata">이 달에는 주문이 없습니다. '주문 가져오기' 탭에서 데이터를 넣으세요.</div> :
+      {rows.length === 0 ? <div className="card nodata">{loaded ? "이 달에는 주문이 없습니다. '주문 가져오기' 탭에서 데이터를 넣으세요." : "불러오는 중…"}</div> :
         <div className="board">
           <table className="grid">
             <thead>

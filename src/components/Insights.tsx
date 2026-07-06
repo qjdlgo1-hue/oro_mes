@@ -23,10 +23,13 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const [outRows, setOutRows] = useState<InoutRow[]>([]);
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
 
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + (e.message || e)));
+    Promise.all([
+      listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + (e.message || e))),
+      listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + (e.message || e))),
+    ]).finally(() => setLoaded(true));
     listPlans().then(setPlans).catch(() => {});
-    listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + (e.message || e)));
   }, []);
 
   const isIn = view === "in";
@@ -160,7 +163,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
         </p>}
       </div>
 
-      {view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">데이터가 없습니다. '{isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.</p></div> :
+      {view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">{loaded ? `데이터가 없습니다. '${isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.` : "불러오는 중…"}</p></div> :
       <>
         {/* KPI */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>

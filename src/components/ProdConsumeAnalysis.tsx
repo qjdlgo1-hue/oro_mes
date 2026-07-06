@@ -12,7 +12,8 @@ export default function ProdConsumeAnalysis() {
   const [view, setView] = useState<PV>("prod");
   const [ym, setYm] = useState("");
   const [selMat, setSelMat] = useState<string | null>(null);
-  useEffect(() => { listProdConsume().then(setRows).catch(() => {}); }, []);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { listProdConsume().then(setRows).catch(() => {}).finally(() => setLoaded(true)); }, []);
 
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const scoped = useMemo(() => ym ? rows.filter(r => r.ym === ym) : rows, [rows, ym]);
@@ -79,7 +80,7 @@ export default function ProdConsumeAnalysis() {
     </div>
   );
 
-  if (rows.length === 0) return <div className="card"><p className="muted">생산·소모 데이터가 없습니다. '생산소모 가져오기' 탭에서 엑셀을 업로드하세요.</p></div>;
+  if (rows.length === 0) return <div className="card"><p className="muted">{loaded ? "생산·소모 데이터가 없습니다. '생산소모 가져오기' 탭에서 엑셀을 업로드하세요." : "불러오는 중…"}</p></div>;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>

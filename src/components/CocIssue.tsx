@@ -58,13 +58,19 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const certWrapRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const [fit, setFit] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const saveTimer = useRef<number | null>(null);
+  const pendingRef = useRef<CocData | null>(null);
   const [cur, setCur] = useState(() => {
     const months = [...new Set(orders.map(o => o.ym))].sort();
     const last = months[months.length - 1] || `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, "0")}`;
     return { y: +last.slice(0, 4), m: +last.slice(5, 7) };
   });
 
-  useEffect(() => { listCocs().then(setCocs); listPlans().then(setPlans); getSettings().then(setSettings); supabase?.auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
+  useEffect(() => { Promise.all([listCocs().then(setCocs), listPlans().then(setPlans)]).finally(() => setLoaded(true)); getSettings().then(setSettings); supabase?.auth.getUser().then(({ data }) => setEmail(data.user?.email || "")); }, []);
 
   const ym = `${cur.y}-${String(cur.m).padStart(2, "0")}`;
   const rows = useMemo(() => orders.filter(o => o.ym === ym).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, ym]);
@@ -73,6 +79,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const data: Record<string, string> = order ? { ...parseSpecDefaults(order), ...(cocs[order.id]?.data || {}) } : {};
   const t = L[lang];
   const fmt = settings.format || {};
+  const locked = !!data.issueNo && !unlocked; // 발행 확정된 성적서는 잠금 해제 전까지 수정 불가
   const fitScale = isMobile && fit ? Math.min(1, (window.innerWidth - 28) / 760) : 1;
 
   const planProd = order ? completionDate(plans[order.id]) : null;
@@ -87,9 +94,23 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   }, [sel, cocs]);
   const imgSrc = (key: "imgL" | "imgR") => { const p = data[key + "_path"]; return p ? imgCache[p] : data[key]; };
 
-  function setField(f: string, v: string) { if (!order) return; const next = { ...data, [f]: v }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); upsertCoc(c); }
-  function setMany(patch: Record<string, string>) { if (!order) return; const next = { ...data, ...patch }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); upsertCoc(c); }
-  function clearProd() { if (!order) return; const next = { ...data }; delete next.prod; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); upsertCoc(c); }
+  // 자동저장: 800ms 디바운스 + 실패 시 알림 (기존엔 실패가 무음으로 삼켜졌음)
+  async function flushSave() {
+    const c = pendingRef.current; if (!c) return; pendingRef.current = null;
+    try { await upsertCoc(c); setSaveState("saved"); }
+    catch (e: any) { setSaveState("error"); toast.error("성적서 저장 실패 — 입력이 서버에 반영되지 않았습니다: " + (e.message || e)); }
+  }
+  function queueSave(c: CocData) {
+    pendingRef.current = c; setSaveState("saving");
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(flushSave, 800);
+  }
+  useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); flushSave(); }, []);
+  useEffect(() => { setUnlocked(false); setSaveState("idle"); }, [sel]);
+
+  function setField(f: string, v: string) { if (!order) return; const next = { ...data, [f]: v }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
+  function setMany(patch: Record<string, string>) { if (!order) return; const next = { ...data, ...patch }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
+  function clearProd() { if (!order) return; const next = { ...data }; delete next.prod; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
   function setLogo() { pickDataUrl(400, d => { const s = { ...settings, logo: d }; setSettings(s); saveSettings(s); }); }
   function setStamp() { pickDataUrl(300, d => { const s = { ...settings, stamp: d }; setSettings(s); saveSettings(s); }); }
   function setFmt(patch: any) { const nf = { ...fmt, ...patch }; const s = { ...settings, format: nf }; setSettings(s); saveSettings(s); }
@@ -107,14 +128,23 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
     const issueNo = data.issueNo || nextIssueNo();
     const version = String((Number(data.version) || 0) + 1);
     setMany({ issueNo, issuedAt: todayIso(), issuedBy: email, version });
+    flushSave(); // 발행은 즉시 저장
+    setUnlocked(false);
     logAudit("COC 발행", "coc", order.id, { issueNo, version });
-    toast.success(`발행 완료: ${issueNo} (v${version})`);
+    toast.success(`발행 완료: ${issueNo} (v${version}) — 문서가 잠금 처리되었습니다`);
+  }
+  function unlock() {
+    if (!order) return;
+    setUnlocked(true);
+    logAudit("COC 잠금 해제", "coc", order.id, { issueNo: data.issueNo });
+    toast.info("잠금 해제됨 — 수정 후 '재발행'을 눌러 버전을 올리세요");
   }
 
   async function savePdf() {
-    if (!order || !certRef.current) return;
+    if (!order || !certRef.current || pdfBusy) return;
+    setPdfBusy(true);
     try {
-      toast.success("PDF 만드는 중…");
+      toast.info("PDF 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const wrap = certWrapRef.current; const pz = wrap ? wrap.style.zoom : "";
       if (wrap) (wrap.style as any).zoom = "1";
@@ -137,6 +167,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
       pdf.save(`${fname}.pdf`);
       logAudit("COC PDF 저장", "coc", order.id, { issueNo: data.issueNo });
     } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    finally { setPdfBusy(false); }
   }
 
   // 판정
@@ -154,7 +185,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
   const Badge = ({ v }: { v: string }) => v ? <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: v === "PASS" ? "#1aa260" : "#c0392b", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>{v}</span> : null;
 
   function F(field: string, label: string, w?: string) {
-    return <div style={{ width: w || "auto" }}><label style={lb}>{label}</label><input style={fI} value={data[field] ?? ""} onChange={e => setField(field, e.target.value)} /></div>;
+    return <div style={{ width: w || "auto" }}><label style={lb}>{label}</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={data[field] ?? ""} disabled={locked} onChange={e => setField(field, e.target.value)} /></div>;
   }
 
   return (
@@ -190,7 +221,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               <div className="meta">{o.customer} · {o.qty.toLocaleString()}g · 주문 {o.order_date.slice(5)}{cp ? ` · 완료 ${cp.slice(5)}` : ""}{dn ? " ✅" : ""}</div>
             </li>
           ); })}
-          {rows.length === 0 && <li className="meta" style={{ padding: 14 }}>이 달 주문 없음</li>}
+          {rows.length === 0 && <li className="meta" style={{ padding: 14 }}>{loaded ? "이 달 주문 없음" : "불러오는 중…"}</li>}
         </ul>
       </div>
 
@@ -199,11 +230,17 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
           {/* 입력 폼 */}
           <div className="card no-print" style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-              <h3 style={{ margin: 0 }}>성적서 입력 {data.issueNo ? <span style={{ color: "#1aa260", fontSize: 13 }}>· {data.issueNo} (v{data.version})</span> : <span className="muted" style={{ fontSize: 12 }}>· 미발행</span>}</h3>
+              <h3 style={{ margin: 0 }}>성적서 입력 {data.issueNo ? <span style={{ color: "#1aa260", fontSize: 13 }}>· {data.issueNo} (v{data.version})</span> : <span className="muted" style={{ fontSize: 12 }}>· 미발행</span>}
+                <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: saveState === "error" ? "#c0392b" : saveState === "saving" ? "#b45309" : "#6b7280" }}>
+                  {saveState === "saving" ? "저장 중…" : saveState === "saved" ? "저장됨 ✓" : saveState === "error" ? "⚠ 저장 실패" : ""}
+                </span>
+              </h3>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn ghost" onClick={() => setLang(l => l === "ko" ? "en" : "ko")}>{lang === "ko" ? "EN" : "국문"}</button>
-                <button className="btn" onClick={issue}>{data.issueNo ? "✅ 발행 완료" : "📋 발행 확정"}</button>
-                <button className="btn green" onClick={savePdf}>📄 PDF 저장</button>
+                {locked
+                  ? <button className="btn ghost" onClick={unlock}>🔒 잠금 해제 후 수정</button>
+                  : <button className="btn" onClick={issue}>{data.issueNo ? "📋 재발행 (v+1)" : "📋 발행 확정"}</button>}
+                <button className="btn green" onClick={savePdf} disabled={pdfBusy}>{pdfBusy ? "⏳ PDF 생성 중…" : "📄 PDF 저장"}</button>
                 <button className="btn ghost" onClick={() => { logAudit("COC 인쇄", "coc", order.id, {}); window.print(); }}>🖨 인쇄</button>
                 {isMobile && <button className="btn ghost" onClick={() => setFit(f => !f)}>{fit ? "실제크기" : "화면맞춤"}</button>}
               </div>
@@ -211,7 +248,7 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
               {F("customer", "고객사")}{F("model", "모델명")}{F("size", "사이즈")}{F("comp", "조성")}
               {F("netwt", "중량(g)")}
-              <div><label style={lb}>생산일</label><input style={fI} value={effProd} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260" }}>{prodManual ? <>직접수정 <span style={{ color: "#2f6cb0", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span></> : "생산계획 자동"}</div></div>
+              <div><label style={lb}>생산일</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={effProd} disabled={locked} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260" }}>{prodManual ? <>직접수정 {!locked && <span style={{ color: "#2f6cb0", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span>}</> : "생산계획 자동"}</div></div>
               <div><label style={lb}>유효기간</label><input style={{ ...fI, background: "#f3f4f6" }} value={effExp} readOnly /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 10 }}>
@@ -220,8 +257,8 @@ export default function CocIssue({ orders }: { orders: Order[] }) {
               {F("certBy", "검사자")}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-              <div>{F("capL", "이미지1 제목")}<button className="btn ghost" style={{ marginTop: 4, fontSize: 12 }} onClick={() => pickCocImage("imgL")}>이미지1 업로드{imgSrc("imgL") ? " ✓" : ""}</button></div>
-              <div>{F("capR", "이미지2 제목")}<button className="btn ghost" style={{ marginTop: 4, fontSize: 12 }} onClick={() => pickCocImage("imgR")}>이미지2 업로드{imgSrc("imgR") ? " ✓" : ""}</button></div>
+              <div>{F("capL", "이미지1 제목")}<button className="btn ghost" style={{ marginTop: 4, fontSize: 12 }} disabled={locked} onClick={() => pickCocImage("imgL")}>이미지1 업로드{imgSrc("imgL") ? " ✓" : ""}</button></div>
+              <div>{F("capR", "이미지2 제목")}<button className="btn ghost" style={{ marginTop: 4, fontSize: 12 }} disabled={locked} onClick={() => pickCocImage("imgR")}>이미지2 업로드{imgSrc("imgR") ? " ✓" : ""}</button></div>
             </div>
           </div>
 

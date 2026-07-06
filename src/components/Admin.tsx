@@ -5,6 +5,7 @@ import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
 import { TAB_DEFS } from "../lib/tabs";
 import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow } from "../lib/db";
+import { confirmDialog, promptDialog } from "../lib/confirm";
 
 const ROLES = ["master", "manager", "user"];
 
@@ -27,7 +28,8 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
   const moveGroup = (i: number, dir: number) => { const j = i + dir; if (j < 0 || j >= mgroups.length) return; const n = [...mgroups]; [n[i], n[j]] = [n[j], n[i]]; setMgroups(n); };
   const addGroup = () => { const id = (crypto as any).randomUUID?.() || String(Date.now()); setMgroups(gs => [...gs, { id, name: "새 그룹", sort: gs.length }]); };
   async function removeGroup(id: string) {
-    if (!confirm("그룹을 삭제할까요? 속한 메뉴는 '미분류'로 이동합니다.")) return;
+    const g = mgroups.find(x => x.id === id);
+    if (!(await confirmDialog({ title: "그룹 삭제", message: `'${g?.name || ""}' 그룹을 삭제할까요?\n속한 메뉴는 '미분류'로 이동합니다.`, danger: true, confirmLabel: "삭제" }))) return;
     try { await deleteMenuGroup(id); setMgroups(gs => gs.filter(g => g.id !== id)); setPlace(p => { const n: any = { ...p }; Object.keys(n).forEach(k => { if (n[k].group_id === id) n[k] = { ...n[k], group_id: null }; }); return n; }); toast.success("그룹 삭제됨"); onMenuOrderChange(); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
   }
@@ -50,6 +52,8 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
   const [matrix, setMatrix] = useState<Record<string, boolean>>({}); // `${role}:${cap}` -> bool
   const [busy, setBusy] = useState(false);
   const [nf, setNf] = useState({ email: "", password: "", role: "user" });
+  const [showPw, setShowPw] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   async function load() {
     try {
@@ -58,6 +62,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
       const mm: Record<string, boolean> = {}; m.forEach((r: any) => { mm[`${r.role}:${r.capability}`] = r.allowed; });
       setMatrix(mm);
     } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); }
+    setLoaded(true);
   }
   useEffect(() => { load(); }, []);
 
@@ -86,7 +91,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
     setBusy(false);
   }
   async function resetPw(u: any) {
-    const pw = prompt(`${u.email} 새 비밀번호 (6자 이상):`);
+    const pw = await promptDialog({ title: "비밀번호 재설정", label: `${u.email} 의 새 비밀번호 (6자 이상)`, type: "password" });
     if (!pw) return;
     if (pw.length < 6) { toast.error("비밀번호는 6자 이상."); return; }
     setBusy(true);
@@ -142,6 +147,8 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>사용자 / 역할</h3>
+        {!loaded && <div className="muted" style={{ padding: 8 }}>불러오는 중…</div>}
+        {loaded && users.length === 0 && <div className="muted" style={{ padding: 8 }}>사용자가 없습니다.</div>}
         {isMobile ? (
           <div>{users.map(u => (
             <div className="mcard" key={u.id}>
@@ -176,7 +183,10 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
         <h3 style={{ marginTop: 0 }}>신규 사용자 추가</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input placeholder="이메일" value={nf.email} onChange={e => setNf({ ...nf, email: e.target.value })} style={{ padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} />
-          <input placeholder="비밀번호(6자+)" type="text" value={nf.password} onChange={e => setNf({ ...nf, password: e.target.value })} style={{ padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} />
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <input placeholder="비밀번호(6자+)" type={showPw ? "text" : "password"} autoComplete="new-password" value={nf.password} onChange={e => setNf({ ...nf, password: e.target.value })} style={{ padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} />
+            <button className="btn ghost" style={{ padding: "6px 8px" }} aria-label={showPw ? "비밀번호 숨기기" : "비밀번호 보기"} onClick={() => setShowPw(s => !s)}>{showPw ? "🙈" : "👁"}</button>
+          </span>
           <select value={nf.role} onChange={e => setNf({ ...nf, role: e.target.value })} style={{ padding: 8 }}>
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>

@@ -4,6 +4,7 @@ import { Order } from "./lib/types";
 import { listOrders, backendName, getMenuConfig, MenuGroupRow, MenuPlacement } from "./lib/db";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
+import { ConfirmHost } from "./lib/confirm";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile } from "./lib/useIsMobile";
 import { TAB_DEFS, TabKey } from "./lib/tabs";
@@ -149,6 +150,7 @@ export default function App() {
         <div className="content"><div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div></div>
       </div>
       <ToastHost />
+      <ConfirmHost />
     </>
   );
 }

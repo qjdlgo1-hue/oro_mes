@@ -3,6 +3,7 @@ import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, logAudit
 import { parseInout } from "../lib/parseInout";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
+import { confirmDialog } from "../lib/confirm";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
 const CFG: Record<InoutKind, Cfg> = {
@@ -19,9 +20,10 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   const [preview, setPreview] = useState<InoutRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [selYm, setSelYm] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
 
-  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e)));
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [kind]);
+  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
+  useEffect(() => { setLoaded(false); load(); /* eslint-disable-next-line */ }, [kind]);
 
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
   const marked = useMemo(() => {
@@ -63,7 +65,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     setBusy(false);
   }
   async function delMonth(ym: string) {
-    if (!confirm(`${ym} 데이터를 삭제할까요? (되돌릴 수 없음)`)) return;
+    const v = byMonth.find(([m]) => m === ym)?.[1];
+    if (!(await confirmDialog({ title: "월 데이터 삭제", message: `${ym.slice(0, 4)}년 ${+ym.slice(5, 7)}월 ${cfg.title.replace(" 가져오기", "")} 데이터 ${v?.n || 0}건을 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
     setBusy(true);
     try {
       await deleteInoutMonth(kind, ym);
@@ -101,7 +104,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
 
         <div className="card">
           <h4 style={{ marginTop: 0 }}>누적 저장 현황 <span className="muted" style={{ fontSize: 12 }}>(총 {rows.length}건)</span></h4>
-          {byMonth.length === 0 ? <p className="muted">아직 저장된 데이터가 없습니다.</p> :
+          {byMonth.length === 0 ? <p className="muted">{loaded ? "아직 저장된 데이터가 없습니다." : "불러오는 중…"}</p> :
             <div style={{ overflow: "auto", maxHeight: "40vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
@@ -137,7 +140,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
             </select>}
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}건 · 수량 합계 {fmt(detailQty)}</span>
         </div>
-        {detail.length === 0 ? <p className="muted">표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요.</p> :
+        {detail.length === 0 ? <p className="muted">{loaded ? "표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요." : "불러오는 중…"}</p> :
           <div style={{ overflow: "auto", maxHeight: "58vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>

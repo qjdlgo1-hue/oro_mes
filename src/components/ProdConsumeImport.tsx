@@ -4,6 +4,7 @@ import { ProdConsume, listProdConsume, appendProdConsume, clearProdConsume, logA
 import { parseProdConsume } from "../lib/parseProdConsume";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirm";
 
 const nf = (n: number) => Math.round(n).toLocaleString();
 const nf1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
@@ -14,7 +15,8 @@ export default function ProdConsumeImport() {
   const [preview, setPreview] = useState<ProdConsume[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [ym, setYm] = useState("");
-  const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e)));
+  const [loaded, setLoaded] = useState(false);
+  const load = () => listProdConsume().then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
   useEffect(() => { load(); }, []);
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
@@ -30,8 +32,15 @@ export default function ProdConsumeImport() {
     setBusy(false); e.target.value = "";
   }
   async function addNew() { if (!preview) return; const toAdd = preview.filter(r => !existing.has(r.sig)); if (!toAdd.length) { toast.error("추가할 신규 행이 없습니다 (모두 중복)."); return; } setBusy(true); try { await appendProdConsume(toAdd); logAudit("생산·소모 추가", "prod_consume", "", { added: toAdd.length }); toast.success(`신규 ${toAdd.length}행 추가`); setPreview(null); load(); } catch (e: any) { toast.error("저장 실패: " + (e.message || e)); } setBusy(false); }
-  async function replaceAll() { if (!preview) return; if (!confirm("기존 생산·소모 데이터를 전부 지우고 이 파일로 교체할까요?")) return; setBusy(true); try { await clearProdConsume(); await appendProdConsume(preview); logAudit("생산·소모 전체교체", "prod_consume", "", { n: preview.length }); toast.success("교체 완료"); setPreview(null); load(); } catch (e: any) { toast.error("실패: " + (e.message || e)); } setBusy(false); }
-  async function clearAll() { if (!confirm("생산·소모 데이터를 전부 삭제할까요?")) return; setBusy(true); try { await clearProdConsume(); toast.success("삭제됨"); load(); } catch (e: any) { toast.error(e.message || e); } setBusy(false); }
+  async function replaceAll() {
+    if (!preview) return;
+    if (!(await confirmDialog({ title: "전체 교체", message: `기존 생산·소모 데이터 ${rows.length.toLocaleString()}행을 전부 지우고 이 파일(${preview.length.toLocaleString()}행)로 교체합니다.\n복구할 수 없습니다.`, danger: true, confirmLabel: "전체 교체" }))) return;
+    setBusy(true); try { await clearProdConsume(); await appendProdConsume(preview); logAudit("생산·소모 전체교체", "prod_consume", "", { n: preview.length }); toast.success("교체 완료"); setPreview(null); load(); } catch (e: any) { toast.error("실패: " + (e.message || e)); } setBusy(false);
+  }
+  async function clearAll() {
+    if (!(await confirmDialog({ title: "전체 삭제", message: `생산·소모 데이터 ${rows.length.toLocaleString()}행을 전부 삭제합니다.\n복구할 수 없습니다.`, danger: true, confirmLabel: "전체 삭제" }))) return;
+    setBusy(true); try { await clearProdConsume(); toast.success("삭제됨"); load(); } catch (e: any) { toast.error(e.message || e); } setBusy(false);
+  }
 
   const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
   const td: React.CSSProperties = { padding: "4px 8px", borderBottom: "1px solid var(--line2)", fontSize: 12, textAlign: "right" };
@@ -63,7 +72,7 @@ export default function ProdConsumeImport() {
           {months.length > 0 && <select value={ym} onChange={e => setYm(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}><option value="">전체 월</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select>}
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}행</span>
         </div>
-        {detail.length === 0 ? <p className="muted">데이터가 없습니다. 위에서 엑셀을 업로드하세요.</p> :
+        {detail.length === 0 ? <p className="muted">{loaded ? "데이터가 없습니다. 위에서 엑셀을 업로드하세요." : "불러오는 중…"}</p> :
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr><th style={{ ...th, textAlign: "left" }}>일자</th><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={{ ...th, textAlign: "left" }}>소모품목</th><th style={th}>생산수량</th><th style={th}>표준소모</th><th style={th}>실제소모</th><th style={th}>차이</th><th style={th}>금액</th></tr></thead>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageBlobToDataUrl, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
 
 const won = (n: number) => (Math.round(n) || 0).toLocaleString();
@@ -50,7 +51,14 @@ export default function Support() {
     setBusy(false);
   }
   async function removeProject() {
-    if (!project || !confirm(`공고 "${project.announce || project.name}" 및 관련 검수조서를 삭제할까요?`)) return;
+    if (!project) return;
+    const n = projInsps.length;
+    const ok = await confirmDialog({
+      title: "공고 삭제",
+      message: `공고 "${project.announce || project.name}" 를 삭제할까요?\n${n ? `이 공고의 검수조서 ${n}건도 함께 영구 삭제되며 복구할 수 없습니다.` : "복구할 수 없습니다."}`,
+      danger: true, confirmLabel: n ? `공고+검수조서 ${n}건 삭제` : "삭제",
+    });
+    if (!ok) return;
     setBusy(true);
     try { await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨"); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
@@ -105,22 +113,24 @@ export default function Support() {
 
   async function saveInsp() {
     if (!form) return;
-    if (!withinPeriod && !confirm("검수일자가 협약기간을 벗어납니다. 그래도 저장할까요?")) return;
+    if (!withinPeriod && !(await confirmDialog({ title: "협약기간 확인", message: "검수일자가 협약기간을 벗어납니다. 그래도 저장할까요?", confirmLabel: "저장" }))) return;
     setBusy(true);
     try { const saved = await upsertInspection({ ...form, items: rows }); await loadI(); setForm({ ...saved, items: saved.items && saved.items.length ? saved.items : [blankItem()], photos: saved.photos || [] }); logAudit("검수조서 저장", "inspection", saved.id || "", {}); toast.success("검수조서 저장됨"); }
     catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
     setBusy(false);
   }
   async function removeInsp(i: Inspection) {
-    if (!confirm("이 검수조서를 삭제할까요?")) return; setBusy(true);
+    if (!(await confirmDialog({ title: "검수조서 삭제", message: `${i.inspect_date || "-"} 검수조서(${(i.items || []).length}품목)를 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
+    setBusy(true);
     try { await deleteInspection(i.id!); await loadI(); if (form?.id === i.id) setForm(null); toast.success("삭제됨"); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }
   async function savePdf() {
-    if (!form || !certRef.current) return;
+    if (!form || !certRef.current || busy) return;
+    setBusy(true);
     try {
-      toast.success("PDF 만드는 중…");
+      toast.info("PDF 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = 10;
@@ -137,6 +147,7 @@ export default function Support() {
       pdf.save(`검수조서_${clean(project?.name).slice(0, 16)}_${form.inspect_date || todayIso()}.pdf`);
       logAudit("검수조서 PDF", "inspection", form.id || "", {});
     } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    finally { setBusy(false); }
   }
 
   const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 };

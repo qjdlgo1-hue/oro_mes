@@ -8,6 +8,7 @@ import { sampleOrders } from "../lib/sampleOrders";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
+import { confirmDialog } from "../lib/confirm";
 
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
   const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
@@ -125,7 +126,13 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   }
   async function removeOrder(o: Order) {
     if (!canDelete) { toast.error("삭제 권한이 없습니다."); return; }
-    if (!confirm(`주문 삭제: ${o.name} ${o.qty}g (${o.order_date})\n연결된 생산계획·COC도 함께 삭제됩니다. 계속할까요?`)) return;
+    const linked = [plans[o.id] && "생산계획", cocs[o.id] && "COC"].filter(Boolean).join("·");
+    const ok = await confirmDialog({
+      title: "주문 삭제",
+      message: `${o.order_date} · ${o.name} · ${o.qty.toLocaleString()}g (${o.customer})\n${linked ? `연결된 ${linked}도 함께 삭제되며 ` : ""}복구할 수 없습니다.`,
+      danger: true, confirmLabel: "삭제",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await deleteOrder(o.id);

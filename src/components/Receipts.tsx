@@ -5,6 +5,7 @@ import { listReceipts, addReceipt, deleteReceipt, readReceiptAI, receiptSignedUr
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
+import { confirmDialog } from "../lib/confirm";
 
 type QItem = Receipt & { file?: File };
 const ACCOUNTS = ["복리후생비", "여비교통비", "차량유지비", "소모품비", "비품", "사무용품비", "접대비", "통신비", "운반비", "지급수수료", "도서인쇄비", "교육훈련비", "광고선전비", "보험료", "임차료", "세금과공과", "수선비", "기타"];
@@ -46,6 +47,9 @@ export default function Receipts() {
   const [queue, setQueue] = useState<QItem[]>([]);
   const [scanning, setScanning] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const cancelScanRef = useRef(false);
   const [viewer, setViewer] = useState<{ r: Receipt; urls: { path: string; url: string }[] } | null>(null);
   function receiptImgs(r: Receipt): string[] { return (r.image_paths && r.image_paths.length ? r.image_paths : (r.image_path ? [r.image_path] : [])) as string[]; }
   async function openViewer(r: Receipt) {
@@ -78,7 +82,7 @@ export default function Receipts() {
   const attachRef = useRef<HTMLInputElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
 
-  async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); } }
+  async function reload() { try { setRows(await listReceipts()); } catch (e: any) { toast.error("불러오기 실패: " + (e.message || e)); } setLoaded(true); }
   useEffect(() => { reload(); }, []);
   useEffect(() => { localStorage.setItem("oro_rcpt_company", company); }, [company]);
   useEffect(() => { localStorage.setItem("oro_rcpt_period", period); }, [period]);
@@ -111,7 +115,13 @@ export default function Receipts() {
   }
   async function del(r: Receipt) {
     if (!r.id) return;
-    if (!confirm("이 증빙(원본 포함)을 삭제할까요?")) return;
+    const nImg = receiptImgs(r).length;
+    const ok = await confirmDialog({
+      title: "증빙 영구 삭제",
+      message: `${r.rdate} · ${r.vendor} · ${won(r.total)}원 증빙을 삭제할까요?\n${nImg ? `보관 중인 원본 사진 ${nImg}장도 함께 영구 삭제되며 복구할 수 없습니다.` : "복구할 수 없습니다."}`,
+      danger: true, confirmLabel: "영구 삭제",
+    });
+    if (!ok) return;
     setBusy(true);
     try { await deleteReceipt(r.id, receiptImgs(r)); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("삭제됨"); await reload(); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
@@ -126,7 +136,9 @@ export default function Receipts() {
     files = files.filter(f => f.type.startsWith("image/"));
     if (!files.length) { toast.error("이미지 파일을 선택하세요."); return; }
     const found: QItem[] = [];
+    cancelScanRef.current = false;
     for (let i = 0; i < files.length; i++) {
+      if (cancelScanRef.current) { toast.info(`취소됨 — ${i}/${files.length}장까지 인식`); break; }
       setScanning(`AI가 영수증을 읽고 있어요... (${i + 1}/${files.length})`);
       try {
         const b64 = await fileToBase64(files[i]);
@@ -156,9 +168,10 @@ export default function Receipts() {
 
   async function pdfSummary() {
     if (!shown.length) { toast.error("내보낼 데이터가 없어요."); return; }
-    if (!summaryRef.current) return;
+    if (!summaryRef.current || pdfBusy) return;
+    setPdfBusy(true);
     try {
-      toast.success("PDF 요약본 만드는 중…");
+      toast.info("PDF 요약본 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const canvas = await html2canvas(summaryRef.current, { scale: 2, backgroundColor: "#ffffff" });
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
@@ -174,6 +187,7 @@ export default function Receipts() {
       }
       pdf.save(`증빙요약_${periodLabel || todayIso()}.pdf`);
     } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    finally { setPdfBusy(false); }
   }
 
   async function zipOriginals() {
@@ -181,7 +195,7 @@ export default function Receipts() {
     if (!withImg.length) { toast.error("원본이 저장된 항목이 없습니다."); return; }
     setBusy(true);
     try {
-      toast.success(`원본 ${withImg.length}건 압축 중…`);
+      toast.info(`원본 ${withImg.length}건 압축 중…`);
       const JSZip = (await import("jszip")).default; const zip = new JSZip();
       for (const r of withImg) {
         const blob = await receiptImageBlob(r.image_path!);
@@ -219,7 +233,7 @@ export default function Receipts() {
             </div>
             <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onFiles} style={{ display: "none" }} />
             <input ref={galRef} type="file" accept="image/*" multiple onChange={onFiles} style={{ display: "none" }} />
-            {scanning && <p style={{ color: "#3b5e8c", fontSize: 13, marginTop: 10 }}>⏳ {scanning}</p>}
+            {scanning && <p style={{ color: "#3b5e8c", fontSize: 13, marginTop: 10 }}>⏳ {scanning} <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12, marginLeft: 6 }} onClick={() => { cancelScanRef.current = true; }}>중지</button></p>}
           </> : <p className="muted">증빙 입력 권한이 없습니다(보기 전용).</p>}
 
           {queue.length > 0 &&
@@ -274,13 +288,13 @@ export default function Receipts() {
             <h3 style={{ margin: 0 }}>≡ 증빙 목록 {shown.length ? `(${shown.length}건)` : ""}</h3>
             <select value={qFilter} onChange={e => setQFilter(e.target.value)} style={{ padding: 6 }}>{quarters.map(q => <option key={q} value={q}>{q}</option>)}</select>
             <button className="btn green" onClick={exportExcel}>📊 엑셀</button>
-            <button className="btn" onClick={pdfSummary}>📄 PDF 요약본</button>
-            <button className="btn ghost" disabled={busy} onClick={zipOriginals}>🗂 원본 ZIP</button>
+            <button className="btn" disabled={pdfBusy} onClick={pdfSummary}>{pdfBusy ? "⏳ 생성 중…" : "📄 PDF 요약본"}</button>
+            <button className="btn ghost" disabled={busy} onClick={zipOriginals}>{busy ? "⏳ 압축 중…" : "🗂 원본 ZIP"}</button>
           </div>
 
           {isMobile ? (
             <div>
-              {shown.length === 0 ? <p className="muted">증빙이 없어요.</p> :
+              {shown.length === 0 ? <p className="muted">{loaded ? "증빙이 없어요." : "불러오는 중…"}</p> :
                 shown.map(r => {
                   const warn = r.memo && (r.memo.includes("확인") || r.memo.includes("추정"));
                   return (
@@ -304,7 +318,7 @@ export default function Receipts() {
                 <thead><tr>{["일자", "분기", "거래처", "유형", "공급가액", "부가세", "합계", "계정과목", "비고", "원본", ""].map(h =>
                   <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {shown.length === 0 ? <tr><td colSpan={11} style={{ ...cell, textAlign: "center", color: "#6b7280", padding: 30 }}>증빙이 없어요. 사진을 올리거나 직접 입력하세요.</td></tr> :
+                  {shown.length === 0 ? <tr><td colSpan={11} style={{ ...cell, textAlign: "center", color: "#6b7280", padding: 30 }}>{loaded ? "증빙이 없어요. 사진을 올리거나 직접 입력하세요." : "불러오는 중…"}</td></tr> :
                     shown.map(r => {
                       const warn = r.memo && (r.memo.includes("확인") || r.memo.includes("추정"));
                       return (
