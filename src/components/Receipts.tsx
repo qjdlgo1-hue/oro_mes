@@ -123,13 +123,13 @@ export default function Receipts() {
     if (!r.id) return;
     const nImg = receiptImgs(r).length;
     const ok = await confirmDialog({
-      title: "증빙 영구 삭제",
-      message: `${r.rdate} · ${r.vendor} · ${won(r.total)}원 증빙을 삭제할까요?\n${nImg ? `보관 중인 원본 사진 ${nImg}장도 함께 영구 삭제되며 복구할 수 없습니다.` : "복구할 수 없습니다."}`,
-      danger: true, confirmLabel: "영구 삭제",
+      title: "증빙 삭제",
+      message: `${r.rdate} · ${r.vendor} · ${won(r.total)}원 증빙을 삭제할까요?\n휴지통으로 이동하며${nImg ? ` 원본 사진 ${nImg}장도 함께 보존됩니다.` : ""} 관리자 페이지 휴지통에서 복구/영구삭제할 수 있습니다.`,
+      danger: true, confirmLabel: "삭제",
     });
     if (!ok) return;
     setBusy(true);
-    try { await deleteReceipt(r.id, receiptImgs(r)); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("삭제됨"); await reload(); }
+    try { await deleteReceipt(r.id, receiptImgs(r)); await logAudit("증빙 삭제", "receipt", r.id, {}); toast.success("휴지통으로 이동됨 (관리자 페이지에서 복구 가능)"); await reload(); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }

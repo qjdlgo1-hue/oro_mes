@@ -4,12 +4,13 @@ import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
 import { TAB_DEFS } from "../lib/tabs";
-import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow } from "../lib/db";
+import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow, listTrash, restoreOrder, restoreReceipt, purgeOrder, purgeReceipt } from "../lib/db";
 import { confirmDialog, promptDialog } from "../lib/confirm";
+import { money } from "../lib/fmt";
 
 const ROLES = ["master", "manager", "user"];
 
-export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChange: () => void; onMenuOrderChange: () => void }) {
+export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }: { onRoleChange: () => void; onMenuOrderChange: () => void; onDataChange?: () => void }) {
   const isMobile = useIsMobile();
   const [mgroups, setMgroups] = useState<MenuGroupRow[]>([]);
   const [place, setPlace] = useState<Record<string, { group_id: string | null; sort: number }>>({});
@@ -65,6 +66,36 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
     setLoaded(true);
   }
   useEffect(() => { load(); }, []);
+
+  // ---- 휴지통 ----
+  const [trash, setTrash] = useState<{ orders: any[]; receipts: any[] }>({ orders: [], receipts: [] });
+  const loadTrash = () => listTrash().then(setTrash).catch(() => {});
+  useEffect(() => { loadTrash(); }, []);
+  async function restoreItem(kind: "order" | "receipt", it: any) {
+    setBusy(true);
+    try {
+      if (kind === "order") await restoreOrder(it.id); else await restoreReceipt(it.id);
+      await logAudit("휴지통 복구", kind, it.id, { name: it.name || it.vendor });
+      toast.success("복구됨"); await loadTrash(); onDataChange?.();
+    } catch (e: any) { toast.error("복구 실패: " + (e.message || e)); }
+    setBusy(false);
+  }
+  async function purgeItem(kind: "order" | "receipt", it: any) {
+    const label = kind === "order" ? `${it.order_date} · ${it.name} · ${money(it.qty)}g` : `${it.rdate} · ${it.vendor} · ${money(it.total)}원`;
+    const ok = await confirmDialog({
+      title: "영구 삭제", danger: true, confirmLabel: "영구 삭제",
+      message: `${label}\n완전히 삭제합니다. ${kind === "receipt" ? "보관 중인 원본 사진도 함께 삭제되며 " : kind === "order" ? "연결된 생산계획·COC도 함께 삭제되며 " : ""}복구할 수 없습니다.`,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      if (kind === "order") await purgeOrder(it.id);
+      else await purgeReceipt(it.id, (it.image_paths && it.image_paths.length ? it.image_paths : (it.image_path ? [it.image_path] : [])));
+      await logAudit("휴지통 영구삭제", kind, it.id, { name: it.name || it.vendor });
+      toast.success("영구 삭제됨"); await loadTrash();
+    } catch (e: any) { toast.error("영구 삭제 실패: " + (e.message || e)); }
+    setBusy(false);
+  }
 
   if (myRole() !== "master") return <div className="card nodata">이 페이지는 Master만 접근할 수 있습니다.</div>;
 
@@ -193,6 +224,34 @@ export default function Admin({ onRoleChange, onMenuOrderChange }: { onRoleChang
           <button className="btn green" disabled={busy} onClick={createUser}>추가</button>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>계정은 즉시 생성되고 이메일 인증 없이 바로 로그인 가능합니다. 비밀번호는 서버에서 암호화 저장됩니다.</p>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>🗑 휴지통 <span className="muted" style={{ fontSize: 12 }}>(삭제된 주문·증빙 — 복구하거나 영구 삭제)</span></h3>
+        {trash.orders.length === 0 && trash.receipts.length === 0 ? <p className="muted">휴지통이 비어 있습니다.</p> :
+          <div style={{ display: "grid", gap: 6 }}>
+            {trash.orders.map(o => (
+              <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, flexWrap: "wrap" }}>
+                <span style={{ background: "#eef3f9", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>주문</span>
+                <b>{o.name}</b><span className="muted">{o.order_date} · {money(o.qty)}g · {o.customer} · 삭제 {String(o.deleted_at || "").slice(0, 10)}</span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                  <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => restoreItem("order", o)}>↩ 복구</button>
+                  <button className="btn danger" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => purgeItem("order", o)}>영구 삭제</button>
+                </span>
+              </div>
+            ))}
+            {trash.receipts.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, flexWrap: "wrap" }}>
+                <span style={{ background: "#e6f0ea", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>증빙</span>
+                <b>{r.vendor}</b><span className="muted">{r.rdate} · {money(r.total)}원 · {r.account} · 삭제 {String(r.deleted_at || "").slice(0, 10)}</span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                  <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => restoreItem("receipt", r)}>↩ 복구</button>
+                  <button className="btn danger" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => purgeItem("receipt", r)}>영구 삭제</button>
+                </span>
+              </div>
+            ))}
+          </div>}
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>주문을 복구하면 연결된 생산계획·COC도 함께 돌아옵니다. 증빙 원본 사진은 영구 삭제 전까지 보존됩니다.</p>
       </div>
 
       <Matrix title="권한 매트릭스 (작업 허용)" items={CAPS} matrix={matrix} TH={TH} TD={TD} toggle={toggle} />

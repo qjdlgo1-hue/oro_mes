@@ -7,6 +7,7 @@ import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
 import { nf, nf1 } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
+import { usePaged } from "../lib/usePaged";
 import MonthPicker from "./MonthPicker";
 
 export default function ProdConsumeImport() {
@@ -28,6 +29,7 @@ export default function ProdConsumeImport() {
     if (s) f = f.filter(r => `${r.prod_name || ""} ${r.mat_name || ""}`.toLowerCase().includes(s));
     return [...f].sort((a, b) => (a.idate || "") < (b.idate || "") ? -1 : 1);
   }, [rows, ym, q]);
+  const { paged, remaining, showMore } = usePaged(detail, 300);
   const totalProd = rows.filter(r => !r.mat_code).reduce((s, r) => s + (Number(r.prod_qty) || 0), 0);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -83,7 +85,7 @@ export default function ProdConsumeImport() {
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr><th style={{ ...th, textAlign: "left" }}>일자</th><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={{ ...th, textAlign: "left" }}>소모품목</th><th style={th}>생산수량</th><th style={th}>표준소모</th><th style={th}>실제소모</th><th style={th}>차이</th><th style={th}>금액</th></tr></thead>
-              <tbody>{detail.map((r, i) => (
+              <tbody>{paged.map((r, i) => (
                 <tr key={r.id || i}>
                   <td style={tdL}>{r.idate || "-"}</td><td style={tdL}>{r.prod_name}</td><td style={tdL}>{r.mat_name || ""}</td>
                   <td style={td}>{r.prod_qty ? nf1(Number(r.prod_qty)) : ""}</td><td style={td}>{r.std_qty ? nf1(Number(r.std_qty)) : ""}</td>
@@ -91,6 +93,7 @@ export default function ProdConsumeImport() {
                 </tr>
               ))}</tbody>
             </table>
+            {remaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={showMore}>더 보기 (남은 {remaining.toLocaleString()}행)</button>}
           </div>}
       </div>
     </div>

@@ -137,7 +137,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     const linked = [plans[o.id] && "생산계획", cocs[o.id] && "COC"].filter(Boolean).join("·");
     const ok = await confirmDialog({
       title: "주문 삭제",
-      message: `${o.order_date} · ${o.name} · ${o.qty.toLocaleString()}g (${o.customer})\n${linked ? `연결된 ${linked}도 함께 삭제되며 ` : ""}복구할 수 없습니다.`,
+      message: `${o.order_date} · ${o.name} · ${o.qty.toLocaleString()}g (${o.customer})\n휴지통으로 이동합니다${linked ? ` (연결된 ${linked}는 복구 시 함께 돌아옵니다)` : ""}.\n관리자 페이지 휴지통에서 복구/영구삭제할 수 있습니다.`,
       danger: true, confirmLabel: "삭제",
     });
     if (!ok) return;
@@ -145,7 +145,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     try {
       await deleteOrder(o.id);
       await logAudit("주문 삭제", "order", o.id, { name: o.name, qty: o.qty, date: o.order_date });
-      toast.success("삭제됨"); onChange();
+      toast.success("휴지통으로 이동됨 (관리자 페이지에서 복구 가능)"); onChange();
     } catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }

@@ -19,7 +19,7 @@ export const backendName = hasSupabase ? "Supabase(클라우드)" : "로컬(브�
 
 export async function listOrders(): Promise<Order[]> {
   if (supabase) {
-    const { data, error } = await supabase.from("orders").select("*").order("order_date");
+    const { data, error } = await supabase.from("orders").select("*").is("deleted_at", null).order("order_date");
     if (error) throw error;
     return (data || []) as Order[];
   }
@@ -170,11 +170,41 @@ export async function updateOrder(id: string, patch: Partial<Order>): Promise<vo
   const all = lsGet<Order[]>(LS.orders, []); const i = all.findIndex(o => o.id === id);
   if (i >= 0) { all[i] = { ...all[i], ...patch }; lsSet(LS.orders, all); }
 }
+// 소프트 삭제: 휴지통(관리자)에서 복구/영구삭제 가능. 로컬 모드는 즉시 삭제.
 export async function deleteOrder(id: string): Promise<void> {
-  if (supabase) { const { error } = await supabase.from("orders").delete().eq("id", id); if (error) throw error; return; }
+  if (supabase) { const { error } = await supabase.from("orders").update({ deleted_at: new Date().toISOString() }).eq("id", id); if (error) throw error; return; }
   lsSet(LS.orders, lsGet<Order[]>(LS.orders, []).filter(o => o.id !== id));
   const pl = lsGet<Record<string, any>>(LS.plans, {}); delete pl[id]; lsSet(LS.plans, pl);
   const cc = lsGet<Record<string, any>>(LS.cocs, {}); delete cc[id]; lsSet(LS.cocs, cc);
+}
+
+// ---- 휴지통 ----
+export async function listTrash(): Promise<{ orders: Order[]; receipts: Receipt[] }> {
+  if (!supabase) return { orders: [], receipts: [] };
+  const [{ data: os, error: oe }, { data: rs, error: re }] = await Promise.all([
+    supabase.from("orders").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+    supabase.from("receipts").select("*").not("deleted_at", "is", null).order("deleted_at", { ascending: false }),
+  ]);
+  if (oe) throw oe; if (re) throw re;
+  return { orders: (os || []) as Order[], receipts: (rs || []) as Receipt[] };
+}
+export async function restoreOrder(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("orders").update({ deleted_at: null }).eq("id", id); if (error) throw error;
+}
+export async function restoreReceipt(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("receipts").update({ deleted_at: null }).eq("id", id); if (error) throw error;
+}
+export async function purgeOrder(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("orders").delete().eq("id", id); if (error) throw error; // plans/cocs cascade
+}
+export async function purgeReceipt(id: string, paths?: (string | null)[] | null): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error;
+  const ps = (paths || []).filter(Boolean) as string[];
+  if (ps.length) { await supabase.storage.from("receipts").remove(ps); }
 }
 
 // ---- 역할 ----
@@ -204,7 +234,7 @@ import { Receipt } from "./types";
 const LS_RCPT = "oro_receipts";
 export async function listReceipts(): Promise<Receipt[]> {
   if (supabase) {
-    const { data, error } = await supabase.from("receipts").select("*").order("rdate", { ascending: false });
+    const { data, error } = await supabase.from("receipts").select("*").is("deleted_at", null).order("rdate", { ascending: false });
     if (error) throw error; return (data || []) as Receipt[];
   }
   return lsGet<Receipt[]>(LS_RCPT, []);
@@ -228,11 +258,10 @@ export async function addReceipt(r: Receipt, file?: File): Promise<void> {
   }
   const all = lsGet<Receipt[]>(LS_RCPT, []); all.unshift({ ...clean, id: (crypto as any).randomUUID?.() || String(Date.now()) }); lsSet(LS_RCPT, all);
 }
-export async function deleteReceipt(id: string, paths?: (string | null)[] | null): Promise<void> {
+// 소프트 삭제: 원본 이미지는 휴지통에서 '영구 삭제'할 때까지 보존. 로컬 모드는 즉시 삭제.
+export async function deleteReceipt(id: string, _paths?: (string | null)[] | null): Promise<void> {
   if (supabase) {
-    const { error } = await supabase.from("receipts").delete().eq("id", id); if (error) throw error;
-    const ps = (paths || []).filter(Boolean) as string[];
-    if (ps.length) { await supabase.storage.from("receipts").remove(ps); }
+    const { error } = await supabase.from("receipts").update({ deleted_at: new Date().toISOString() }).eq("id", id); if (error) throw error;
     return;
   }
   lsSet(LS_RCPT, lsGet<Receipt[]>(LS_RCPT, []).filter(r => r.id !== id));

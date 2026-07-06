@@ -139,7 +139,7 @@ export default function App() {
       case "audit": return <Audit />;
       case "receipt": return <Receipts />;
       case "bom": return <MaterialBom orders={orders} />;
-      case "admin": return <Admin onRoleChange={loadPerms} onMenuOrderChange={reloadMenu} />;
+      case "admin": return <Admin onRoleChange={loadPerms} onMenuOrderChange={reloadMenu} onDataChange={refresh} />;
     }
   };
 

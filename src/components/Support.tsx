@@ -6,6 +6,7 @@ import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
 import { nf as won } from "../lib/fmt";
 import { useIsMobile } from "../lib/useIsMobile";
+import { usePaged } from "../lib/usePaged";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
@@ -93,6 +94,7 @@ export default function Support() {
     return out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   }, [insps, projects, pid, settleAll]);
   const settleTotal = settleRows.reduce((s2, r) => s2 + r.amount, 0);
+  const { paged: settlePaged, remaining: settleRemaining, showMore: settleMore } = usePaged(settleRows, 300);
   function exportSettle() {
     if (!settleRows.length) { toast.error("정산할 데이터가 없습니다."); return; }
     const aoa: any[][] = [["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"]];
@@ -360,7 +362,7 @@ export default function Support() {
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead><tr>{["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"].map(h => <th key={h} style={{ ...bd, background: "#f1f3f7" }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {settleRows.map((r, idx) => (
+                  {settlePaged.map((r, idx) => (
                     <tr key={idx}>
                       <td style={bd}>{r.date}</td><td style={bd}>{r.announce}</td><td style={bd}>{r.task}</td><td style={bd}>{r.vendor}</td>
                       <td style={bd}>{r.name}</td><td style={bd}>{r.spec}</td><td style={{ ...bd, textAlign: "center" }}>{r.unit}</td>
@@ -371,6 +373,7 @@ export default function Support() {
                   <tr style={{ fontWeight: 700, background: "#eef3f9" }}><td style={bd} colSpan={9}>합 계</td><td style={{ ...bd, textAlign: "right" }}>{won(settleTotal)}</td><td style={bd}></td></tr>
                 </tbody>
               </table>
+              {settleRemaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={settleMore}>더 보기 (남은 {settleRemaining.toLocaleString()}건)</button>}
             </div>}
         </div>}
     </div>

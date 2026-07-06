@@ -7,6 +7,7 @@ import { confirmDialog } from "../lib/confirm";
 import { nf1 as fmt } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
 import { useSort } from "../lib/useSort";
+import { usePaged } from "../lib/usePaged";
 import MonthPicker from "./MonthPicker";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
@@ -54,6 +55,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     return [...f].sort((a, b) => a.idate < b.idate ? -1 : a.idate > b.idate ? 1 : (a.item_code < b.item_code ? -1 : 1));
   }, [rows, curYm, q]);
   const { sorted: detailSorted, toggle, arrow } = useSort(detail);
+  const { paged: detailPaged, remaining, showMore } = usePaged(detailSorted, 300);
   const detailQty = detail.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
   function doParse() {
@@ -165,7 +167,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 {isOut && <th style={{ ...th, textAlign: "center" }}>통화</th>}
               </tr></thead>
               <tbody>
-                {detailSorted.map((r, i) => (
+                {detailPaged.map((r, i) => (
                   <tr key={r.id || i}>
                     <td style={{ ...tdL, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>{r.idate}</td>
                     <td style={tdL}><b>{r.item_code || "-"}</b></td>
@@ -183,6 +185,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 ))}
               </tbody>
             </table>
+            {remaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={showMore}>더 보기 (남은 {remaining.toLocaleString()}건)</button>}
           </div>}
       </div>
     </div>
