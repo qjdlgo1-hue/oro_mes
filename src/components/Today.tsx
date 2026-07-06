@@ -3,6 +3,7 @@ import { Order, PlanEntry, CocData } from "../lib/types";
 import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
 import { completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
+import { toast } from "../lib/toast";
 
 const p = (n: number) => String(n).padStart(2, "0");
 function todayIso() { const t = new Date(); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; }
@@ -13,13 +14,14 @@ export default function Today({ orders }: { orders: Order[] }) {
   const [tick, setTick] = useState(0);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncFail, setSyncFail] = useState(false);
 
   const load = useCallback(async () => {
     setSyncing(true);
     try {
       const [pl, co] = await Promise.all([listPlans(), listCocs()]);
-      setPlans(pl); setCocs(co); setLastSync(new Date());
-    } catch { /* 네트워크 일시 오류는 다음 주기에 재시도 */ }
+      setPlans(pl); setCocs(co); setLastSync(new Date()); setSyncFail(false);
+    } catch { setSyncFail(true); /* 다음 주기에 재시도 — 배지로 실패 표시 */ }
     setSyncing(false);
   }, []);
 
@@ -60,8 +62,14 @@ export default function Today({ orders }: { orders: Order[] }) {
   async function markDone(pl: PlanEntry) {
     const np = { ...pl, done: true };
     setPlans(prev => ({ ...prev, [pl.order_id]: np })); setTick(t => t + 1);
-    await upsertPlan(np);
-    const o = oMap[pl.order_id]; logAudit("생산 완료", "plan", pl.order_id, { name: o?.name });
+    try {
+      await upsertPlan(np);
+      const o = oMap[pl.order_id]; logAudit("생산 완료", "plan", pl.order_id, { name: o?.name });
+      toast.success(`완료 처리됨: ${oMap[pl.order_id]?.name || ""}`);
+    } catch (e: any) {
+      setPlans(prev => ({ ...prev, [pl.order_id]: pl })); setTick(t => t + 1);
+      toast.error("완료 저장 실패 — 다시 시도하세요: " + (e.message || e));
+    }
   }
 
   const Row = ({ o, end, start, pl, late }: { o: Order; end: string; start: string; pl: PlanEntry; late?: boolean }) => (
@@ -84,16 +92,17 @@ export default function Today({ orders }: { orders: Order[] }) {
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 1040, gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
       <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
-        <span><b style={{ color: "#1f4e78", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "#1f4e78" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
+        <span><b style={{ color: "var(--accent)", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "var(--accent)" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
         <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 12px", fontSize: 12 }} onClick={load} disabled={syncing}>{syncing ? "갱신 중…" : "🔄 새로고침"}</button>
         {lastSync && <span style={{ fontSize: 11 }}>갱신 {lastSync.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30초마다 자동</span>}
+        {syncFail && <span style={{ fontSize: 11, color: "#c0392b", fontWeight: 700 }}>⚠ 갱신 실패 — 최신 데이터가 아닐 수 있음</span>}
       </div>
 
       <Section title="🔴 지연 (완료일 지났는데 미완료)" color="#c0392b" count={groups.late.length}>
         {groups.late.map(g => <Row key={g.o.id} {...g} pl={g.p} late />)}
       </Section>
 
-      <Section title="🔵 오늘 생산" color="#2f6cb0" count={groups.today.length}>
+      <Section title="🔵 오늘 생산" color="var(--accent)" count={groups.today.length}>
         {groups.today.map(g => <Row key={g.o.id} {...g} pl={g.p} />)}
       </Section>
 
@@ -104,7 +113,7 @@ export default function Today({ orders }: { orders: Order[] }) {
               <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
               <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {o.qty.toLocaleString()}g</div>
             </div>
-            <span className="muted" style={{ fontSize: 12 }}>→ [COC 발행] 탭에서 발행</span>
+            <button className="btn ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => { window.location.hash = "coc/" + o.id; }}>📄 발행하기 →</button>
           </div>
         ))}
       </Section>

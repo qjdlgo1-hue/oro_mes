@@ -5,15 +5,18 @@ let items: Toast[] = [];
 let subs: (() => void)[] = [];
 let nid = 1;
 function emit() { subs.forEach(f => f()); }
+function dismiss(id: number) { items = items.filter(x => x.id !== id); emit(); }
 
 export const toast = {
   show(msg: string, type: Toast["type"] = "info") {
     const t = { id: nid++, msg, type };
     items = [...items, t]; emit();
-    setTimeout(() => { items = items.filter(x => x.id !== t.id); emit(); }, 3500);
+    // 에러는 오래 보여주고 수동으로도 닫을 수 있게 함
+    setTimeout(() => dismiss(t.id), type === "error" ? 8000 : 3500);
   },
   success(m: string) { this.show(m, "success"); },
   error(m: string) { this.show(m, "error"); },
+  info(m: string) { this.show(m, "info"); },
 };
 
 export function ToastHost() {
@@ -24,8 +27,13 @@ export function ToastHost() {
       {items.map(t => (
         <div key={t.id} style={{
           background: t.type === "error" ? "#c0392b" : t.type === "success" ? "#1aa260" : "#333",
-          color: "#fff", padding: "10px 14px", borderRadius: 8, fontSize: 13, boxShadow: "0 2px 8px rgba(0,0,0,.25)", maxWidth: 360
-        }}>{t.msg}</div>
+          color: "#fff", padding: "10px 14px", borderRadius: 8, fontSize: 13, boxShadow: "0 2px 8px rgba(0,0,0,.25)", maxWidth: 360,
+          display: "flex", alignItems: "flex-start", gap: 10
+        }}>
+          <span style={{ flex: 1 }}>{t.msg}</span>
+          <button onClick={() => dismiss(t.id)} aria-label="알림 닫기"
+            style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: "18px", opacity: .8 }}>✕</button>
+        </div>
       ))}
     </div>
   );

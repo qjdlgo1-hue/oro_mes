@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Project, Inspection, InspItem, listProjects, upsertProject, deleteProject, listInspections, upsertInspection, deleteInspection, storageUpload, storageBlobToDataUrl, logAudit } from "../lib/db";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
+import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
+import { nf as won } from "../lib/fmt";
+import { useIsMobile } from "../lib/useIsMobile";
+import { usePaged } from "../lib/usePaged";
 
-const won = (n: number) => (Math.round(n) || 0).toLocaleString();
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
 const blankItem = (): InspItem => ({ name: "", spec: "", unit: "EA", qty: 0, price: 0, note: "" });
@@ -12,6 +15,7 @@ const normPhotos = (arr?: any[]): { path: string; caption?: string }[] => (arr |
 
 export default function Support() {
   const canEdit = can("support.edit");
+  const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
   const [insps, setInsps] = useState<Inspection[]>([]);
   const [pid, setPid] = useState<string>("");
@@ -50,7 +54,14 @@ export default function Support() {
     setBusy(false);
   }
   async function removeProject() {
-    if (!project || !confirm(`공고 "${project.announce || project.name}" 및 관련 검수조서를 삭제할까요?`)) return;
+    if (!project) return;
+    const n = projInsps.length;
+    const ok = await confirmDialog({
+      title: "공고 삭제",
+      message: `공고 "${project.announce || project.name}" 를 삭제할까요?\n${n ? `이 공고의 검수조서 ${n}건도 함께 영구 삭제되며 복구할 수 없습니다.` : "복구할 수 없습니다."}`,
+      danger: true, confirmLabel: n ? `공고+검수조서 ${n}건 삭제` : "삭제",
+    });
+    if (!ok) return;
     setBusy(true);
     try { await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨"); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
@@ -83,6 +94,7 @@ export default function Support() {
     return out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   }, [insps, projects, pid, settleAll]);
   const settleTotal = settleRows.reduce((s2, r) => s2 + r.amount, 0);
+  const { paged: settlePaged, remaining: settleRemaining, showMore: settleMore } = usePaged(settleRows, 300);
   function exportSettle() {
     if (!settleRows.length) { toast.error("정산할 데이터가 없습니다."); return; }
     const aoa: any[][] = [["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"]];
@@ -105,22 +117,24 @@ export default function Support() {
 
   async function saveInsp() {
     if (!form) return;
-    if (!withinPeriod && !confirm("검수일자가 협약기간을 벗어납니다. 그래도 저장할까요?")) return;
+    if (!withinPeriod && !(await confirmDialog({ title: "협약기간 확인", message: "검수일자가 협약기간을 벗어납니다. 그래도 저장할까요?", confirmLabel: "저장" }))) return;
     setBusy(true);
     try { const saved = await upsertInspection({ ...form, items: rows }); await loadI(); setForm({ ...saved, items: saved.items && saved.items.length ? saved.items : [blankItem()], photos: saved.photos || [] }); logAudit("검수조서 저장", "inspection", saved.id || "", {}); toast.success("검수조서 저장됨"); }
     catch (e: any) { toast.error("저장 실패: " + (e.message || e)); }
     setBusy(false);
   }
   async function removeInsp(i: Inspection) {
-    if (!confirm("이 검수조서를 삭제할까요?")) return; setBusy(true);
+    if (!(await confirmDialog({ title: "검수조서 삭제", message: `${i.inspect_date || "-"} 검수조서(${(i.items || []).length}품목)를 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
+    setBusy(true);
     try { await deleteInspection(i.id!); await loadI(); if (form?.id === i.id) setForm(null); toast.success("삭제됨"); }
     catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }
   async function savePdf() {
-    if (!form || !certRef.current) return;
+    if (!form || !certRef.current || busy) return;
+    setBusy(true);
     try {
-      toast.success("PDF 만드는 중…");
+      toast.info("PDF 만드는 중…");
       const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([import("jspdf"), import("html2canvas")]);
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight(); const m = 10;
@@ -137,6 +151,7 @@ export default function Support() {
       pdf.save(`검수조서_${clean(project?.name).slice(0, 16)}_${form.inspect_date || todayIso()}.pdf`);
       logAudit("검수조서 PDF", "inspection", form.id || "", {});
     } catch (e: any) { toast.error("PDF 생성 실패: " + (e.message || e)); }
+    finally { setBusy(false); }
   }
 
   const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 };
@@ -157,7 +172,7 @@ export default function Support() {
           {canEdit && <>
             <button className="btn ghost" onClick={newProject} disabled={busy}>+ 새 공고</button>
             {project && <button className="btn ghost" onClick={editProject} disabled={busy}>공고 수정</button>}
-            {project && <button className="btn" style={{ background: "#c0392b" }} onClick={removeProject} disabled={busy}>공고 삭제</button>}
+            {project && <button className="btn danger" onClick={removeProject} disabled={busy}>공고 삭제</button>}
           </>}
         </div>
         {project && !projEdit &&
@@ -180,9 +195,9 @@ export default function Support() {
       </div>
 
       {project &&
-        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
-          <button className="btn" style={{ borderRadius: 0, background: tab === "insp" ? "#2563eb" : "#e7ebf1", color: tab === "insp" ? "#fff" : "#374151" }} onClick={() => setTab("insp")}>검수조서</button>
-          <button className="btn" style={{ borderRadius: 0, background: tab === "settle" ? "#2563eb" : "#e7ebf1", color: tab === "settle" ? "#fff" : "#374151" }} onClick={() => setTab("settle")}>정산내용</button>
+        <div className="seg" style={{ width: "fit-content" }}>
+          <button className={tab === "insp" ? "on" : ""} onClick={() => setTab("insp")}>검수조서</button>
+          <button className={tab === "settle" ? "on" : ""} onClick={() => setTab("settle")}>정산내용</button>
         </div>}
       {/* 저장된 검수조서 목록 */}
       {project && tab === "insp" &&
@@ -264,7 +279,7 @@ export default function Support() {
                 {(form.photos || []).map(ph => (
                   <div key={ph.path} style={{ position: "relative", width: 120 }}>
                     {src(ph.path) ? <img src={src(ph.path)} alt="" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 6, border: "1px solid var(--line)" }} /> : <div style={{ width: 120, height: 90, background: "#eee", borderRadius: 6 }} />}
-                    <button className="btn" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", background: "#c0392b", fontSize: 11 }} onClick={() => delPhoto(ph.path)}>×</button>
+                    <button className="btn danger" style={{ position: "absolute", top: -6, right: -6, padding: "0 6px", fontSize: 11 }} aria-label="사진 삭제" onClick={() => delPhoto(ph.path)}>×</button>
                     <input value={ph.caption || ""} onChange={e => setCaption(ph.path, e.target.value)} placeholder="캡션(설명)" style={{ ...inp, width: 120, padding: 4, fontSize: 11, marginTop: 3 }} />
                   </div>
                 ))}
@@ -277,7 +292,7 @@ export default function Support() {
       {form && project && tab === "insp" &&
         <div className="card" style={{ overflow: "auto" }}>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>미리보기 (이 모양대로 PDF 저장됩니다)</div>
-          <div ref={certRef}>
+          <div ref={certRef} style={isMobile ? ({ zoom: Math.min(1, (window.innerWidth - 60) / 720) } as any) : undefined}>
             <div className="pdf-page" style={pageStyle}>
             <div style={{ textAlign: "right", fontSize: 11 }}>양식 4</div>
             <h2 style={{ textAlign: "center", letterSpacing: 10, margin: "4px 0 18px", fontSize: 24 }}>검 수 조 서</h2>
@@ -347,7 +362,7 @@ export default function Support() {
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                 <thead><tr>{["검수일자", "공고명", "과제명", "납품업체", "품명", "규격", "단위", "수량", "단가", "금액", "비고"].map(h => <th key={h} style={{ ...bd, background: "#f1f3f7" }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {settleRows.map((r, idx) => (
+                  {settlePaged.map((r, idx) => (
                     <tr key={idx}>
                       <td style={bd}>{r.date}</td><td style={bd}>{r.announce}</td><td style={bd}>{r.task}</td><td style={bd}>{r.vendor}</td>
                       <td style={bd}>{r.name}</td><td style={bd}>{r.spec}</td><td style={{ ...bd, textAlign: "center" }}>{r.unit}</td>
@@ -358,6 +373,7 @@ export default function Support() {
                   <tr style={{ fontWeight: 700, background: "#eef3f9" }}><td style={bd} colSpan={9}>합 계</td><td style={{ ...bd, textAlign: "right" }}>{won(settleTotal)}</td><td style={bd}></td></tr>
                 </tbody>
               </table>
+              {settleRemaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={settleMore}>더 보기 (남은 {settleRemaining.toLocaleString()}건)</button>}
             </div>}
         </div>}
     </div>

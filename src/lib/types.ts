@@ -10,6 +10,7 @@ export type Order = {
   qty: number;
   customer: string;
   note: string;
+  deleted_at?: string | null; // 소프트 삭제(휴지통)
 };
 export type PlanEntry = {
   order_id: string;
@@ -48,4 +49,5 @@ export type Receipt = {
   company?: string; period?: string;
   image_path?: string | null;
   image_paths?: string[] | null;
+  deleted_at?: string | null; // 소프트 삭제(휴지통)
 };

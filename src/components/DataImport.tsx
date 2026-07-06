@@ -3,13 +3,18 @@ import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, logAudit
 import { parseInout } from "../lib/parseInout";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
+import { confirmDialog } from "../lib/confirm";
+import { nf1 as fmt } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
+import { useSort } from "../lib/useSort";
+import { usePaged } from "../lib/usePaged";
+import MonthPicker from "./MonthPicker";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
 const CFG: Record<InoutKind, Cfg> = {
   in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "#2563eb" },
   out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "#1aa260" },
 };
-const fmt = (n: number) => (Math.round(n * 10) / 10).toLocaleString();
 
 export default function DataImport({ kind }: { kind: InoutKind }) {
   const cfg = CFG[kind];
@@ -18,10 +23,13 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<InoutRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [selYm, setSelYm] = useState<string>("");
+  const [ymMap, setYmMap] = usePersistState<Record<string, string>>("inout.ym", {});
+  const selYm = ymMap[kind] || "";
+  const setSelYm = (v: string) => setYmMap(m => ({ ...m, [kind]: v }));
+  const [loaded, setLoaded] = useState(false);
 
-  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e)));
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [kind]);
+  const load = () => listInout(kind).then(setRows).catch(e => toast.error("불러오기 실패: " + (e.message || e))).finally(() => setLoaded(true));
+  useEffect(() => { setLoaded(false); load(); /* eslint-disable-next-line */ }, [kind]);
 
   const existing = useMemo(() => new Set(rows.map(r => r.sig)), [rows]);
   const marked = useMemo(() => {
@@ -38,11 +46,16 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   }, [rows]);
 
   const months = byMonth.map(([ym]) => ym);
-  const curYm = selYm === "__all__" ? "__all__" : (selYm || months[0] || "");
+  const curYm = selYm === "__all__" ? "__all__" : ((months.includes(selYm) ? selYm : "") || months[0] || "");
+  const [q, setQ] = useState("");
   const detail = useMemo(() => {
-    const f = curYm === "__all__" ? rows : rows.filter(r => r.ym === curYm);
+    let f = curYm === "__all__" ? rows : rows.filter(r => r.ym === curYm);
+    const s = q.trim().toLowerCase();
+    if (s) f = f.filter(r => `${r.item_code || ""} ${r.name || ""} ${r.spec || ""} ${(r as any).customer || ""}`.toLowerCase().includes(s));
     return [...f].sort((a, b) => a.idate < b.idate ? -1 : a.idate > b.idate ? 1 : (a.item_code < b.item_code ? -1 : 1));
-  }, [rows, curYm]);
+  }, [rows, curYm, q]);
+  const { sorted: detailSorted, toggle, arrow } = useSort(detail);
+  const { paged: detailPaged, remaining, showMore } = usePaged(detailSorted, 300);
   const detailQty = detail.reduce((s, r) => s + (Number(r.qty) || 0), 0);
 
   function doParse() {
@@ -63,7 +76,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     setBusy(false);
   }
   async function delMonth(ym: string) {
-    if (!confirm(`${ym} 데이터를 삭제할까요? (되돌릴 수 없음)`)) return;
+    const v = byMonth.find(([m]) => m === ym)?.[1];
+    if (!(await confirmDialog({ title: "월 데이터 삭제", message: `${ym.slice(0, 4)}년 ${+ym.slice(5, 7)}월 ${cfg.title.replace(" 가져오기", "")} 데이터 ${v?.n || 0}건을 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
     setBusy(true);
     try {
       await deleteInoutMonth(kind, ym);
@@ -101,7 +115,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
 
         <div className="card">
           <h4 style={{ marginTop: 0 }}>누적 저장 현황 <span className="muted" style={{ fontSize: 12 }}>(총 {rows.length}건)</span></h4>
-          {byMonth.length === 0 ? <p className="muted">아직 저장된 데이터가 없습니다.</p> :
+          {byMonth.length === 0 ? <p className="muted">{loaded ? "아직 저장된 데이터가 없습니다." : "불러오는 중…"}</p> :
             <div style={{ overflow: "auto", maxHeight: "40vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
                 <thead><tr>
@@ -131,33 +145,31 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
           <h4 style={{ margin: 0 }}>가져온 데이터</h4>
           {months.length > 0 &&
-            <select value={curYm} onChange={e => setSelYm(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6 }}>
-              {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
-              <option value="__all__">전체</option>
-            </select>}
+            <MonthPicker months={[...months].sort()} value={curYm} onChange={setSelYm} allowAll allValue="__all__" />}
+          <input placeholder="🔍 품목/규격/거래처 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 170 }} />
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}건 · 수량 합계 {fmt(detailQty)}</span>
         </div>
-        {detail.length === 0 ? <p className="muted">표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요.</p> :
+        {detail.length === 0 ? <p className="muted">{loaded ? "표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요." : "불러오는 중…"}</p> :
           <div style={{ overflow: "auto", maxHeight: "58vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
-                <th style={{ ...th, textAlign: "left" }}>일자</th>
-                <th style={{ ...th, textAlign: "left" }}>품목코드</th>
-                <th style={{ ...th, textAlign: "left" }}>품목명</th>
+                <th style={{ ...th, textAlign: "left", left: 0, zIndex: 4, cursor: "pointer" }} onClick={() => toggle("idate")}>일자{arrow("idate")}</th>
+                <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("item_code")}>품목코드{arrow("item_code")}</th>
+                <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("name")}>품목명{arrow("name")}</th>
                 <th style={{ ...th, textAlign: "left" }}>규격</th>
-                <th style={th}>수량</th>
+                <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("qty")}>수량{arrow("qty")}</th>
                 {!isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
-                {isOut && <th style={th}>공급가액</th>}
+                {isOut && <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("amount")}>공급가액{arrow("amount")}</th>}
                 {isOut && <th style={th}>부가세</th>}
                 {isOut && <th style={th}>합계</th>}
-                {isOut && <th style={{ ...th, textAlign: "left" }}>거래처</th>}
+                {isOut && <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("customer")}>거래처{arrow("customer")}</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>통화</th>}
               </tr></thead>
               <tbody>
-                {detail.map((r, i) => (
+                {detailPaged.map((r, i) => (
                   <tr key={r.id || i}>
-                    <td style={tdL}>{r.idate}</td>
+                    <td style={{ ...tdL, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>{r.idate}</td>
                     <td style={tdL}><b>{r.item_code || "-"}</b></td>
                     <td style={tdL}>{r.name || "-"}</td>
                     <td style={tdL}>{r.spec || ""}</td>
@@ -173,6 +185,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 ))}
               </tbody>
             </table>
+            {remaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={showMore}>더 보기 (남은 {remaining.toLocaleString()}건)</button>}
           </div>}
       </div>
     </div>

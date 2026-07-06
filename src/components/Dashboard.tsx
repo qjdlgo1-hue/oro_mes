@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans } from "../lib/db";
+import { money as won } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
 
-function won(n: number) { return n.toLocaleString(); }
 const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", padding: "6px 8px", position: "sticky", top: 0, fontSize: 12, fontWeight: 700 };
 const TD: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7" };
 
@@ -12,7 +13,7 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
 
   const prod = useMemo(() => orders.filter(o => o.gubun === "제품" || o.gubun === "무형상품"), [orders]);
   const months = useMemo(() => [...new Set(prod.map(o => o.ym))].sort(), [prod]);
-  const [sel, setSel] = useState<string>("");
+  const [sel, setSel] = usePersistState<string>("report.ym", "");
   const curYm = sel || months[months.length - 1] || "";
 
   const perMonth = useMemo(() => {
@@ -60,8 +61,8 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
             <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
               <thead><tr>
                 <th style={{ ...TH, textAlign: "left" }}>{head}</th>
-                <th style={{ ...TH, textAlign: "right" }}>발주량(g)</th>
-                <th style={{ ...TH, textAlign: "right" }}>완료량(g)</th>
+                <th style={{ ...TH, textAlign: "right" }}>수주량(g)</th>
+                <th style={{ ...TH, textAlign: "right" }}>생산완료량(g)</th>
                 <th style={{ ...TH, textAlign: "right" }}>달성률</th>
                 <th style={TH}></th>
               </tr></thead>
@@ -73,7 +74,7 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
                       <td style={{ ...TD, fontWeight: 700 }}>{name}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
-                      <td style={{ ...TD, textAlign: "right", color: rate >= 100 ? "#1aa260" : "#1f4e78" }}>{rate}%</td>
+                      <td style={{ ...TD, textAlign: "right", color: rate >= 100 ? "#1aa260" : "var(--accent)" }}>{rate}%</td>
                       <td style={TD}><Bar val={v.qty} max={mx} color="#9bb8d9" /><Bar val={v.doneQty} max={mx} color="#1aa260" /></td>
                     </tr>
                   );
@@ -96,9 +97,9 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
             <thead><tr>
               <th style={{ ...TH, textAlign: "left" }}>월</th>
               <th style={{ ...TH, textAlign: "right" }}>주문건수</th>
-              <th style={{ ...TH, textAlign: "right" }}>발주량(g)</th>
+              <th style={{ ...TH, textAlign: "right" }}>수주량(g)</th>
               <th style={{ ...TH, textAlign: "right" }}>완료건수</th>
-              <th style={{ ...TH, textAlign: "right" }}>완료량(g)</th>
+              <th style={{ ...TH, textAlign: "right" }}>생산완료량(g)</th>
               <th style={{ ...TH, textAlign: "right" }}>달성률</th>
               <th style={TH}></th>
             </tr></thead>
@@ -114,7 +115,7 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
                       <td style={{ ...TD, textAlign: "right" }}>{won(yv.qty)}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{yv.doneCnt}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(yv.doneQty)}</td>
-                      <td style={{ ...TD, textAlign: "right", color: yrate >= 100 ? "#1aa260" : "#1f4e78" }}>{yrate}%</td>
+                      <td style={{ ...TD, textAlign: "right", color: yrate >= 100 ? "#1aa260" : "var(--accent)" }}>{yrate}%</td>
                       <td style={TD}><Bar val={yv.qty} max={maxYearQty} color="#7ba0cc" /><Bar val={yv.doneQty} max={maxYearQty} color="#1aa260" /></td>
                     </tr>
                     {!collapsed && yv.months.map(([ym, v]) => {
@@ -126,7 +127,7 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
                           <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
                           <td style={{ ...TD, textAlign: "right" }}>{v.doneCnt}</td>
                           <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
-                          <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "#1aa260" : "#1f4e78" }}>{rate}%</td>
+                          <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "#1aa260" : "var(--accent)" }}>{rate}%</td>
                           <td style={TD}><Bar val={v.qty} max={maxQty} color="#9bb8d9" /><Bar val={v.doneQty} max={maxQty} color="#1aa260" /></td>
                         </tr>
                       );
@@ -137,7 +138,7 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
             </tbody>
           </table>
         </div>
-        <p className="muted" style={{ marginTop: 6 }}>막대: 연한=발주량, 초록=완료량. <b style={{ color: "#1f4e78" }}>{curYm}</b> 기준 아래 상세.</p>
+        <p className="muted" style={{ marginTop: 6 }}>막대: 연한=수주량, 초록=생산완료량. <b style={{ color: "var(--accent)" }}>{curYm}</b> 기준 아래 상세.</p>
       </div>
 
       {/* 반응형: 넓으면 2단, 좁으면 1단 */}

@@ -5,28 +5,35 @@ import { InoutRow, listInout, listPlans } from "../lib/db";
 import ProdConsumeAnalysis from "./ProdConsumeAnalysis";
 import { Order, PlanEntry } from "../lib/types";
 import { toast } from "../lib/toast";
+import { nf } from "../lib/fmt";
+import { usePersistState } from "../lib/usePersist";
+import { useIsMobile } from "../lib/useIsMobile";
 
 type View = "in" | "out" | "pc";
 type Unit = "year" | "quarter" | "month";
 type Trade = "all" | "내자" | "외자";
 
-const nf = (n: number) => Math.round(n).toLocaleString();
 const PIE = ["#2563eb", "#f59e0b", "#1aa260", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0"];
 
 export default function Insights({ orders = [] }: { orders?: Order[] }) {
-  const [view, setView] = useState<View>("in");
-  const [unit, setUnit] = useState<Unit>("month");
-  const [year, setYear] = useState<string>("");      // "" = 전체
-  const [trade, setTrade] = useState<Trade>("all");
+  const [view, setView] = usePersistState<View>("dash.view", "in");
+  const [unit, setUnit] = usePersistState<Unit>("dash.unit", "month");
+  const [year, setYear] = usePersistState<string>("dash.year", "");      // "" = 전체
+  const [trade, setTrade] = usePersistState<Trade>("dash.trade", "all");
   const [gubuns, setGubuns] = useState<Set<string>>(new Set());
   const [inRows, setInRows] = useState<InoutRow[]>([]);
   const [outRows, setOutRows] = useState<InoutRow[]>([]);
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
+  const isMobile = useIsMobile();
+  const yw = isMobile ? 78 : 120; // 모바일에서 Y축 라벨 폭을 줄여 차트 영역 확보
 
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + (e.message || e)));
+    Promise.all([
+      listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + (e.message || e))),
+      listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + (e.message || e))),
+    ]).finally(() => setLoaded(true));
     listPlans().then(setPlans).catch(() => {});
-    listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + (e.message || e)));
   }, []);
 
   const isIn = view === "in";
@@ -35,7 +42,8 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const unitLabel = isIn ? "생산량(g)" : "판매액(원)";
 
   const gubunOpts = useMemo(() => [...new Set(inRows.map(r => r.gubun || "").filter(Boolean))].sort(), [inRows]);
-  useEffect(() => { if (gubunOpts.length) setGubuns(new Set(gubunOpts)); }, [gubunOpts.join(",")]);
+  // 데이터 로드 후 최초 1회만 전체 선택 (기존엔 매번 리셋되어 사용자가 고른 필터가 날아갔음)
+  useEffect(() => { if (gubunOpts.length && gubuns.size === 0) setGubuns(new Set(gubunOpts)); }, [gubunOpts.join(",")]);
   const tradeFiltered = useMemo(() => {
     if (isIn) return gubunOpts.length ? rows.filter(r => gubuns.has(r.gubun || "")) : rows;
     return trade === "all" ? rows : rows.filter(r => (r.trade_type || "") === trade);
@@ -100,7 +108,6 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
     toast.success("엑셀 저장 완료");
   }
 
-  const seg = (active: boolean): React.CSSProperties => ({ borderRadius: 0, fontSize: 13, background: active ? "#2563eb" : "#e7ebf1", color: active ? "#fff" : "#374151" });
   const card: React.CSSProperties = { background: "#fff", border: "1px solid var(--line)", borderRadius: 10, padding: 14 };
   const kpi = (label: string, val: string, color = "#1f2330") => (
     <div style={card}><div className="muted" style={{ fontSize: 12 }}>{label}</div><div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div></div>
@@ -122,15 +129,15 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
       {/* 상단 토글 + 컨트롤 */}
       <div className="card">
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
-            <button className="btn" style={seg(view === "in")} onClick={() => setView("in")}>🏭 생산</button>
-            <button className="btn" style={seg(view === "out")} onClick={() => setView("out")}>💰 판매</button>
-            <button className="btn" style={seg(view === "pc")} onClick={() => setView("pc")}>🧪 생산·소모</button>
+          <div className="seg">
+            <button className={view === "in" ? "on" : ""} onClick={() => setView("in")}>🏭 생산</button>
+            <button className={view === "out" ? "on" : ""} onClick={() => setView("out")}>💰 판매</button>
+            <button className={view === "pc" ? "on" : ""} onClick={() => setView("pc")}>🧪 생산·소모</button>
           </div>
           {view !== "pc" && <>
-          <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+          <div className="seg">
             {(["year", "quarter", "month"] as Unit[]).map(u => (
-              <button key={u} className="btn" style={seg(unit === u)} onClick={() => setUnit(u)}>{u === "year" ? "연도별" : u === "quarter" ? "분기별" : "월별"}</button>
+              <button key={u} className={unit === u ? "on" : ""} onClick={() => setUnit(u)}>{u === "year" ? "연도별" : u === "quarter" ? "분기별" : "월별"}</button>
             ))}
           </div>
           <select value={year} onChange={e => setYear(e.target.value)} style={{ padding: 7, border: "1px solid var(--line)", borderRadius: 6 }}>
@@ -147,9 +154,9 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
               ))}
             </div>}
           {!isIn &&
-            <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+            <div className="seg">
               {(["all", "내자", "외자"] as Trade[]).map(t => (
-                <button key={t} className="btn" style={seg(trade === t)} onClick={() => setTrade(t)}>{t === "all" ? "전체" : t}</button>
+                <button key={t} className={trade === t ? "on" : ""} onClick={() => setTrade(t)}>{t === "all" ? "전체" : t}</button>
               ))}
             </div>}
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀</button>
@@ -160,7 +167,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
         </p>}
       </div>
 
-      {view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">데이터가 없습니다. '{isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.</p></div> :
+      {view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">{loaded ? `데이터가 없습니다. '${isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.` : "불러오는 중…"}</p></div> :
       <>
         {/* KPI */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
@@ -208,7 +215,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
               <ResponsiveContainer>
                 <BarChart layout="vertical" data={byItem.slice(0, 10)} margin={{ left: 10, right: 16 }}>
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
-                  <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v: any) => nf(v) + (isIn ? " g" : " 원")} />
                   <Bar dataKey="value" fill="#2563eb">{byItem.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
                 </BarChart>
@@ -223,7 +230,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                 <ResponsiveContainer>
                   <BarChart layout="vertical" data={byCust.slice(0, 10)} margin={{ left: 10, right: 16 }}>
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
-                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: any) => nf(v) + " 원"} />
                     <Bar dataKey="value" fill="#1aa260">{byCust.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE[i % PIE.length]} />)}</Bar>
                   </BarChart>

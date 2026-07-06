@@ -35,6 +35,12 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 insert into profiles (id, email) select id, email from auth.users on conflict (id) do nothing;
 -- 관리자 지정 예: update profiles set role='admin' where email='dwlee@orocorp.kr';
 
+-- 소프트 삭제(휴지통): 관리자 휴지통에서 복구/영구삭제
+alter table orders add column if not exists deleted_at timestamptz;
+alter table receipts add column if not exists deleted_at timestamptz;
+create index if not exists idx_orders_deleted on orders(deleted_at) where deleted_at is not null;
+create index if not exists idx_receipts_deleted on receipts(deleted_at) where deleted_at is not null;
+
 -- 감사 로그
 create table if not exists audit_log (
   id bigint generated always as identity primary key,

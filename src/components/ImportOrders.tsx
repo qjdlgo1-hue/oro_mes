@@ -8,6 +8,9 @@ import { sampleOrders } from "../lib/sampleOrders";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
+import { confirmDialog } from "../lib/confirm";
+import { usePersistState } from "../lib/usePersist";
+import MonthPicker from "./MonthPicker";
 
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
   const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
@@ -30,8 +33,9 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   const [busy, setBusy] = useState(false);
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [cocs, setCocs] = useState<Record<string, CocData>>({});
-  const [viewYm, setViewYm] = useState<string>("");
+  const [viewYm, setViewYm] = usePersistState<string>("orders.viewYm", "");
   const [showChanged, setShowChanged] = useState(false);
+  const [q, setQ] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Order>>({});
 
@@ -50,11 +54,16 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     byMonth.forEach(([ym, n]) => { const y = ym.slice(0, 4); const e = g[y] || (g[y] = { months: [], total: 0 }); e.months.push([ym, n]); e.total += n; });
     return Object.entries(g).sort((a, b) => a[0] < b[0] ? 1 : -1);
   }, [byMonth]);
-  const curView = viewYm || months[months.length - 1] || "";
+  const curView = (months.includes(viewYm) ? viewYm : "") || months[months.length - 1] || "";
   const viewRows = useMemo(() => orders.filter(o => o.ym === curView).sort((a, b) => a.order_date < b.order_date ? -1 : 1), [orders, curView]);
   const pqOf = (o: Order) => (plans[o.id]?.qty != null ? Number(plans[o.id]!.qty) : (Number(o.qty) || 0));
   const isChanged = (o: Order) => plans[o.id]?.qty != null && Number(plans[o.id]!.qty) !== (Number(o.qty) || 0);
-  const displayRows = useMemo(() => showChanged ? viewRows.filter(isChanged) : viewRows, [viewRows, showChanged, plans]);
+  const displayRows = useMemo(() => {
+    let r = showChanged ? viewRows.filter(isChanged) : viewRows;
+    const s = q.trim().toLowerCase();
+    if (s) r = r.filter(o => `${o.name} ${o.spec} ${o.customer} ${o.note || ""}`.toLowerCase().includes(s));
+    return r;
+  }, [viewRows, showChanged, plans, q]);
   const sumSu = viewRows.reduce((s2, o) => s2 + (Number(o.qty) || 0), 0);
   const sumSa = viewRows.reduce((s2, o) => s2 + pqOf(o), 0);
   const changedCnt = viewRows.filter(isChanged).length;
@@ -125,12 +134,18 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
   }
   async function removeOrder(o: Order) {
     if (!canDelete) { toast.error("삭제 권한이 없습니다."); return; }
-    if (!confirm(`주문 삭제: ${o.name} ${o.qty}g (${o.order_date})\n연결된 생산계획·COC도 함께 삭제됩니다. 계속할까요?`)) return;
+    const linked = [plans[o.id] && "생산계획", cocs[o.id] && "COC"].filter(Boolean).join("·");
+    const ok = await confirmDialog({
+      title: "주문 삭제",
+      message: `${o.order_date} · ${o.name} · ${o.qty.toLocaleString()}g (${o.customer})\n휴지통으로 이동합니다${linked ? ` (연결된 ${linked}는 복구 시 함께 돌아옵니다)` : ""}.\n관리자 페이지 휴지통에서 복구/영구삭제할 수 있습니다.`,
+      danger: true, confirmLabel: "삭제",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await deleteOrder(o.id);
       await logAudit("주문 삭제", "order", o.id, { name: o.name, qty: o.qty, date: o.order_date });
-      toast.success("삭제됨"); onChange();
+      toast.success("휴지통으로 이동됨 (관리자 페이지에서 복구 가능)"); onChange();
     } catch (e: any) { toast.error("삭제 실패: " + (e.message || e)); }
     setBusy(false);
   }
@@ -231,10 +246,9 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0 }}>저장된 주문 데이터</h3>
           {months.length > 0 &&
-            <select value={curView} onChange={e => setViewYm(e.target.value)} style={{ padding: 5 }}>
-              {months.map(m => <option key={m} value={m}>{m.slice(0, 4)}년 {+m.slice(5, 7)}월</option>)}
-            </select>}
-          <span className="muted">{viewRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부</span>
+            <MonthPicker months={months} value={curView} onChange={setViewYm} />}
+          <input placeholder="🔍 품목/거래처 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 150 }} />
+          <span className="muted">{displayRows.length}건 · 생산완료일=생산계획 마지막날 · COC=발행여부</span>
           <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}><input type="checkbox" checked={showChanged} onChange={e => setShowChanged(e.target.checked)} /> 변동만 보기</label>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
@@ -256,7 +270,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   <div className="mrow"><span className="k">거래처</span><span className="v" style={{ fontWeight: 400 }}>{o.customer}</span></div>
                   <div className="mrow"><span className="k">수주 / 생산 / 차이</span><span className="v" style={{ fontWeight: 400 }}>{o.qty.toLocaleString()} / <b style={{ color: "#2563eb" }}>{pqOf(o).toLocaleString()}</b> / {(() => { const d = pqOf(o) - (Number(o.qty) || 0); return <span style={{ color: d > 0 ? "#1aa260" : d < 0 ? "#c0392b" : "#888", fontWeight: 700 }}>{d !== 0 ? (d > 0 ? "+" : "") + d.toLocaleString() : "-"}</span>; })()}g</span></div>
                   <div className="mrow"><span className="k">완료일 / 상태 / COC</span><span className="v" style={{ fontWeight: 400 }}>{cp || "-"} · {done ? "완료" : (cp ? "진행중" : "미계획")} · {hasCoc ? "발행" : "-"}</span></div>
-                  {canDelete && <button className="btn" style={{ background: "#c0392b", marginTop: 8, width: "100%" }} onClick={() => removeOrder(o)}>삭제</button>}
+                  {canDelete && <button className="btn danger" style={{ marginTop: 8, width: "100%" }} onClick={() => removeOrder(o)}>삭제</button>}
                 </div>
               );
             })}
@@ -295,7 +309,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                         ) : (
                           <>
                             {canEdit && <button className="btn ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => startEdit(o)}>수정</button>}{" "}
-                            {canDelete && <button className="btn" style={{ padding: "2px 8px", fontSize: 11, background: "#c0392b" }} onClick={() => removeOrder(o)}>삭제</button>}
+                            {canDelete && <button className="btn danger" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => removeOrder(o)}>삭제</button>}
                           </>
                         )}
                       </td>
