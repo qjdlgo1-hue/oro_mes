@@ -6,6 +6,7 @@ import { completionDate } from "./lib/plan";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
 import { ConfirmHost } from "./lib/confirm";
+import ErrorBoundary from "./lib/ErrorBoundary";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile } from "./lib/useIsMobile";
 import { TAB_DEFS, TabKey } from "./lib/tabs";
@@ -229,7 +230,7 @@ export default function App() {
             </div>
           </div>}
 
-        <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
+        <div className="wrap"><ErrorBoundary>{loading ? <div className="muted">불러오는 중…</div> : render()}</ErrorBoundary></div>
         <ToastHost />
         <ConfirmHost />
       </>
@@ -265,7 +266,7 @@ export default function App() {
               onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
           </span>
         </div>
-        <div className="wrap">{loading ? <div className="muted">불러오는 중…</div> : render()}</div>
+        <div className="wrap"><ErrorBoundary>{loading ? <div className="muted">불러오는 중…</div> : render()}</ErrorBoundary></div>
       </div>
       <ToastHost />
       <ConfirmHost />
