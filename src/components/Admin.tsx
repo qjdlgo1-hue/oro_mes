@@ -4,12 +4,21 @@ import { SCREEN_PERMS, SCREEN_PERM_KEYS, listProfiles, setRole, getMatrix, setPe
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
-import { TAB_DEFS } from "../lib/tabs";
+import { TAB_DEFS, groupIcon } from "../lib/tabs";
 import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow, listTrash, restoreOrder, restoreReceipt, purgeOrder, purgeReceipt } from "../lib/db";
 import { confirmDialog, promptDialog } from "../lib/confirm";
 import { money } from "../lib/fmt";
 
 const ROLES = ["master", "manager", "user"];
+
+// 메뉴 구성의 현재 상태를 문자열로 요약 — 저장 시점과 비교해 '저장 안 된 변경' 표시
+type PlaceMap = Record<string, { group_id: string | null; sort: number }>;
+function menuSig(gs: MenuGroupRow[], pl: PlaceMap) {
+  const of = (gid: string | null) => TAB_DEFS
+    .filter(t => (pl[t.key]?.group_id ?? null) === gid)
+    .sort((a, b) => (pl[a.key]?.sort || 0) - (pl[b.key]?.sort || 0)).map(t => t.key);
+  return JSON.stringify([gs.map(g => [g.id, g.name]), [...gs.map(g => g.id), null].map(of)]);
+}
 
 // 접을 수 있는 섹션 카드 — 관리자 페이지가 길어 스크롤 부담을 줄임
 function Sec({ title, sub, defaultOpen = false, children }: { title: React.ReactNode; sub?: string; defaultOpen?: boolean; children: React.ReactNode }) {
@@ -27,7 +36,10 @@ function Sec({ title, sub, defaultOpen = false, children }: { title: React.React
 export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }: { onRoleChange: () => void; onMenuOrderChange: () => void; onDataChange?: () => void }) {
   const isMobile = useIsMobile();
   const [mgroups, setMgroups] = useState<MenuGroupRow[]>([]);
-  const [place, setPlace] = useState<Record<string, { group_id: string | null; sort: number }>>({});
+  const [place, setPlace] = useState<PlaceMap>({});
+  const [selMenuG, setSelMenuG] = useState("");           // 선택된 그룹 id ("_etc" = 미분류)
+  const [editingG, setEditingG] = useState<string | null>(null); // 이름 인라인 편집 중인 그룹
+  const [menuSnap, setMenuSnap] = useState<{ gs: MenuGroupRow[]; pl: PlaceMap; sig: string } | null>(null); // 저장 시점 상태
   useEffect(() => {
     getMenuConfig().then(c => {
       const gs = [...c.groups].sort((a, b) => a.sort - b.sort);
@@ -36,16 +48,44 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       Object.keys(p).forEach(k => { if (p[k].group_id && !gids.has(p[k].group_id)) p[k] = { ...p[k], group_id: null }; });
       TAB_DEFS.forEach((t, i) => { if (!p[t.key]) p[t.key] = { group_id: null, sort: 100 + i }; });
       setMgroups(gs); setPlace(p);
+      setMenuSnap({ gs: gs.map(g => ({ ...g })), pl: JSON.parse(JSON.stringify(p)), sig: menuSig(gs, p) });
     }).catch(e => toast.error("메뉴 불러오기 실패: " + errMsg(e)));
   }, []);
+  const menuDirty = !!menuSnap && menuSig(mgroups, place) !== menuSnap.sig;
+  function undoMenu() {
+    if (!menuSnap) return;
+    setMgroups(menuSnap.gs.map(g => ({ ...g })));
+    setPlace(JSON.parse(JSON.stringify(menuSnap.pl)));
+    setEditingG(null);
+    toast.success("저장 시점으로 되돌렸습니다");
+  }
+  // 화면별 권한에서 보기가 꺼진 역할 — 메뉴 구성 편집기에 🔒 배지로 표시
+  function hiddenRoles(tabKey: string): string[] {
+    if (tabKey === "admin" || !loaded) return [];
+    const s = SCREEN_PERMS.find(x => x.view[0] === "menu." + (tabKey === "today" ? "pop" : tabKey));
+    if (!s) return [];
+    return ["manager", "user"].filter(r => s.view.some(k => !matrix[`${r}:${k}`]));
+  }
   const itemsOf = (gid: string | null) => TAB_DEFS.filter(t => (place[t.key]?.group_id ?? null) === gid).sort((a, b) => (place[a.key]?.sort || 0) - (place[b.key]?.sort || 0));
   const renameGroup = (id: string, name: string) => setMgroups(gs => gs.map(g => g.id === id ? { ...g, name } : g));
   const moveGroup = (i: number, dir: number) => { const j = i + dir; if (j < 0 || j >= mgroups.length) return; const n = [...mgroups]; [n[i], n[j]] = [n[j], n[i]]; setMgroups(n); };
-  const addGroup = () => { const id = (crypto as any).randomUUID?.() || String(Date.now()); setMgroups(gs => [...gs, { id, name: "새 그룹", sort: gs.length }]); };
+  const addGroup = () => {
+    const id = (crypto as any).randomUUID?.() || String(Date.now());
+    setMgroups(gs => [...gs, { id, name: "새 그룹", sort: gs.length }]);
+    setSelMenuG(id); setEditingG(id);
+  };
   async function removeGroup(id: string) {
     const g = mgroups.find(x => x.id === id);
     if (!(await confirmDialog({ title: "그룹 삭제", message: `'${g?.name || ""}' 그룹을 삭제할까요?\n속한 메뉴는 '미분류'로 이동합니다.`, danger: true, confirmLabel: "삭제" }))) return;
-    try { await deleteMenuGroup(id); setMgroups(gs => gs.filter(g => g.id !== id)); setPlace(p => { const n: any = { ...p }; Object.keys(n).forEach(k => { if (n[k].group_id === id) n[k] = { ...n[k], group_id: null }; }); return n; }); toast.success("그룹 삭제됨"); onMenuOrderChange(); }
+    try {
+      await deleteMenuGroup(id);
+      setMgroups(gs => gs.filter(g => g.id !== id));
+      const drop = (p: PlaceMap) => { const n: any = { ...p }; Object.keys(n).forEach(k => { if (n[k].group_id === id) n[k] = { ...n[k], group_id: null }; }); return n as PlaceMap; };
+      setPlace(drop);
+      // 삭제는 DB에 즉시 반영되므로 저장 시점 스냅샷에도 같은 변화를 적용 (다른 미저장 변경은 dirty 유지)
+      setMenuSnap(s => { if (!s) return s; const gs2 = s.gs.filter(g => g.id !== id); const pl2 = drop(s.pl); return { gs: gs2, pl: pl2, sig: menuSig(gs2, pl2) }; });
+      toast.success("그룹 삭제됨"); onMenuOrderChange();
+    }
     catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
   function moveItem(key: string, dir: number) {
@@ -60,6 +100,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
       [...gs.map(g => g.id), null].forEach(gid => { itemsOf(gid).forEach((t, idx) => placements.push({ item_key: t.key, group_id: gid, sort: idx })); });
       await saveMenuConfig(gs, placements);
       await logAudit("메뉴 구성 변경", "menu", "", { groups: gs.length });
+      setMenuSnap({ gs: mgroups.map(g => ({ ...g })), pl: JSON.parse(JSON.stringify(place)), sig: menuSig(mgroups, place) });
       toast.success("메뉴 구성 저장됨 (새로고침/로그인 시 반영)"); onMenuOrderChange();
     } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
   }
@@ -172,43 +213,99 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <Sec title="메뉴 구성" sub="(그룹·순서 — PC 사이드바·모바일 메뉴 공통)">
-        <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
-          {mgroups.map((g, gi) => (
-            <div key={g.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                <input value={g.name} onChange={e => renameGroup(g.id, e.target.value)} style={{ fontWeight: 700, padding: 6, border: "1px solid var(--line)", borderRadius: 6, flex: 1 }} />
-                <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={gi === 0} onClick={() => moveGroup(gi, -1)}>▲</button>
-                <button className="btn ghost" style={{ padding: "2px 9px" }} disabled={gi === mgroups.length - 1} onClick={() => moveGroup(gi, 1)}>▼</button>
-                <button className="btn danger" style={{ padding: "2px 9px" }} onClick={() => removeGroup(g.id)}>삭제</button>
+      <Sec title={<>메뉴 구성{menuDirty && <span className="medit-dirty">● 저장 안 된 변경</span>}</>} sub="(그룹·순서 — PC 사이드바·모바일 메뉴 공통)">
+        {(() => {
+          // 선택 그룹 확정: 지워졌거나 미지정이면 첫 그룹으로
+          const etcCount = itemsOf(null).length;
+          const eff = mgroups.some(g => g.id === selMenuG) ? selMenuG
+            : (selMenuG === "_etc" && etcCount > 0 ? "_etc" : (mgroups[0]?.id || "_etc"));
+          const effGid = eff === "_etc" ? null : eff;
+          const curG = mgroups.find(g => g.id === eff);
+          const panelItems = itemsOf(effGid);
+          const iconG = (g: MenuGroupRow) => groupIcon(g.name, itemsOf(g.id)[0]?.icon);
+          return (
+            <div style={{ display: "grid", gap: 10 }}>
+              <p className="muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
+                왼쪽에서 <b>메인 메뉴(그룹)</b>를 선택하면 오른쪽에 그 그룹의 <b>보조탭</b>이 실제 순서대로 보입니다. 아이콘은 그룹 이름으로 자동 결정됩니다(현장 🏭 · 데이터/가져오기 📥 · 분석/대시보드 📊 · 관리/경영지원 📁 · 시스템 ⚙️ · 기록 🗂️).
+              </p>
+              <div className="medit">
+                <div className="medit-rail">
+                  <div className="medit-cap">메인 메뉴 (PC 왼쪽 레일)</div>
+                  {mgroups.map((g, gi) => (
+                    <div key={g.id} className={"medit-g" + (eff === g.id ? " on" : "")}
+                      onClick={() => { setSelMenuG(g.id); if (editingG !== g.id) setEditingG(null); }}>
+                      <span className="medit-ic">{iconG(g)}</span>
+                      {editingG === g.id
+                        ? <input className="medit-rn" autoFocus value={g.name} maxLength={10}
+                            onChange={e => renameGroup(g.id, e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            onBlur={() => setEditingG(null)}
+                            onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingG(null); }} />
+                        : <span className="medit-nm">{g.name}</span>}
+                      <span className="medit-cnt">{itemsOf(g.id).length}</span>
+                      {eff === g.id && (
+                        <div className="medit-tools" onClick={e => e.stopPropagation()}>
+                          <button className="btn ghost medit-mini" disabled={gi === 0} onClick={() => moveGroup(gi, -1)}>▲ 위로</button>
+                          <button className="btn ghost medit-mini" disabled={gi === mgroups.length - 1} onClick={() => moveGroup(gi, 1)}>▼ 아래로</button>
+                          <button className="btn ghost medit-mini" onClick={() => setEditingG(g.id)}>✏️ 이름</button>
+                          <button className="btn danger medit-mini" onClick={() => removeGroup(g.id)}>삭제</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {etcCount > 0 && (
+                    <div className={"medit-g etc" + (eff === "_etc" ? " on" : "")} onClick={() => setSelMenuG("_etc")}>
+                      <span className="medit-ic">⚠️</span><span className="medit-nm">미분류</span><span className="medit-cnt">{etcCount}</span>
+                      {eff === "_etc" && <div className="medit-tools"><span style={{ fontSize: 11.5, color: "var(--danger)" }}>그룹을 지정해 주세요 — 사이드바에는 '기타'로 표시됩니다</span></div>}
+                    </div>
+                  )}
+                  <button className="medit-add" onClick={addGroup}>＋ 그룹 추가</button>
+                </div>
+                <div className="medit-panel">
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                    <b style={{ fontSize: 14 }}>{eff === "_etc" ? "⚠️ 미분류" : curG ? `${iconG(curG)} ${curG.name}` : ""}</b>
+                    <span className="muted" style={{ fontSize: 12 }}>{eff === "_etc" ? "그룹이 없는 화면 — '이동'으로 그룹을 지정해 주세요" : "이 그룹을 누르면 위에 이렇게 보조탭이 나옵니다"}</span>
+                  </div>
+                  {eff !== "_etc" && (
+                    <div className="medit-sub">
+                      {panelItems.length === 0
+                        ? <span className="muted" style={{ fontSize: 12 }}>메뉴 없음</span>
+                        : panelItems.map((t, i) => <span key={t.key} className={"medit-chip" + (i === 0 ? " first" : "")}>{t.icon} {t.label}</span>)}
+                    </div>
+                  )}
+                  {panelItems.length === 0 && <div className="muted" style={{ fontSize: 12.5, padding: "10px 2px", textAlign: "center" }}>이 그룹에 화면이 없습니다. 다른 그룹에서 '이동'으로 옮기거나, 빈 그룹이면 삭제하세요.</div>}
+                  {panelItems.map((t, ii, arr) => {
+                    const hid = t.key === "admin" ? null : hiddenRoles(t.key);
+                    return (
+                      <div key={t.key} className={"medit-item" + (hid && hid.length >= 2 ? " dim" : "")}>
+                        <span style={{ fontSize: 16 }}>{t.icon}</span>
+                        <span className="medit-lb">{t.label}
+                          {t.key === "admin"
+                            ? <span className="medit-lock" title="관리자 화면은 master 역할만 볼 수 있습니다">🔒 master 전용</span>
+                            : hid && hid.length > 0 && <span className="medit-lock" title={`아래 '화면별 권한'에서 보기 꺼짐 — ${hid.join("·")} 역할의 메뉴에는 안 보입니다`}>🔒 {hid.join("·")} 숨김</span>}
+                        </span>
+                        <span className="medit-it-tools">
+                          <button className="btn ghost medit-mini" disabled={ii === 0} onClick={() => moveItem(t.key, -1)}>▲</button>
+                          <button className="btn ghost medit-mini" disabled={ii === arr.length - 1} onClick={() => moveItem(t.key, 1)}>▼</button>
+                          <select className="medit-mv" value="" onChange={e => { if (e.target.value) setItemGroup(t.key, e.target.value); }}>
+                            <option value="" disabled>이동…</option>
+                            {mgroups.filter(gg => gg.id !== effGid).map(gg => <option key={gg.id} value={gg.id}>{iconG(gg)} {gg.name}</option>)}
+                          </select>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              {itemsOf(g.id).map((t, ii, arr) => (
-                <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                  <span style={{ fontSize: 16 }}>{t.icon}</span><span style={{ flex: 1 }}>{t.label}</span>
-                  <button className="btn ghost" style={{ padding: "1px 8px" }} disabled={ii === 0} onClick={() => moveItem(t.key, -1)}>▲</button>
-                  <button className="btn ghost" style={{ padding: "1px 8px" }} disabled={ii === arr.length - 1} onClick={() => moveItem(t.key, 1)}>▼</button>
-                  <select value={g.id} onChange={e => setItemGroup(t.key, e.target.value)} style={{ padding: 4 }}>{mgroups.map(gg => <option key={gg.id} value={gg.id}>{gg.name}</option>)}</select>
-                </div>
-              ))}
-              {itemsOf(g.id).length === 0 && <div className="muted" style={{ fontSize: 12 }}>메뉴 없음</div>}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button className="btn ghost" disabled={!menuDirty} style={{ opacity: menuDirty ? 1 : .5 }} onClick={undoMenu}>↩ 되돌리기</button>
+                <button className="btn green" disabled={!menuDirty} style={{ opacity: menuDirty ? 1 : .5 }} onClick={saveMenu}>메뉴 구성 저장</button>
+                {menuDirty && <span className="muted" style={{ fontSize: 12 }}>변경사항이 아직 저장되지 않았습니다.</span>}
+              </div>
+              <p className="muted" style={{ fontSize: 12, margin: 0 }}>저장 후 각 사용자는 새로고침/로그인 때 반영됩니다. (아래 '화면별 권한'에서 보기를 끈 화면은 🔒로 표시되고 해당 역할의 메뉴에서 숨겨집니다)</p>
             </div>
-          ))}
-          {itemsOf(null).length > 0 &&
-            <div style={{ border: "1px dashed #c0392b", borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: "#c0392b", marginBottom: 6 }}>미분류 (그룹 지정 필요) <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— 사이드바에는 '기타' 그룹으로 표시됩니다</span></div>
-              {itemsOf(null).map(t => (
-                <div key={t.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                  <span style={{ fontSize: 16 }}>{t.icon}</span><span style={{ flex: 1 }}>{t.label}</span>
-                  <select defaultValue="" onChange={e => setItemGroup(t.key, e.target.value)} style={{ padding: 4 }}><option value="" disabled>그룹 선택</option>{mgroups.map(gg => <option key={gg.id} value={gg.id}>{gg.name}</option>)}</select>
-                </div>
-              ))}
-            </div>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn ghost" onClick={addGroup}>＋ 그룹 추가</button>
-            <button className="btn green" onClick={saveMenu}>메뉴 구성 저장</button>
-          </div>
-          <p className="muted" style={{ fontSize: 12 }}>저장 후 각 사용자는 새로고침/로그인 때 반영됩니다. (아래 '화면별 권한'에서 보기를 끈 화면은 숨겨집니다)</p>
-        </div>
+          );
+        })()}
       </Sec>
 
       <Sec title="사용자 / 역할" defaultOpen>

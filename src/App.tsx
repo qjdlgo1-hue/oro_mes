@@ -9,7 +9,7 @@ import { ConfirmHost } from "./lib/confirm";
 import ErrorBoundary from "./lib/ErrorBoundary";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile } from "./lib/useIsMobile";
-import { TAB_DEFS, TabKey } from "./lib/tabs";
+import { TAB_DEFS, TabKey, groupIcon } from "./lib/tabs";
 
 // URL 해시 ↔ 탭 동기화 (#plan, #coc/<주문id>) — 새로고침·뒤로가기·북마크 지원
 const TAB_KEY_SET = new Set<string>(TAB_DEFS.map(t => t.key));
@@ -17,11 +17,6 @@ function parseHash(): { tab: TabKey | null; param: string | null } {
   const [t, param] = window.location.hash.replace(/^#/, "").split("/");
   return { tab: TAB_KEY_SET.has(t) ? (t as TabKey) : null, param: param || null };
 }
-// 메인 메뉴(그룹) 아이콘 — 이름 매핑, 없으면 첫 항목 아이콘
-const GROUP_ICONS: Record<string, string> = {
-  "현장": "🏭", "가져오기": "📥", "데이터": "📥", "분석": "📊", "대시보드": "📊",
-  "경영지원": "📁", "관리": "📁", "시스템": "⚙️", "기록": "🗂️", "기타": "📂", "메뉴": "📂",
-};
 import Today from "./components/Today";
 import ImportOrders from "./components/ImportOrders";
 import ProductionPlan from "./components/ProductionPlan";
@@ -156,7 +151,7 @@ export default function App() {
   if (navGroups.length === 0) navGroups = [{ id: "_all", name: "메뉴", items: visible }];
   else if (unplaced.length) navGroups = [...navGroups, { id: "_etc", name: "기타", items: unplaced }];
 
-  const iconOf = (g: { name: string; items: { icon: string }[] }) => GROUP_ICONS[g.name] || g.items[0]?.icon || "📂";
+  const iconOf = (g: { name: string; items: { icon: string }[] }) => groupIcon(g.name, g.items[0]?.icon);
   const curGroup = navGroups.find(g => g.items.some(i => i.key === tab)) || navGroups[0];
   const hasPop = (g: { items: { key: string }[] }) => g.items.some(i => i.key === "today");
 
