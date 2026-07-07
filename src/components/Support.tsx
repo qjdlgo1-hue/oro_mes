@@ -129,7 +129,47 @@ export default function Support() {
     inp.click();
   }
   const addSign = () => pickUpload(path => setF({ sign_path: path }));
-  const addPhoto = () => pickUpload(path => setForm(f => f ? { ...f, photos: [...(f.photos || []), { path, caption: "" }] } : f));
+
+  // 증빙사진 다중 업로드 — 파일 선택(여러 장)/드래그 앤 드롭/붙여넣기 공용 경로
+  async function uploadFiles(raws: File[]) {
+    const imgs = raws.filter(f => f && f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    setBusy(true);
+    let ok = 0;
+    for (const raw of imgs) {
+      try {
+        const file = await downscaleImage(raw);
+        const path = await storageUpload("coc", file);
+        const u = await storageObjectUrl("coc", path); if (u) setImgCache(c => ({ ...c, [path]: u }));
+        setForm(f => f ? { ...f, photos: [...(f.photos || []), { path, caption: "" }] } : f);
+        ok++;
+      } catch { /* 아래에서 개수로 안내 */ }
+    }
+    if (ok < imgs.length) toast.error(`사진 ${imgs.length - ok}장 업로드 실패${ok ? ` (${ok}장은 추가됨)` : ""}`);
+    else if (imgs.length > 1) toast.success(`사진 ${ok}장 추가됨`);
+    setBusy(false);
+  }
+  const addPhoto = () => {
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+    inp.onchange = () => uploadFiles([...(inp.files || [])]);
+    inp.click();
+  };
+  // 편집 중 붙여넣기: 구글 포토 웹 등에서 '이미지 복사' 후 Ctrl+V로 바로 추가 (텍스트 붙여넣기는 그대로 통과)
+  const editingOpen = !!form;
+  const [dragOver, setDragOver] = useState(false);
+  useEffect(() => {
+    if (!editingOpen) return;
+    const onPaste = (e: ClipboardEvent) => {
+      const files = [...(e.clipboardData?.items || [])]
+        .filter(it => it.type.startsWith("image/"))
+        .map(it => it.getAsFile()).filter((f): f is File => !!f);
+      if (files.length) { e.preventDefault(); uploadFiles(files); }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingOpen]);
   const delPhoto = (path: string) => setForm(f => f ? { ...f, photos: (f.photos || []).filter(ph => ph.path !== path) } : f);
   const setCaption = (path: string, cap: string) => setForm(f => f ? { ...f, photos: (f.photos || []).map(ph => ph.path === path ? { ...ph, caption: cap } : ph) } : f);
 
@@ -292,9 +332,17 @@ export default function Support() {
                 {src(form.sign_path) && <img src={src(form.sign_path)} alt="sign" style={{ height: 40 }} />}
               </div>
             </div>
-            <div style={{ flex: 1, minWidth: 240 }}>
+            <div
+              style={{ flex: 1, minWidth: 240, borderRadius: 8, ...(dragOver ? { outline: "2px dashed var(--accent)", outlineOffset: 4, background: "#eff6ff" } : {}) }}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles([...e.dataTransfer.files]); }}
+            >
               <label style={lbl}>증빙사진</label>
-              <button className="btn ghost" onClick={addPhoto} disabled={busy}>+ 사진 추가</button>
+              <button className="btn ghost" onClick={addPhoto} disabled={busy}>+ 사진 추가 (여러 장)</button>
+              <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                PC: 파일을 여기에 끌어다 놓거나, 구글 포토 웹에서 '이미지 복사' 후 Ctrl+V
+              </span>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
                 {(form.photos || []).map(ph => (
                   <div key={ph.path} style={{ position: "relative", width: 120 }}>
