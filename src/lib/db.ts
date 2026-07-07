@@ -453,3 +453,48 @@ export async function clearProdConsume(): Promise<void> {
   if (supabase) { const { error } = await supabase.from("prod_consume").delete().neq("id", "00000000-0000-0000-0000-000000000000"); if (error) throw error; return; }
   lsSet("oro_prodconsume", []);
 }
+
+// ===== 경영분석보고서 이력 =====
+export type BizReport = {
+  id?: string; period_type: string; period_key: string; title: string;
+  content_md: string; kpis?: any; ai: boolean; model?: string | null; created_at?: string;
+};
+const LS_BIZ = "oro_biz_reports";
+export async function listBizReports(): Promise<BizReport[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("biz_reports").select("id,period_type,period_key,title,ai,model,created_at").order("created_at", { ascending: false }).limit(100);
+    if (error) throw error; return (data || []) as BizReport[];
+  }
+  return lsGet<BizReport[]>(LS_BIZ, []).map(({ content_md: _c, kpis: _k, ...rest }) => rest as BizReport).reverse();
+}
+export async function getBizReport(id: string): Promise<BizReport | null> {
+  if (supabase) {
+    const { data, error } = await supabase.from("biz_reports").select("*").eq("id", id).maybeSingle();
+    if (error) throw error; return (data as BizReport) || null;
+  }
+  return lsGet<BizReport[]>(LS_BIZ, []).find(r => r.id === id) || null;
+}
+export async function saveBizReport(r: BizReport): Promise<BizReport> {
+  if (supabase) {
+    const { data, error } = await supabase.from("biz_reports").insert(r).select().single();
+    if (error) throw error; return data as BizReport;
+  }
+  const all = lsGet<BizReport[]>(LS_BIZ, []); const nr = { ...r, id: "b-" + Date.now(), created_at: new Date().toISOString() };
+  lsSet(LS_BIZ, [...all, nr]); return nr;
+}
+export async function deleteBizReport(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("biz_reports").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_BIZ, lsGet<BizReport[]>(LS_BIZ, []).filter(r => r.id !== id));
+}
+// AI 보고서 생성 — Edge Function 호출 (키 미설정/실패 시 throw, 호출측에서 규칙 기반 폴백)
+export async function aiBizReport(payload: { periodLabel: string; kpis: unknown }): Promise<{ md: string; model: string }> {
+  if (!supabase) throw new Error("로컬 모드에서는 AI 분석을 사용할 수 없습니다.");
+  const { data, error } = await supabase.functions.invoke("biz-report", { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data as { md: string; model: string };
+}

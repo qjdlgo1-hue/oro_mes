@@ -108,3 +108,25 @@ create policy "admin profiles" on profiles for all to authenticated using (is_ad
 -- 감사로그: 조회/기록은 로그인 사용자
 create policy "read audit"   on audit_log for select to authenticated using (true);
 create policy "insert audit" on audit_log for insert to authenticated with check (true);
+
+-- ===== 경영분석보고서 이력 (biz_reports) =====
+-- 리포트 탭 '경영보고서'에서 생성한 보고서를 보관. content_md는 마크다운, kpis는 집계 원본.
+-- ai=true면 Edge Function(biz-report)이 Claude API로 생성, false면 규칙 기반 요약.
+create table if not exists biz_reports (
+  id uuid primary key default gen_random_uuid(),
+  period_type text not null,          -- 'month' | 'quarter' | 'half' | 'year'
+  period_key text not null,           -- '2026-06' | '2026-Q2' | '2026-H1' | '2026'
+  title text not null,
+  content_md text not null,
+  kpis jsonb,
+  ai boolean not null default false,
+  model text,
+  created_at timestamptz not null default now()
+);
+alter table biz_reports enable row level security;
+create policy "biz_reports_all" on biz_reports for all to authenticated using (true) with check (true);
+create index if not exists biz_reports_period_idx on biz_reports (period_key, created_at desc);
+
+-- ===== Edge Function: biz-report =====
+-- supabase/functions/biz-report — KPI JSON을 받아 Claude API(claude-opus-4-8)로 경영분석 마크다운 생성.
+-- 필요 secret: ANTHROPIC_API_KEY (대시보드 > Edge Functions > Secrets에서 등록. 리포지토리에 커밋 금지)
