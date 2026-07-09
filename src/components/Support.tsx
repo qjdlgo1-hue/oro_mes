@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { nf as won } from "../lib/fmt";
 import { useIsMobile } from "../lib/useIsMobile";
 import { usePaged } from "../lib/usePaged";
+import GrantDocs from "./GrantDocs";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
@@ -16,6 +17,8 @@ const normPhotos = (arr?: any[]): { path: string; caption?: string }[] => (arr |
 
 export default function Support() {
   const canEdit = can("support.edit");
+  // 상단 모드: 기존 검수조서 | 서류 자동작성(창업중심대학사업 서식 세트)
+  const [mode, setMode] = useState<"insp" | "docs">("insp");
   const isMobile = useIsMobile();
   const [projects, setProjects] = useState<Project[]>([]);
   const [insps, setInsps] = useState<Inspection[]>([]);
@@ -219,8 +222,19 @@ export default function Support() {
   const lbl: React.CSSProperties = { fontSize: 12, fontWeight: 700, display: "block", marginBottom: 3 };
   const pageStyle: React.CSSProperties = { background: "#fff", color: "#000", padding: "28px 26px", width: 720, maxWidth: "100%", margin: "0 auto 16px", boxSizing: "border-box", minHeight: 1000, border: "1px solid #ddd", fontFamily: "'Malgun Gothic','맑은 고딕',sans-serif" };
 
+  const modeSeg = (
+    <div className="card no-print grant-side" style={{ padding: 10 }}>
+      <div className="seg">
+        <button className={mode === "insp" ? "on" : ""} onClick={() => setMode("insp")}>🏛️ 검수조서</button>
+        <button className={mode === "docs" ? "on" : ""} onClick={() => setMode("docs")}>📑 서류 자동작성</button>
+      </div>
+    </div>
+  );
+  if (mode === "docs") return <div style={{ display: "grid", gap: 16 }}>{modeSeg}<GrantDocs /></div>;
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {modeSeg}
       {/* 과제 선택/관리 */}
       <div className="card">
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>

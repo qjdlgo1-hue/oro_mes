@@ -283,3 +283,21 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .brep-t td{padding:4px 10px;border:1px solid var(--line2);}
 .brep-md h2{font-size:19px;} .brep-md h3{font-size:15px;} .brep-md h4{font-size:13.5px;}
 @media print{ .brep-print{border:none;box-shadow:none;padding:0;} .brep-md{font-size:12px;} }
+
+/* 지원사업 서류 자동작성 — A4 서식 재현 */
+.gdoc{background:#fff;border:1px solid var(--line);box-shadow:0 1px 4px rgba(0,0,0,.08);max-width:800px;margin:0 auto 18px;padding:46px 52px;color:#000;font-family:"Batang","Noto Serif KR","Malgun Gothic",serif;font-size:14px;line-height:1.6;}
+.gtitle{text-align:center;font-size:20px;font-weight:800;margin:0 0 18px;letter-spacing:1px;}
+.gsec{font-weight:700;margin:14px 0 6px;font-size:14px;}
+.gt{border-collapse:collapse;width:100%;}
+.gt th,.gt td{border:1px solid #000;padding:7px 9px;font-size:13px;vertical-align:middle;}
+.gt th{background:#efefef;font-weight:700;text-align:center;}
+.gt .gt th,.gt .gt td{border-color:#555;}
+.glabel th{width:42%;font-size:12px;background:#f3f3f3;}
+.glabel td{font-size:12px;height:26px;}
+.gpage{page-break-after:always;}
+.gdoc + .gdoc{margin-top:18px;}
+@media print{
+  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:10mm 12mm;page-break-after:always;}
+  .gdoc:last-child{page-break-after:auto;}
+  .grant-edit,.grant-side{display:none!important;}
+}
