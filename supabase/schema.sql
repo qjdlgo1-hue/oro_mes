@@ -130,3 +130,20 @@ create index if not exists biz_reports_period_idx on biz_reports (period_key, cr
 -- ===== Edge Function: biz-report =====
 -- supabase/functions/biz-report — KPI JSON을 받아 Claude API(claude-opus-4-8)로 경영분석 마크다운 생성.
 -- 필요 secret: ANTHROPIC_API_KEY (대시보드 > Edge Functions > Secrets에서 등록. 리포지토리에 커밋 금지)
+
+-- ===== 지원사업 서류 자동작성 (grant_docs) =====
+-- 창업중심대학사업 집행 건: 한 건 입력으로 서식 세트(f1~f12) 자동 생성.
+-- data(jsonb)에 서식 필드 전체 보관, forms는 선택된 서식 키.
+-- 회사 프로필(기업명·대표자·계좌 등)은 app_settings.grant_profile(jsonb)에 1회 저장.
+create table if not exists grant_docs (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  expense_item text,
+  forms text[] not null default '{}',
+  data jsonb not null default '{}',
+  photos jsonb not null default '[]',
+  created_at timestamptz not null default now()
+);
+alter table grant_docs enable row level security;
+create policy "grant_docs_all" on grant_docs for all to authenticated using (true) with check (true);
+alter table app_settings add column if not exists grant_profile jsonb;

@@ -498,3 +498,57 @@ export async function aiBizReport(payload: { periodLabel: string; kpis: unknown 
   if (data?.error) throw new Error(data.error);
   return data as { md: string; model: string };
 }
+
+// ===== 지원사업(창업중심대학사업) 서류 자동작성 =====
+export type GrantPhoto = { path: string; name?: string; qty?: string };
+export type GrantDoc = {
+  id?: string; title: string; expense_item?: string;
+  forms: string[]; data: Record<string, any>; photos: GrantPhoto[]; created_at?: string;
+};
+export type GrantProfile = {
+  company?: string; ceo?: string; bizno?: string; project?: string; projectNo?: string;
+  bank?: string; holder?: string; account?: string; manager?: string; address?: string; corpNo?: string;
+};
+const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
+export async function listGrantDocs(): Promise<GrantDoc[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,forms,created_at").order("created_at", { ascending: false }).limit(200);
+    if (error) throw error; return (data || []) as GrantDoc[];
+  }
+  return lsGet<GrantDoc[]>(LS_GRANT, []).map(({ data: _d, photos: _p, ...r }) => ({ ...r, data: {}, photos: [] })).reverse();
+}
+export async function getGrantDoc(id: string): Promise<GrantDoc | null> {
+  if (supabase) {
+    const { data, error } = await supabase.from("grant_docs").select("*").eq("id", id).maybeSingle();
+    if (error) throw error; return (data as GrantDoc) || null;
+  }
+  return lsGet<GrantDoc[]>(LS_GRANT, []).find(r => r.id === id) || null;
+}
+export async function saveGrantDoc(d: GrantDoc): Promise<GrantDoc> {
+  if (supabase) {
+    const { id, ...rest } = d;
+    const { data, error } = id
+      ? await supabase.from("grant_docs").update(rest).eq("id", id).select().single()
+      : await supabase.from("grant_docs").insert(rest).select().single();
+    if (error) throw error; return data as GrantDoc;
+  }
+  const all = lsGet<GrantDoc[]>(LS_GRANT, []);
+  if (d.id) { const n = all.map(r => r.id === d.id ? { ...d } : r); lsSet(LS_GRANT, n); return d; }
+  const nd = { ...d, id: "g-" + Date.now(), created_at: new Date().toISOString() };
+  lsSet(LS_GRANT, [...all, nd]); return nd;
+}
+export async function deleteGrantDoc(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("grant_docs").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_GRANT, lsGet<GrantDoc[]>(LS_GRANT, []).filter(r => r.id !== id));
+}
+export async function getGrantProfile(): Promise<GrantProfile> {
+  if (supabase) {
+    const { data, error } = await supabase.from("app_settings").select("grant_profile").eq("id", 1).maybeSingle();
+    if (error) throw error; return ((data as any)?.grant_profile as GrantProfile) || {};
+  }
+  return lsGet<GrantProfile>(LS_GPROF, {});
+}
+export async function saveGrantProfile(p: GrantProfile): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("app_settings").upsert({ id: 1, grant_profile: p }, { onConflict: "id" }); if (error) throw error; return; }
+  lsSet(LS_GPROF, p);
+}
