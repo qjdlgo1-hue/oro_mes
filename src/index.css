@@ -308,8 +308,8 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 @media print{
   /* 전역 print 규칙(body * visibility:hidden)은 .cert만 보이게 하므로 서식(.gdoc)도 명시적으로 표시 */
   .gdoc,.gdoc *{visibility:visible;}
-  /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm)에 맞춘 인쇄 여백 */
-  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:15mm 15mm 12mm 17mm;page-break-after:always;}
+  /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm) — @page 여백 10mm과 합산해 맞춤 */
+  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:7mm 5mm 3mm 7mm;page-break-after:always;}
   .gdoc:last-child{page-break-after:auto;}
   .grant-edit,.grant-side{display:none!important;}
   .gph{visibility:hidden!important;}

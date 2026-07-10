@@ -57,6 +57,7 @@ function F1({ p, d, sign }: P) {
   const sec: React.CSSProperties = { fontSize: "13pt", fontWeight: 700, margin: "4mm 0 1.5mm" };
   const cbS: React.CSSProperties = { border: "1px dashed #000", fontSize: "10pt", padding: "0.5mm 1.5mm" };
   const solid = "1px solid #000";
+  const reason = String(d.payReason || "");
   const CB = ({ it }: { it: string }) => <><B on={d.expenseItem === it} /> {it}</>;
   return (
     <div style={{ margin: "0 3mm" }}>
@@ -101,10 +102,10 @@ function F1({ p, d, sign }: P) {
           <td colSpan={2} style={{ ...cbS, borderBottom: solid, borderRight: solid }} />
         </tr>
         <tr>
-          <th style={{ height: "44.8mm" }}>지급<br />사유</th>
+          <th>지급<br />사유</th>
           <td colSpan={5} style={{ verticalAlign: "top", padding: "1.5mm 2mm" }}>
-            <div style={{ fontSize: "10pt" }}>※ 인건비의 경우 청구 인원(개인)별 월 급여, 참여율 기재 필수</div>
-            <div style={{ minHeight: "34mm", whiteSpace: "pre-wrap", marginTop: "1.5mm" }}>{d.payReason}</div>
+            {/* 유동 높이: 사유 길이에 맞게 늘고 줄며, 길면 폰트를 단계적으로 줄여 서식이 A4 한 장을 넘지 않게 유지 */}
+            <div style={{ minHeight: "20mm", whiteSpace: "pre-wrap", fontSize: reason.length > 700 ? "9pt" : reason.length > 400 ? "10pt" : "11pt", lineHeight: 1.55 }}>{reason}</div>
           </td>
         </tr>
       </tbody></table>
@@ -336,12 +337,14 @@ function F9({ p, d, sign }: P) {
   );
 }
 
-// f10. 자산관리번호 라벨(스티커 그리드)
+// f10. 자산관리번호 라벨(스티커 그리드) — 수량만큼 생성, 번호는 'ORO-취득일-01'식 누적
 function F10({ p, d }: P) {
-  const count = Math.max(1, Math.min(30, Number(d.labelCount) || 10));
-  const label = (
+  const count = Math.max(1, Math.min(30, Number(d.qty) || 1));
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(d.acquireDate || "") ? String(d.acquireDate).replace(/-/g, "").slice(2) : "";
+  const base = String(d.assetNo || "").trim() || (ymd ? `ORO-${ymd}` : "ORO");
+  const label = (no: string) => (
     <table className="gt glabel"><tbody>
-      <tr><th>자산관리번호</th><td>{d.assetNo}</td></tr>
+      <tr><th>자산관리번호</th><td>{no}</td></tr>
       <tr><th>품          명</th><td>{d.itemName}</td></tr>
       <tr><th>취    득    일</th><td>{d.acquireDate ? shortDate(d.acquireDate) : ""}</td></tr>
       <tr><th>관 리 책 임 자</th><td>{d.manager || p.manager || p.ceo}</td></tr>
@@ -351,7 +354,7 @@ function F10({ p, d }: P) {
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        {Array.from({ length: count }, (_, i) => <div key={i}>{label}</div>)}
+        {Array.from({ length: count }, (_, i) => <div key={i}>{label(`${base}-${String(i + 1).padStart(2, "0")}`)}</div>)}
       </div>
     </div>
   );

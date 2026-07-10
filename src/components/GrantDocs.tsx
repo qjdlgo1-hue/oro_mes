@@ -485,9 +485,11 @@ export default function GrantDocs() {
               )}
               {cur.forms.includes("f10") && (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                  <Field label="자산관리번호" w={200}><input style={inp} value={d.assetNo || ""} onChange={e => setD({ assetNo: e.target.value })} /></Field>
                   <Field label="취득일" w={150}><input type="date" style={inp} value={d.acquireDate || ""} onChange={e => setD({ acquireDate: e.target.value })} /></Field>
-                  <Field label="라벨 수" w={90}><input style={inp} value={d.labelCount || "10"} onChange={e => setD({ labelCount: e.target.value })} /></Field>
+                  <Field label="자산관리번호 접두어 (선택)" w={230}>
+                    <input style={inp} value={d.assetNo || ""} placeholder={`비우면 ORO-${(d.acquireDate || "").replace(/-/g, "").slice(2) || "취득일"} 자동`} onChange={e => setD({ assetNo: e.target.value })} />
+                  </Field>
+                  <span className="muted" style={{ fontSize: 11.5, alignSelf: "center" }}>라벨은 수량만큼 생성되며 번호가 -01, -02… 로 누적됩니다.</span>
                 </div>
               )}
             </div>
