@@ -46,6 +46,48 @@ export const money = (v: any): string => {
   return isFinite(n) && String(v ?? "").trim() !== "" ? n.toLocaleString("ko-KR") : "";
 };
 
+// 문자열 금액 → 숫자 (콤마·원 등 제거, 숫자 아니면 0)
+export const num = (v: any): number => {
+  const n = Number(String(v ?? "").replace(/[^\d.-]/g, ""));
+  return isFinite(n) ? n : 0;
+};
+
+// 건 하나의 집행액: 지급요청서 지급액 → 합계 → 단가×수량 → 용역금액 순으로 채택
+export function docAmount(data: Record<string, any>): number {
+  return num(data?.payAmount) || num(data?.total) || (calcTotal(data?.unitPrice, data?.qty) ?? 0) || num(data?.svcAmount);
+}
+
+// 정산 현황: 지출항목별 건수·집행액 집계 (+예산이 있으면 잔액/집행률)
+export type SettleLine = { item: string; count: number; amount: number; budget: number };
+export function settleSummary(
+  docs: { expense_item?: string; data: Record<string, any> }[],
+  budgets: Record<string, any> = {},
+): { lines: SettleLine[]; totalAmount: number; totalBudget: number } {
+  const by = new Map<string, { count: number; amount: number }>();
+  for (const d of docs) {
+    const k = d.expense_item || "기타";
+    const cur = by.get(k) || { count: 0, amount: 0 };
+    cur.count++; cur.amount += docAmount(d.data || {});
+    by.set(k, cur);
+  }
+  // 서식 원문 순서(EXPENSE_ITEMS) 우선, 예산만 있는 항목도 표시, 그 외는 뒤에
+  const keys = [
+    ...EXPENSE_ITEMS.filter(i => by.has(i) || num(budgets[i]) > 0),
+    ...[...by.keys()].filter(k => !(EXPENSE_ITEMS as readonly string[]).includes(k)),
+  ];
+  const lines = keys.map(item => ({
+    item,
+    count: by.get(item)?.count || 0,
+    amount: by.get(item)?.amount || 0,
+    budget: num(budgets[item]),
+  }));
+  return {
+    lines,
+    totalAmount: lines.reduce((s, l) => s + l.amount, 0),
+    totalBudget: lines.reduce((s, l) => s + l.budget, 0),
+  };
+}
+
 // 단가 × 수량 = 합계 (숫자 아닌 입력은 빈 값)
 export function calcTotal(unitPrice: any, qty: any): number | null {
   const u = Number(String(unitPrice ?? "").replace(/[^\d.-]/g, ""));
