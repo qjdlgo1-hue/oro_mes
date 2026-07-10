@@ -282,7 +282,8 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .brep-t th{background:#f1f3f7;color:#374151;padding:5px 10px;font-size:12px;text-align:left;border:1px solid var(--line2);}
 .brep-t td{padding:4px 10px;border:1px solid var(--line2);}
 .brep-md h2{font-size:19px;} .brep-md h3{font-size:15px;} .brep-md h4{font-size:13.5px;}
-@media print{ .brep-print{border:none;box-shadow:none;padding:0;} .brep-md{font-size:12px;} }
+/* 전역 print 규칙(body * visibility:hidden) 위에서 보고서 본문을 명시적으로 표시 */
+@media print{ .brep-print,.brep-print *{visibility:visible;} .brep-print{border:none;box-shadow:none;padding:0;} .brep-md{font-size:12px;} }
 
 /* 지원사업 서류 자동작성 — A4 서식 재현 */
 .gdoc{background:#fff;border:1px solid var(--line);box-shadow:0 1px 4px rgba(0,0,0,.08);max-width:800px;margin:0 auto 18px;padding:46px 52px;color:#000;font-family:"Batang","Noto Serif KR","Malgun Gothic",serif;font-size:14px;line-height:1.6;}
@@ -291,6 +292,9 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .gt{border-collapse:collapse;width:100%;}
 .gt th,.gt td{border:1px solid #000;padding:7px 9px;font-size:13px;vertical-align:middle;}
 .gt th{background:#efefef;font-weight:700;text-align:center;}
+/* 전역 thead th(남색 배경·흰 글씨·sticky)가 서식 표에 새지 않도록 복원 */
+.gt thead th{position:static;background:#efefef;color:#000;font-size:13px;padding:7px 9px;z-index:auto;}
+.gx thead th{background:none;padding:1mm 2mm;}
 .gt .gt th,.gt .gt td{border-color:#555;}
 /* .gx — HWPX 원본 일치 표: 라벨 회색 배경 없음(원본에 배경색 없음), 셀 여백 최소 */
 .gx th,.gx td{padding:1mm 2mm;}
@@ -302,9 +306,11 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .gpage{page-break-after:always;}
 .gdoc + .gdoc{margin-top:18px;}
 @media print{
+  /* 전역 print 규칙(body * visibility:hidden)은 .cert만 보이게 하므로 서식(.gdoc)도 명시적으로 표시 */
+  .gdoc,.gdoc *{visibility:visible;}
   /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm)에 맞춘 인쇄 여백 */
   .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:15mm 15mm 12mm 17mm;page-break-after:always;}
   .gdoc:last-child{page-break-after:auto;}
   .grant-edit,.grant-side{display:none!important;}
-  .gph{visibility:hidden;}
+  .gph{visibility:hidden!important;}
 }

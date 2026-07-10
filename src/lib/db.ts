@@ -521,6 +521,7 @@ export type GrantDoc = {
 export type GrantProfile = {
   company?: string; ceo?: string; bizno?: string; project?: string; projectNo?: string;
   bank?: string; holder?: string; account?: string; manager?: string; address?: string; corpNo?: string;
+  budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용
 };
 const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
 export async function listGrantDocs(): Promise<GrantDoc[]> {
@@ -529,6 +530,14 @@ export async function listGrantDocs(): Promise<GrantDoc[]> {
     if (error) throw error; return (data || []) as GrantDoc[];
   }
   return lsGet<GrantDoc[]>(LS_GRANT, []).map(({ data: _d, photos: _p, ...r }) => ({ ...r, data: {}, photos: [] })).reverse();
+}
+// 정산 현황용 목록 — 금액 계산에 필요한 data 포함(사진 제외)
+export async function listGrantSettle(): Promise<GrantDoc[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,forms,data,created_at").order("created_at", { ascending: false }).limit(500);
+    if (error) throw error; return (data || []).map(r => ({ ...r, photos: [] })) as GrantDoc[];
+  }
+  return lsGet<GrantDoc[]>(LS_GRANT, []).map(({ photos: _p, ...r }) => ({ ...r, photos: [] })).reverse();
 }
 export async function getGrantDoc(id: string): Promise<GrantDoc | null> {
   if (supabase) {
