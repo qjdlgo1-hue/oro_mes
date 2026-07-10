@@ -9,12 +9,20 @@ type P = {
   d: Record<string, any>;
   photos: GrantPhoto[];
   img: (path: string) => string | undefined;
+  sign?: string; // 서명(도장) PNG URL — (인) 위에 겹쳐 표시
 };
 
 const B = ({ on }: { on: boolean }) => <span style={{ fontFamily: "sans-serif" }}>{on ? "■" : "□"}</span>;
 
+// (인) 자리 — 서명 PNG가 등록되어 있으면 글자 위에 겹쳐 표시 (검수조서와 같은 패턴)
+const Stamp = ({ sign }: { sign?: string }) => (
+  <span style={{ position: "relative", display: "inline-block", minWidth: 34, textAlign: "center" }}>
+    {sign && <img src={sign} alt="" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", height: 48, pointerEvents: "none" }} />}(인)
+  </span>
+);
+
 // 공통 서명부 — HWPX 원본과 동일: 날짜 가운데(굵게), 기업명/대표자 우측 정렬 표, '귀하'는 왼쪽 정렬 18pt
-function SignOff({ p, d, short }: { p: GrantProfile; d: Record<string, any>; short?: boolean }) {
+function SignOff({ p, d, short, sign }: { p: GrantProfile; d: Record<string, any>; short?: boolean; sign?: string }) {
   const dp = dateParts(d.writeDate);
   return (
     <div style={{ marginTop: "8mm" }}>
@@ -23,7 +31,7 @@ function SignOff({ p, d, short }: { p: GrantProfile; d: Record<string, any>; sho
       </div>
       <table style={{ width: "55%", marginLeft: "auto", borderCollapse: "collapse", fontSize: "13pt" }}><tbody>
         <tr style={{ height: "7.6mm" }}><td style={{ width: "42%", textAlign: "right" }}>기업명 : </td><td>{p.company || ""}</td></tr>
-        <tr style={{ height: "7.6mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td>{p.ceo || ""}<span style={{ float: "right" }}>(인)</span></td></tr>
+        <tr style={{ height: "7.6mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td>{p.ceo || ""}<span style={{ float: "right" }}><Stamp sign={sign} /></span></td></tr>
       </tbody></table>
       <div style={{ fontSize: "18pt", fontWeight: 700, marginTop: "9mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
@@ -45,7 +53,7 @@ function PhotoGrid({ photos, img, cols = 2 }: { photos: GrantPhoto[]; img: P["im
 }
 
 // f1. 사업비 지급요청서 — HWPX 원본 치수: 제목 박스(0.5mm 테두리), 지출항목 체크 그리드(내부 점선)
-function F1({ p, d }: P) {
+function F1({ p, d, sign }: P) {
   const sec: React.CSSProperties = { fontSize: "13pt", fontWeight: 700, margin: "4mm 0 1.5mm" };
   const cbS: React.CSSProperties = { border: "1px dashed #000", fontSize: "10pt", padding: "0.5mm 1.5mm" };
   const solid = "1px solid #000";
@@ -102,7 +110,7 @@ function F1({ p, d }: P) {
       </tbody></table>
       <p style={{ fontSize: "11pt", margin: "1.5mm 0 0" }}>&nbsp;&nbsp;* 별첨 : [별표 4] 창업기업 사업비 집행 증빙서류에 따른 지출항목별 증빙서류</p>
       <p style={{ fontSize: "14pt", textAlign: "justify", margin: "7mm 0 0", lineHeight: 1.8 }}>「2026년도 창업중심대학사업」과 관련하여 상기와 같이 사업비 지급을 요청하오니 지급하여 주시기 바랍니다.</p>
-      <SignOff p={p} d={d} />
+      <SignOff p={p} d={d} sign={sign} />
     </div>
   );
 }
@@ -125,7 +133,7 @@ function F2({ d }: P) {
 }
 
 // f3/f4. 검수조서 (①기본 / ②증빙사진) — HWPX 원본 치수: 라벨열 24.3%, 14pt 굵은 좌측 라벨
-function Inspect({ p, d, photos, img, withPhotos }: P & { withPhotos: boolean }) {
+function Inspect({ p, d, photos, img, sign, withPhotos }: P & { withPhotos: boolean }) {
   const thL: React.CSSProperties = { textAlign: "left", padding: "1mm 2.5mm" };
   const tdV: React.CSSProperties = { paddingLeft: "2.5mm" };
   const rows = photos.length ? photos : [null];
@@ -174,7 +182,7 @@ function Inspect({ p, d, photos, img, withPhotos }: P & { withPhotos: boolean })
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14pt", fontWeight: 700 }}><tbody>
         <tr style={{ height: "13.9mm" }}><td colSpan={3} style={{ textAlign: "center" }}>{shortDate(d.writeDate)}</td></tr>
         <tr style={{ height: "13.9mm" }}><td style={{ width: "33.3%" }} /><td style={{ width: "33.3%", textAlign: "right" }}>기업명: {p.company}</td><td /></tr>
-        <tr style={{ height: "13.9mm" }}><td /><td style={{ textAlign: "right" }}>대표자: {p.ceo}</td><td style={{ textAlign: "right" }}>(인)</td></tr>
+        <tr style={{ height: "13.9mm" }}><td /><td style={{ textAlign: "right" }}>대표자: {p.ceo}</td><td style={{ textAlign: "right" }}><Stamp sign={sign} /></td></tr>
       </tbody></table>
       <div style={{ fontSize: "18pt", marginTop: "4mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
@@ -182,7 +190,7 @@ function Inspect({ p, d, photos, img, withPhotos }: P & { withPhotos: boolean })
 }
 
 // f5. 기자재(기계장치/재료) 활용계획서 — HWPX 원본 치수: 라벨열 16.6%, 제목 25pt
-function F5({ p, d }: P) {
+function F5({ p, d, sign }: P) {
   return (
     <div>
       <h2 style={{ textAlign: "center", fontSize: "25pt", fontWeight: 700, margin: "0 0 7mm" }}>기자재(기계장치/재료) 활용계획서</h2>
@@ -205,7 +213,7 @@ function F5({ p, d }: P) {
       <table style={{ width: "99%", borderCollapse: "collapse", fontSize: "14pt", fontWeight: 700, marginTop: "6mm" }}><tbody>
         <tr style={{ height: "13.9mm" }}><td colSpan={2} style={{ textAlign: "center" }}>{shortDate(d.writeDate)}</td></tr>
         <tr style={{ height: "10.9mm" }}><td style={{ width: "61.4%", textAlign: "right" }}>기업명 : </td><td style={{ paddingLeft: "2mm" }}>{p.company}</td></tr>
-        <tr style={{ height: "10.9mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td style={{ paddingLeft: "2mm" }}>{p.ceo}<span style={{ float: "right" }}>(인)</span></td></tr>
+        <tr style={{ height: "10.9mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td style={{ paddingLeft: "2mm" }}>{p.ceo}<span style={{ float: "right" }}><Stamp sign={sign} /></span></td></tr>
       </tbody></table>
       <div style={{ fontSize: "18pt", fontWeight: 700, marginTop: "5mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
@@ -213,7 +221,7 @@ function F5({ p, d }: P) {
 }
 
 // f6. 외주용역 (최종)결과보고서
-function F6({ p, d, photos, img }: P) {
+function F6({ p, d, photos, img, sign }: P) {
   return (
     <div>
       <h2 className="gtitle">외주용역 (최종)결과보고서</h2>
@@ -239,13 +247,13 @@ function F6({ p, d, photos, img }: P) {
         </tr>
       </tbody></table>
       <p style={{ marginTop: 20, textAlign: "center" }}>본인은 2026년 창업중심대학사업 창업사업화지원 내 외주용역 건에 대한 최종결과를 상기와 같이 보고합니다.</p>
-      <SignOff p={p} d={d} short />
+      <SignOff p={p} d={d} short sign={sign} />
     </div>
   );
 }
 
 // f7. 사유서(확인서)
-function F7({ p, d }: P) {
+function F7({ p, d, sign }: P) {
   return (
     <div>
       <h2 className="gtitle">사유서(확인서)</h2>
@@ -255,13 +263,13 @@ function F7({ p, d }: P) {
         <tr><td colSpan={4} style={{ height: 420, verticalAlign: "top", whiteSpace: "pre-wrap", padding: 10 }}>{d.reasonText}</td></tr>
       </tbody></table>
       <p style={{ marginTop: 18, textAlign: "center" }}>상기 서술내용과 관련하여 추후 분쟁이 발생할 경우, 모든 책임은 본인(창업기업)에게 있음을 확인합니다.</p>
-      <SignOff p={p} d={d} />
+      <SignOff p={p} d={d} sign={sign} />
     </div>
   );
 }
 
 // f8. 학회(전시회/박람회) 참가 보고서
-function F8({ p, d, photos, img }: P) {
+function F8({ p, d, photos, img, sign }: P) {
   return (
     <div>
       <h2 className="gtitle">「2026년 창업중심대학사업」 학회(전시회/박람회) 참가 보고서</h2>
@@ -275,7 +283,7 @@ function F8({ p, d, photos, img }: P) {
         </tr>
       </tbody></table>
       <p style={{ marginTop: 20, textAlign: "center" }}>본인은 2026년 창업중심대학사업 창업사업화지원 학회(전시회/박람회) 참가 관련하여 상기와 같이 보고서를 제출합니다.</p>
-      <SignOff p={p} d={d} short />
+      <SignOff p={p} d={d} short sign={sign} />
       <div style={{ marginTop: 16, fontSize: 13 }}>[첨 부] 참가사진 (필수)</div>
       <PhotoGrid photos={photos} img={img} />
     </div>
@@ -283,7 +291,7 @@ function F8({ p, d, photos, img }: P) {
 }
 
 // f9. 현물납부확인서
-function F9({ p, d }: P) {
+function F9({ p, d, sign }: P) {
   const rows: { cat: string; detail: string; amount: string; calc: string; note: string }[] =
     Array.isArray(d.ik) && d.ik.length ? d.ik : [{ cat: "", detail: "", amount: "", calc: "", note: "" }];
   const checks: Record<string, boolean> = d.ikChecks || {};
@@ -323,7 +331,7 @@ function F9({ p, d }: P) {
       </tbody></table>
       <p style={{ fontSize: 10.5, margin: "6px 0" }}>※ 인건비 계상 범위는 최근 3년의 기간 중, 본인이 선택한 연도를 기준으로 해당 연도에 받은 인건비를 현물로 계상 가능 ※ 최근 3년 동안 인건비를 받은 적이 없는 대표자 또는 소속직원의 경우, 직전년도 최저임금표를 기준으로 해당 연도 1년에 대한 인건비를 계상할 수 있음</p>
       <p style={{ marginTop: 14, textAlign: "center" }}>위와 같이 「2026년 창업중심대학사업」 현물 납부 내역을 확인합니다.</p>
-      <SignOff p={p} d={d} />
+      <SignOff p={p} d={d} sign={sign} />
     </div>
   );
 }
@@ -350,7 +358,7 @@ function F10({ p, d }: P) {
 }
 
 // f11. 선금 각서 3종
-function F11({ p, d }: P) {
+function F11({ p, d, sign }: P) {
   const from = shortDate(d.svcFrom), to = shortDate(d.svcTo);
   const addr = d.address || p.address || "";
   const corp = d.corpNo || p.corpNo || "";
@@ -372,7 +380,7 @@ function F11({ p, d }: P) {
         <div>주        소: {addr}</div>
         <div>기   관   명: {p.company}</div>
         <div>법인등록번호: {corp}</div>
-        <div>대   표   자: {p.ceo} <span style={{ marginLeft: 16 }}>(인)</span></div>
+        <div>대   표   자: {p.ceo} <span style={{ marginLeft: 16 }}><Stamp sign={sign} /></span></div>
       </div>
       <div style={{ textAlign: "center", fontWeight: 700, marginTop: 24 }}>성균관대학교 창업지원단장 귀하</div>
     </div>
@@ -393,7 +401,7 @@ function F11({ p, d }: P) {
       <div style={{ maxWidth: 380, marginLeft: "auto", display: "grid", gap: 6, fontSize: 14 }}>
         <div>주        소: {addr}</div>
         <div>업   체   명: {p.company}</div>
-        <div>대   표   자: {p.ceo} <span style={{ marginLeft: 16 }}>(인)</span></div>
+        <div>대   표   자: {p.ceo} <span style={{ marginLeft: 16 }}><Stamp sign={sign} /></span></div>
       </div>
       <div style={{ textAlign: "center", fontWeight: 700, marginTop: 24 }}>성균관대학교 창업지원단장 귀하</div>
     </div>
@@ -410,14 +418,14 @@ function F11({ p, d }: P) {
       <p style={{ marginTop: 14, lineHeight: 1.9, textIndent: 10 }}>
         위 계약 건명에 대한 선금을 지급 받아 사용함에 있어 본 계약 목적 외 사용하지 않음을 각서로서 제출합니다.
       </p>
-      <SignOff p={p} d={d} />
+      <SignOff p={p} d={d} sign={sign} />
     </div>
   );
   return <>{parts}</>;
 }
 
 // f12. 사업비(일반용역비) 관련 규정 확인서
-function F12({ p, d }: P) {
+function F12({ p, d, sign }: P) {
   return (
     <div>
       <h2 className="gtitle">「2026년 창업중심대학사업」 창업기업 사업비(일반용역비) 관련 규정 확인서</h2>
@@ -459,7 +467,7 @@ function F12({ p, d }: P) {
         본인은 통합관리지침 제38조(외주용역비) 제②항 및 광고선전비의 규정을 확인하고 외주용역비 및 광고선전비를 사용하고자 거래기업의 동일사업 수혜여부를 검토하고, 이후 이와 관련하여 발생하는 문제에 대해 적극적으로 소명 및 책임(환수, 제재 등)을 다 할 것을 확인합니다.
       </p>
       <p style={{ fontSize: 11.5 }}>※ 본 규정확인서는 일반용역비(외주용역비, 광고선전비) 집행 시 필수 제출</p>
-      <SignOff p={p} d={d} />
+      <SignOff p={p} d={d} sign={sign} />
     </div>
   );
 }

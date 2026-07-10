@@ -1,6 +1,7 @@
 // 지원사업 서류 자동작성 — 한 건 입력으로 창업중심대학사업 서식 세트를 자동 생성·일괄 인쇄
 import { useEffect, useMemo, useState } from "react";
 import { errMsg } from "../lib/errmsg";
+import { hasSupabase } from "../lib/supabase";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
 import { usePaged } from "../lib/usePaged";
@@ -69,6 +70,46 @@ export default function GrantDocs() {
     try { await saveGrantProfile(prof); toast.success("회사 정보 저장됨"); setProfOpen(false); }
     catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
+  }
+
+  // ---- 서명(도장) PNG — 1회 등록 후 모든 서식의 (인) 위에 표시 ----
+  const [signUrl, setSignUrl] = useState<string>("");
+  useEffect(() => {
+    const sp = prof.signPath || "";
+    if (!sp) { setSignUrl(""); return; }
+    if (sp.startsWith("data:")) { setSignUrl(sp); return; }
+    storageObjectUrl("coc", sp).then(u => setSignUrl(u || "")).catch(() => setSignUrl(""));
+  }, [prof.signPath]);
+  async function setSignPath(signPath: string) {
+    const next = { ...prof, signPath };
+    setProf(next);
+    try { await saveGrantProfile(next); toast.success(signPath ? "서명이 등록되었습니다 — 모든 서식의 (인) 위에 표시됩니다." : "서명 삭제됨"); }
+    catch (e: any) { toast.error("서명 저장 실패: " + errMsg(e)); }
+  }
+  function uploadSign() {
+    const el = document.createElement("input");
+    el.type = "file"; el.accept = "image/png,image/*";
+    el.onchange = async () => {
+      const raw = el.files?.[0]; if (!raw) return;
+      setBusy(true);
+      try {
+        // 투명 배경 유지를 위해 JPEG 변환(downscaleImage) 없이 PNG 그대로 업로드
+        if (hasSupabase) {
+          const path = await storageUpload("coc", raw);
+          await setSignPath(path);
+        } else {
+          if (raw.size > 300 * 1024) { toast.error("로컬 모드에서는 300KB 이하 PNG만 등록할 수 있습니다."); }
+          else {
+            const dataUrl = await new Promise<string>((res, rej) => {
+              const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(raw);
+            });
+            await setSignPath(dataUrl);
+          }
+        }
+      } catch (e: any) { toast.error("서명 업로드 실패: " + errMsg(e)); }
+      setBusy(false);
+    };
+    el.click();
   }
 
   // ---- 건 목록 ----
@@ -233,6 +274,14 @@ export default function GrantDocs() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Field label="주소(각서용)"><input style={inp} value={prof.address || ""} onChange={e => setProf({ ...prof, address: e.target.value })} /></Field>
               <Field label="법인등록번호(각서용)" w={170}><input style={inp} value={prof.corpNo || ""} onChange={e => setProf({ ...prof, corpNo: e.target.value })} /></Field>
+            </div>
+            <div>
+              <label style={lbl}>서명(도장) 이미지 — 배경이 투명한 PNG 권장, 한 번 등록하면 모든 서식의 (인) 위에 자동 표시</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button className="btn ghost" disabled={busy} onClick={uploadSign}>🖋 서명 올리기 (PNG)</button>
+                {signUrl && <img src={signUrl} alt="서명" style={{ height: 40, border: "1px dashed var(--line)", borderRadius: 4, padding: 2, background: "#fff" }} />}
+                {prof.signPath && <button className="btn danger" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => setSignPath("")}>서명 삭제</button>}
+              </div>
             </div>
             <div><button className="btn green" disabled={busy} onClick={saveProf}>회사 정보 저장</button></div>
           </div>
@@ -584,7 +633,7 @@ export default function GrantDocs() {
             </div>
             {selForms.map(f => (
               <div key={f.key} className="gdoc">
-                <GrantForm form={f.key} p={prof}
+                <GrantForm form={f.key} p={prof} sign={signUrl || undefined}
                   d={{ ...d, expenseItem: cur.expense_item, itemName: d.itemName || cur.title, svcName: d.svcName || cur.title }}
                   photos={cur.photos} img={img} />
               </div>

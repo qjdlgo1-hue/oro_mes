@@ -522,6 +522,7 @@ export type GrantProfile = {
   company?: string; ceo?: string; bizno?: string; project?: string; projectNo?: string;
   bank?: string; holder?: string; account?: string; manager?: string; address?: string; corpNo?: string;
   budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용
+  signPath?: string; // 서명(도장) PNG — storage 경로 또는 data: URL(로컬 모드). 모든 서식의 (인) 위에 표시
 };
 const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
 export async function listGrantDocs(): Promise<GrantDoc[]> {
