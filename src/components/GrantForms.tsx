@@ -1,4 +1,5 @@
 // 창업중심대학사업 서식 12종 — 업로드된 HWP 원문 문구를 그대로 재현한 인쇄용(A4) 템플릿.
+// 1·3·4·5번 서식은 업로드된 HWPX(XML)에서 추출한 실제 치수(셀 폭·행 높이 mm, 글자 pt)와 동일하게 재현.
 // 데이터는 GrantDocs.tsx의 건(d=data)·회사 프로필(p)·사진(photos)에서 채워진다.
 import { GrantPhoto, GrantProfile } from "../lib/db";
 import { FormKey, money, dateParts, shortDate, korShortDate } from "../lib/grantforms";
@@ -12,19 +13,19 @@ type P = {
 
 const B = ({ on }: { on: boolean }) => <span style={{ fontFamily: "sans-serif" }}>{on ? "■" : "□"}</span>;
 
-// 공통 서명부: "2026년 월 일 / 기업명: / 대표자: (인) / 성균관대학교 창업지원단장 귀하"
+// 공통 서명부 — HWPX 원본과 동일: 날짜 가운데(굵게), 기업명/대표자 우측 정렬 표, '귀하'는 왼쪽 정렬 18pt
 function SignOff({ p, d, short }: { p: GrantProfile; d: Record<string, any>; short?: boolean }) {
   const dp = dateParts(d.writeDate);
   return (
-    <div style={{ marginTop: 28 }}>
-      <div style={{ textAlign: "center", margin: "18px 0" }}>
-        {short ? shortDate(d.writeDate) : `${dp.y || "2026"}년  ${dp.m || "  "}월  ${dp.d || "  "}일`}
+    <div style={{ marginTop: "8mm" }}>
+      <div style={{ textAlign: "center", fontWeight: 700, fontSize: short ? "14pt" : "15pt", margin: "4mm 0 6mm" }}>
+        {short ? shortDate(d.writeDate) : `${dp.y || "2026"}년   ${dp.m || "  "}월   ${dp.d || "  "}일`}
       </div>
-      <div style={{ maxWidth: 330, marginLeft: "auto", display: "grid", gap: 6, fontSize: 14 }}>
-        <div>기업명 : <b>{p.company || ""}</b></div>
-        <div>대표자 : <b>{p.ceo || ""}</b> <span style={{ marginLeft: 20 }}>(인)</span></div>
-      </div>
-      <div style={{ textAlign: "center", fontWeight: 700, fontSize: 16, marginTop: 26 }}>성균관대학교 창업지원단장 귀하</div>
+      <table style={{ width: "55%", marginLeft: "auto", borderCollapse: "collapse", fontSize: "13pt" }}><tbody>
+        <tr style={{ height: "7.6mm" }}><td style={{ width: "42%", textAlign: "right" }}>기업명 : </td><td>{p.company || ""}</td></tr>
+        <tr style={{ height: "7.6mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td>{p.ceo || ""}<span style={{ float: "right" }}>(인)</span></td></tr>
+      </tbody></table>
+      <div style={{ fontSize: "18pt", fontWeight: 700, marginTop: "9mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
   );
 }
@@ -43,42 +44,64 @@ function PhotoGrid({ photos, img, cols = 2 }: { photos: GrantPhoto[]; img: P["im
   );
 }
 
-// f1. 사업비 지급요청서
+// f1. 사업비 지급요청서 — HWPX 원본 치수: 제목 박스(0.5mm 테두리), 지출항목 체크 그리드(내부 점선)
 function F1({ p, d }: P) {
-  const ITEMS = ["재료비", "외주용역비", "기계장치비", "특허권 등 무형자산취득비", "인건비", "지급수수료", "여비", "교육훈련비", "광고선전비"];
+  const sec: React.CSSProperties = { fontSize: "13pt", fontWeight: 700, margin: "4mm 0 1.5mm" };
+  const cbS: React.CSSProperties = { border: "1px dashed #000", fontSize: "10pt", padding: "0.5mm 1.5mm" };
+  const solid = "1px solid #000";
+  const CB = ({ it }: { it: string }) => <><B on={d.expenseItem === it} /> {it}</>;
   return (
-    <div>
-      <h2 className="gtitle">「2026년 창업중심대학사업」 창업기업 사업비 지급요청서</h2>
-      <div className="gsec">□ 창업기업 정보</div>
-      <table className="gt"><tbody>
-        <tr><th style={{ width: "28%" }}>창 업 기 업 명</th><td>{p.company}</td></tr>
-        <tr><th>과 제 명</th><td>{p.project}</td></tr>
+    <div style={{ margin: "0 3mm" }}>
+      <table className="gt gx" style={{ marginBottom: "3mm" }}><tbody>
+        <tr><td style={{ border: "0.5mm solid #000", height: "17mm", textAlign: "center" }}>
+          <div style={{ fontSize: "15pt", fontWeight: 700 }}>「2026년 창업중심대학사업」</div>
+          <div style={{ fontSize: "20pt", fontWeight: 700 }}>창업기업 사업비 지급요청서</div>
+        </td></tr>
       </tbody></table>
-      <div className="gsec">□ 수령인 정보</div>
-      <table className="gt"><tbody>
-        <tr><th style={{ width: "28%" }}>기 업 명</th><td>{p.company}</td><th style={{ width: "18%" }}>대 표 자</th><td>{p.ceo}</td></tr>
-        <tr><th>은 행 명</th><td>{p.bank}</td><th>예 금 주</th><td>{p.holder}</td></tr>
-        <tr><th>계 좌 번 호</th><td colSpan={3}>{p.account}</td></tr>
+      <div style={sec}>□ 창업기업 정보</div>
+      <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
+        <tr style={{ height: "6.9mm" }}><th style={{ width: "20.7%" }}>창 업 기 업 명</th><td style={{ textAlign: "center" }}>{p.company}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th>과 제 명</th><td style={{ textAlign: "center" }}>{p.project}</td></tr>
       </tbody></table>
-      <div className="gsec">□ 지급액 및 사유</div>
-      <table className="gt"><tbody>
-        <tr>
-          <th style={{ width: "18%" }}>지급액</th><td style={{ width: "27%" }}>{money(d.payAmount)}원</td>
-          <th style={{ width: "18%" }}>지출 항목</th>
-          <td style={{ fontSize: 12, lineHeight: 1.9 }}>
-            {ITEMS.map(it => <span key={it} style={{ whiteSpace: "nowrap", marginRight: 10 }}><B on={d.expenseItem === it} /> {it}</span>)}
-          </td>
+      <div style={sec}>□ 수령인 정보</div>
+      <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
+        <tr style={{ height: "6.9mm" }}><th style={{ width: "20.7%" }}>기 업 명</th><td style={{ width: "31.8%", textAlign: "center" }}>{p.company}</td><th style={{ width: "15.4%" }}>대 표 자</th><td style={{ textAlign: "center" }}>{p.ceo}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th>은 행 명</th><td style={{ textAlign: "center" }}>{p.bank}</td><th>예 금 주</th><td style={{ textAlign: "center" }}>{p.holder}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th>계 좌 번 호</th><td colSpan={3} style={{ textAlign: "center" }}>{p.account}</td></tr>
+      </tbody></table>
+      <div style={sec}>□ 지급액 및 사유</div>
+      <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
+        <tr style={{ height: "5.5mm" }}>
+          <th style={{ width: "13%" }} rowSpan={4}>지급액</th>
+          <td style={{ width: "19%", textAlign: "right" }} rowSpan={4}>{money(d.payAmount) || "000,000"}원</td>
+          <th style={{ width: "8%" }} rowSpan={4}>지출<br />항목</th>
+          <td style={{ ...cbS, width: "22.4%", borderTop: solid }}><CB it="재료비" /></td>
+          <td style={{ ...cbS, width: "18.2%", borderTop: solid }}><CB it="외주용역비" /></td>
+          <td style={{ ...cbS, width: "19.4%", borderTop: solid, borderRight: solid }}><CB it="기계장치비" /></td>
+        </tr>
+        <tr style={{ height: "5.5mm" }}>
+          <td rowSpan={2} style={cbS}><CB it="특허권 등 무형자산취득비" /></td>
+          <td style={cbS}><CB it="인건비" /></td>
+          <td style={{ ...cbS, borderRight: solid }}><CB it="지급수수료" /></td>
+        </tr>
+        <tr style={{ height: "5.5mm" }}>
+          <td style={cbS}><CB it="여비" /></td>
+          <td style={{ ...cbS, borderRight: solid }}><CB it="교육훈련비" /></td>
+        </tr>
+        <tr style={{ height: "5.5mm" }}>
+          <td style={{ ...cbS, borderBottom: solid }}><CB it="광고선전비" /></td>
+          <td colSpan={2} style={{ ...cbS, borderBottom: solid, borderRight: solid }} />
         </tr>
         <tr>
-          <th>지급 사유</th>
-          <td colSpan={3}>
-            <div style={{ minHeight: 70, whiteSpace: "pre-wrap" }}>{d.payReason}</div>
-            <div style={{ fontSize: 11, color: "#333" }}>※ 인건비의 경우 청구 인원(개인)별 월 급여, 참여율 기재 필수</div>
+          <th style={{ height: "44.8mm" }}>지급<br />사유</th>
+          <td colSpan={5} style={{ verticalAlign: "top", padding: "1.5mm 2mm" }}>
+            <div style={{ fontSize: "10pt" }}>※ 인건비의 경우 청구 인원(개인)별 월 급여, 참여율 기재 필수</div>
+            <div style={{ minHeight: "34mm", whiteSpace: "pre-wrap", marginTop: "1.5mm" }}>{d.payReason}</div>
           </td>
         </tr>
       </tbody></table>
-      <p style={{ fontSize: 12, margin: "10px 0 0" }}>* 별첨 : [별표 4] 창업기업 사업비 집행 증빙서류에 따른 지출항목별 증빙서류</p>
-      <p style={{ marginTop: 22, textAlign: "center" }}>「2026년도 창업중심대학사업」과 관련하여 상기와 같이 사업비 지급을 요청하오니 지급하여 주시기 바랍니다.</p>
+      <p style={{ fontSize: "11pt", margin: "1.5mm 0 0" }}>&nbsp;&nbsp;* 별첨 : [별표 4] 창업기업 사업비 집행 증빙서류에 따른 지출항목별 증빙서류</p>
+      <p style={{ fontSize: "14pt", textAlign: "justify", margin: "7mm 0 0", lineHeight: 1.8 }}>「2026년도 창업중심대학사업」과 관련하여 상기와 같이 사업비 지급을 요청하오니 지급하여 주시기 바랍니다.</p>
       <SignOff p={p} d={d} />
     </div>
   );
@@ -101,59 +124,90 @@ function F2({ d }: P) {
   );
 }
 
-// f3/f4. 검수조서 (①기본 / ②증빙사진)
+// f3/f4. 검수조서 (①기본 / ②증빙사진) — HWPX 원본 치수: 라벨열 24.3%, 14pt 굵은 좌측 라벨
 function Inspect({ p, d, photos, img, withPhotos }: P & { withPhotos: boolean }) {
+  const thL: React.CSSProperties = { textAlign: "left", padding: "1mm 2.5mm" };
+  const tdV: React.CSSProperties = { paddingLeft: "2.5mm" };
+  const rows = photos.length ? photos : [null];
   return (
     <div>
-      <h2 className="gtitle">검수조서</h2>
-      <table className="gt"><tbody>
-        <tr><th style={{ width: "30%" }}>1. 장비(물품)명</th><td>{d.itemName}</td></tr>
-        <tr><th>2. 납품업체 명</th><td>{d.vendor}</td></tr>
-        <tr><th>3. 납품일자</th><td>{korShortDate(d.deliverDate)}</td></tr>
-        <tr>
-          <th style={{ verticalAlign: "top", paddingTop: 8 }}>4. 세부사항<br /><span style={{ fontWeight: 400, fontSize: 12 }}>(증빙사진)</span></th>
-          <td>
-            {withPhotos && photos.length > 0 && (
-              <table className="gt" style={{ margin: "0 0 8px" }}>
-                <thead><tr><th style={{ width: "34%" }}>품명</th><th style={{ width: "16%" }}>수량</th><th>사진</th></tr></thead>
-                <tbody>{photos.map((ph, i) => (
-                  <tr key={i}>
-                    <td>{ph.name || d.itemName}</td><td style={{ textAlign: "center" }}>{ph.qty || ""}</td>
-                    <td style={{ textAlign: "center", padding: 4 }}>{img(ph.path) ? <img src={img(ph.path)} alt="" style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain" }} /> : null}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-            <div style={{ textAlign: "center", padding: "6px 0" }}>물품의 정상 수령여부 및 상태 확인</div>
-          </td>
-        </tr>
-        <tr><th>5. 검수확인자</th><td>{d.inspector || p.ceo}</td></tr>
+      <h2 style={{ textAlign: "center", fontSize: "20pt", fontWeight: 400, letterSpacing: "2px", margin: "0 0 5mm" }}>검수조서</h2>
+      <table className="gt gx" style={{ fontSize: "14pt" }}><tbody>
+        <tr style={{ height: "10.9mm" }}><th style={{ ...thL, width: "24.3%" }}>1. 장비(물품)명</th><td colSpan={3} style={tdV}>{d.itemName}</td></tr>
+        <tr style={{ height: "10.9mm" }}><th style={thL}>2. 납품업체 명</th><td colSpan={3} style={tdV}>{d.vendor}</td></tr>
+        <tr style={{ height: "10.9mm" }}><th style={thL}>3. 납품일자</th><td colSpan={3} style={tdV}>{korShortDate(d.deliverDate)}</td></tr>
+        {withPhotos ? (
+          <>
+            <tr style={{ height: "16.4mm" }}>
+              <th style={thL} rowSpan={rows.length + 2}>4. 세부사항<br />&nbsp;&nbsp;(증빙사진)</th>
+              <th style={{ width: "18%" }}>품명</th><th style={{ width: "11.6%" }}>수량</th><th style={{ width: "46.1%" }}>사진</th>
+            </tr>
+            {rows.map((ph, i) => (
+              <tr key={i} style={{ height: "23.7mm" }}>
+                <td style={{ textAlign: "center" }}>{ph ? (ph.name || d.itemName) : ""}</td>
+                <td style={{ textAlign: "center" }}>{ph?.qty || ""}</td>
+                <td style={{ textAlign: "center", padding: "1mm" }}>
+                  {ph && img(ph.path)
+                    ? <img src={img(ph.path)} alt="" style={{ maxWidth: "100%", maxHeight: "60mm", objectFit: "contain" }} />
+                    : <span className="gph" style={{ fontSize: "9pt" }}>제품명, 수량 보이게 사진 촬영</span>}
+                </td>
+              </tr>
+            ))}
+            <tr style={{ height: "6.4mm" }}><td colSpan={3} style={{ textAlign: "center", fontSize: "10pt" }}>물품의 정상 수령여부 및 상태 확인</td></tr>
+          </>
+        ) : (
+          <>
+            <tr>
+              <th style={thL} rowSpan={2}>4. 세부사항<br />&nbsp;&nbsp;(증빙사진)</th>
+              <td colSpan={3} style={{ height: "101.8mm", verticalAlign: "top", padding: "2mm" }}>
+                {photos.length
+                  ? <PhotoGrid photos={photos} img={img} />
+                  : <span className="gph" style={{ fontSize: "9pt" }}>제품명, 수량 보이게 사진 촬영</span>}
+              </td>
+            </tr>
+            <tr style={{ height: "8.5mm" }}><td colSpan={3} style={{ textAlign: "center", fontSize: "10pt" }}>물품의 정상 수령여부 및 상태 확인</td></tr>
+          </>
+        )}
+        <tr style={{ height: "9.9mm" }}><th style={thL}>5. 검수확인자</th><td colSpan={3} style={tdV}>{d.inspector || p.ceo}</td></tr>
       </tbody></table>
-      <p style={{ marginTop: 22, textAlign: "center" }}>상기와 같이 주문물품을 정상적으로 수령 및 확인하였음</p>
-      <SignOff p={p} d={d} short />
+      <p style={{ textAlign: "center", fontSize: "12pt", margin: "6mm 0 4mm" }}>상기와 같이 주문물품을 정상적으로 수령 및 확인하였음</p>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14pt", fontWeight: 700 }}><tbody>
+        <tr style={{ height: "13.9mm" }}><td colSpan={3} style={{ textAlign: "center" }}>{shortDate(d.writeDate)}</td></tr>
+        <tr style={{ height: "13.9mm" }}><td style={{ width: "33.3%" }} /><td style={{ width: "33.3%", textAlign: "right" }}>기업명: {p.company}</td><td /></tr>
+        <tr style={{ height: "13.9mm" }}><td /><td style={{ textAlign: "right" }}>대표자: {p.ceo}</td><td style={{ textAlign: "right" }}>(인)</td></tr>
+      </tbody></table>
+      <div style={{ fontSize: "18pt", marginTop: "4mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
   );
 }
 
-// f5. 기자재(기계장치/재료) 활용계획서
+// f5. 기자재(기계장치/재료) 활용계획서 — HWPX 원본 치수: 라벨열 16.6%, 제목 25pt
 function F5({ p, d }: P) {
-  const total = money(d.total) || (money(d.unitPrice) && d.qty ? "" : "");
   return (
     <div>
-      <h2 className="gtitle">기자재(기계장치/재료) 활용계획서</h2>
-      <table className="gt"><tbody>
-        <tr><th style={{ width: "26%" }}>품  명</th><td colSpan={3}>{d.itemName}</td></tr>
-        <tr><th>구매예정처 및 수량</th><th style={{ width: "20%", fontWeight: 400 }}>구매예정처</th><td>{d.vendor}</td><td style={{ width: "22%" }}><b>수량</b>  {d.qty}</td></tr>
-        <tr><th>금  액</th><td colSpan={2}>단가 : {money(d.unitPrice)} (원) x {d.qty || "  "} (개)</td><td>합계 : {money(d.total) || total} (원)</td></tr>
+      <h2 style={{ textAlign: "center", fontSize: "25pt", fontWeight: 700, margin: "0 0 7mm" }}>기자재(기계장치/재료) 활용계획서</h2>
+      <table className="gt gx" style={{ fontSize: "12pt" }}><tbody>
+        <tr style={{ height: "15.8mm" }}><th style={{ width: "16.6%" }}>품  명</th><td colSpan={2} style={{ textAlign: "center" }}>{d.itemName}</td></tr>
+        <tr style={{ height: "11.9mm" }}><th rowSpan={2}>구매예정처<br />및 수량</th><th style={{ width: "20.2%" }}>구매예정처</th><td style={{ textAlign: "center" }}>{d.vendor}</td></tr>
+        <tr style={{ height: "11.9mm" }}><th>수량</th><td style={{ textAlign: "center" }}>{d.qty}</td></tr>
+        <tr style={{ height: "11.9mm" }}><th rowSpan={2}>금  액</th><td colSpan={2} style={{ fontWeight: 700, fontSize: "11pt" }}>&nbsp;&nbsp;단가 : {money(d.unitPrice) || "   "} (원) x {d.qty || "   "} (개)</td></tr>
+        <tr style={{ height: "11.9mm" }}><td colSpan={2} style={{ fontWeight: 700, fontSize: "11pt" }}>&nbsp;&nbsp;합계 : {money(d.total) || "   "} (원)</td></tr>
       </tbody></table>
-      <div className="gsec" style={{ textAlign: "center", border: "1px solid #000", borderBottom: "none", padding: "6px 0", marginTop: 16 }}>활  용  계  획  안</div>
-      <table className="gt" style={{ marginTop: 0 }}><tbody>
+      <table className="gt gx" style={{ fontSize: "12pt", marginTop: "4mm" }}><tbody>
+        <tr style={{ height: "13.9mm" }}><td colSpan={2} style={{ textAlign: "center", fontWeight: 700 }}>활  용  계  획  안</td></tr>
         <tr>
-          <th style={{ width: "26%", verticalAlign: "top", paddingTop: 8 }}>용  도 및 기  능</th>
-          <td style={{ minHeight: 280, height: 280, verticalAlign: "top", whiteSpace: "pre-wrap" }}>{d.usagePlan || <span style={{ color: "#888", fontSize: 12 }}>과제 연관성 관련 내용 상세 기술</span>}</td>
+          <th style={{ width: "16.6%" }}>용  도<br />및<br />기  능</th>
+          <td style={{ height: "76.8mm", verticalAlign: "top", padding: "2mm 3mm", fontSize: "11pt", whiteSpace: "pre-wrap" }}>
+            {d.usagePlan || <span className="gph" style={{ display: "block", textAlign: "center", marginTop: "34mm" }}>과제 연관성 관련 내용 상세 기술</span>}
+          </td>
         </tr>
       </tbody></table>
-      <SignOff p={p} d={d} short />
+      <table style={{ width: "99%", borderCollapse: "collapse", fontSize: "14pt", fontWeight: 700, marginTop: "6mm" }}><tbody>
+        <tr style={{ height: "13.9mm" }}><td colSpan={2} style={{ textAlign: "center" }}>{shortDate(d.writeDate)}</td></tr>
+        <tr style={{ height: "10.9mm" }}><td style={{ width: "61.4%", textAlign: "right" }}>기업명 : </td><td style={{ paddingLeft: "2mm" }}>{p.company}</td></tr>
+        <tr style={{ height: "10.9mm" }}><td style={{ textAlign: "right" }}>대표자 : </td><td style={{ paddingLeft: "2mm" }}>{p.ceo}<span style={{ float: "right" }}>(인)</span></td></tr>
+      </tbody></table>
+      <div style={{ fontSize: "18pt", fontWeight: 700, marginTop: "5mm" }}>성균관대학교 창업지원단장 귀하</div>
     </div>
   );
 }

@@ -499,6 +499,19 @@ export async function aiBizReport(payload: { periodLabel: string; kpis: unknown 
   return data as { md: string; model: string };
 }
 
+// AI 문장 다듬기 — 서류 칸의 짧은 초안을 공식 문체로 확장 (Edge Function 'grant-write')
+export async function aiGrantWrite(payload: { field: string; draft: string; context: Record<string, any> }): Promise<string> {
+  if (!supabase) throw new Error("로컬 모드에서는 AI 다듬기를 사용할 수 없습니다.");
+  const { data, error } = await supabase.functions.invoke("grant-write", { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return String(data?.text || "");
+}
+
 // ===== 지원사업(창업중심대학사업) 서류 자동작성 =====
 export type GrantPhoto = { path: string; name?: string; qty?: string };
 export type GrantDoc = {

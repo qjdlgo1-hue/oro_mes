@@ -292,12 +292,19 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .gt th,.gt td{border:1px solid #000;padding:7px 9px;font-size:13px;vertical-align:middle;}
 .gt th{background:#efefef;font-weight:700;text-align:center;}
 .gt .gt th,.gt .gt td{border-color:#555;}
+/* .gx — HWPX 원본 일치 표: 라벨 회색 배경 없음(원본에 배경색 없음), 셀 여백 최소 */
+.gx th,.gx td{padding:1mm 2mm;}
+.gx th{background:none;}
+/* .gph — 원본 서식의 안내 문구(예: '과제 연관성 관련 내용 상세 기술'): 화면에만 회색, 인쇄 시 숨김 */
+.gph{color:#999;}
 .glabel th{width:42%;font-size:12px;background:#f3f3f3;}
 .glabel td{font-size:12px;height:26px;}
 .gpage{page-break-after:always;}
 .gdoc + .gdoc{margin-top:18px;}
 @media print{
-  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:10mm 12mm;page-break-after:always;}
+  /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm)에 맞춘 인쇄 여백 */
+  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:15mm 15mm 12mm 17mm;page-break-after:always;}
   .gdoc:last-child{page-break-after:auto;}
   .grant-edit,.grant-side{display:none!important;}
+  .gph{visibility:hidden;}
 }

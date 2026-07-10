@@ -7,7 +7,7 @@ import { usePaged } from "../lib/usePaged";
 import {
   GrantDoc, GrantPhoto, GrantProfile,
   listGrantDocs, getGrantDoc, saveGrantDoc, deleteGrantDoc, getGrantProfile, saveGrantProfile,
-  downscaleImage, storageUpload, storageObjectUrl,
+  downscaleImage, storageUpload, storageObjectUrl, aiGrantWrite,
 } from "../lib/db";
 import { FORMS, FormKey, EXPENSE_ITEMS, FORM_PRESETS, FieldSection, calcTotal } from "../lib/grantforms";
 import GrantForm from "./GrantForms";
@@ -19,6 +19,41 @@ const lbl: React.CSSProperties = { fontSize: 11.5, color: "var(--muted)", displa
 
 function Field({ label, children, w }: { label: string; children: React.ReactNode; w?: number }) {
   return <div style={{ minWidth: w || 160, flex: w ? undefined : 1 }}><label style={lbl}>{label}</label>{children}</div>;
+}
+
+// 서술형 칸 — 짧은 초안을 [✨ AI로 다듬기]로 공식 서류 문체(보고체)로 확장. 직전 내용은 [↩ 되돌리기]로 복원.
+function AiTextarea({ label, field, value, minHeight, ctx, onChange }: {
+  label: string; field: string; value: string; minHeight?: number;
+  ctx: Record<string, any>; onChange: (v: string) => void;
+}) {
+  const [aiBusy, setAiBusy] = useState(false);
+  const [prev, setPrev] = useState<string | null>(null);
+  async function polish() {
+    if (!value.trim()) { toast.error("먼저 간단한 초안을 입력하세요. 예: 분체도장 시제품 표면 검사용"); return; }
+    setAiBusy(true);
+    try {
+      const text = (await aiGrantWrite({ field, draft: value, context: ctx })).trim();
+      if (text) { setPrev(value); onChange(text); toast.success("AI가 다듬었습니다 — 내용을 검토하고 필요하면 수정하세요."); }
+      else toast.error("AI 응답이 비어 있습니다. 다시 시도해 주세요.");
+    } catch (e: any) { toast.error("AI 다듬기 실패: " + errMsg(e)); }
+    setAiBusy(false);
+  }
+  return (
+    <div style={{ flex: 1, minWidth: 220 }}>
+      <label style={lbl}>
+        {label}
+        <span style={{ float: "right", display: "inline-flex", gap: 10 }}>
+          {prev != null && (
+            <a style={{ cursor: "pointer", color: "var(--muted)" }} onClick={() => { onChange(prev); setPrev(null); }}>↩ 되돌리기</a>
+          )}
+          <a style={{ cursor: aiBusy ? "wait" : "pointer", color: "var(--accent)", fontWeight: 700 }} onClick={aiBusy ? undefined : polish}>
+            {aiBusy ? "⏳ 다듬는 중…" : "✨ AI로 다듬기"}
+          </a>
+        </span>
+      </label>
+      <textarea style={{ ...inp, minHeight: minHeight || 80 }} value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  );
 }
 
 export default function GrantDocs() {
@@ -155,6 +190,14 @@ export default function GrantDocs() {
   const img = (path: string) => imgCache[path];
   const selForms = FORMS.filter(f => cur?.forms.includes(f.key));
 
+  // AI 다듬기에 전달할 건 정보 — 초안에 없는 사실을 지어내지 않도록 실제 값만 전달
+  const aiCtx = {
+    "기업명": prof.company, "과제명": prof.project, "지출항목": cur?.expense_item,
+    "품명/용역명": d.itemName || d.svcName || cur?.title,
+    "업체": d.vendor || d.svcVendor, "수량": d.qty, "단가(원)": d.unitPrice,
+    "금액(원)": d.total || d.payAmount || d.svcAmount,
+  };
+
   return (
     <div style={{ display: "grid", gap: 14 }}>
       {/* ===== 회사 정보 (1회 저장) ===== */}
@@ -251,7 +294,7 @@ export default function GrantDocs() {
           {cur.forms.includes("f1") && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <Field label="지급액(원)" w={160}><input style={inp} value={d.payAmount || ""} onChange={e => setD({ payAmount: e.target.value })} /></Field>
-              <Field label="지급 사유"><input style={inp} value={d.payReason || ""} onChange={e => setD({ payReason: e.target.value })} /></Field>
+              <AiTextarea label="지급 사유" field="지급 사유(사업비 지급요청서)" value={d.payReason || ""} minHeight={54} ctx={aiCtx} onChange={v => setD({ payReason: v })} />
             </div>
           )}
 
@@ -272,7 +315,8 @@ export default function GrantDocs() {
               </div>
               {cur.forms.includes("f5") && (
                 <div style={{ marginTop: 8 }}>
-                  <Field label="용도 및 기능 (활용계획서 — 과제 연관성 상세 기술)"><textarea style={{ ...inp, minHeight: 80 }} value={d.usagePlan || ""} onChange={e => setD({ usagePlan: e.target.value })} /></Field>
+                  <AiTextarea label="용도 및 기능 (활용계획서 — 간단히 쓰고 AI로 다듬기)" field="용도 및 기능(기자재 활용계획서 — 과제 연관성 상세 기술)"
+                    value={d.usagePlan || ""} minHeight={90} ctx={aiCtx} onChange={v => setD({ usagePlan: v })} />
                 </div>
               )}
               {cur.forms.includes("f10") && (
@@ -304,11 +348,11 @@ export default function GrantDocs() {
               </div>
               {cur.forms.includes("f2") && <>
                 <div style={{ marginTop: 8 }}><Field label="용역절차 (과업지시서)"><input style={inp} value={d.svcProc || ""} onChange={e => setD({ svcProc: e.target.value })} /></Field></div>
-                <div style={{ marginTop: 8 }}><Field label="용역세부내용 (과업지시서 — 예상결과물 등)"><textarea style={{ ...inp, minHeight: 80 }} value={d.svcDetail || ""} onChange={e => setD({ svcDetail: e.target.value })} /></Field></div>
+                <div style={{ marginTop: 8 }}><AiTextarea label="용역세부내용 (과업지시서 — 예상결과물 등)" field="용역세부내용(과업지시서)" value={d.svcDetail || ""} minHeight={80} ctx={aiCtx} onChange={v => setD({ svcDetail: v })} /></div>
               </>}
               {cur.forms.includes("f6") && <>
-                <div style={{ marginTop: 8 }}><Field label="용역진행결과 (결과보고서 — 단계별/일자별 진행상황)"><textarea style={{ ...inp, minHeight: 100 }} value={d.svcResult || ""} onChange={e => setD({ svcResult: e.target.value })} /></Field></div>
-                <div style={{ marginTop: 8 }}><Field label="차후 진행예정사항"><textarea style={{ ...inp, minHeight: 60 }} value={d.svcNext || ""} onChange={e => setD({ svcNext: e.target.value })} /></Field></div>
+                <div style={{ marginTop: 8 }}><AiTextarea label="용역진행결과 (결과보고서 — 단계별/일자별 진행상황)" field="용역진행결과(외주용역 최종결과보고서)" value={d.svcResult || ""} minHeight={100} ctx={aiCtx} onChange={v => setD({ svcResult: v })} /></div>
+                <div style={{ marginTop: 8 }}><AiTextarea label="차후 진행예정사항" field="차후 진행예정사항(외주용역 최종결과보고서 — 잔여개발계획)" value={d.svcNext || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ svcNext: v })} /></div>
               </>}
             </div>
           )}
@@ -334,7 +378,7 @@ export default function GrantDocs() {
                 <Field label="공급가액(원)" w={140}><input style={inp} value={d.supply || ""} onChange={e => setD({ supply: e.target.value })} /></Field>
                 <Field label="부가세(원)" w={130}><input style={inp} value={d.vat || ""} onChange={e => setD({ vat: e.target.value })} /></Field>
               </div>
-              <div style={{ marginTop: 8 }}><Field label="과업내용"><textarea style={{ ...inp, minHeight: 60 }} value={d.taskDesc || ""} onChange={e => setD({ taskDesc: e.target.value })} /></Field></div>
+              <div style={{ marginTop: 8 }}><AiTextarea label="과업내용" field="과업내용(일반용역비 규정 확인서)" value={d.taskDesc || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ taskDesc: v })} /></div>
             </div>
           )}
 
@@ -360,7 +404,7 @@ export default function GrantDocs() {
                 <Field label="일시" w={150}><input type="date" style={inp} value={d.evtDate || ""} onChange={e => setD({ evtDate: e.target.value })} /></Field>
                 <Field label="장소" w={200}><input style={inp} value={d.evtPlace || ""} onChange={e => setD({ evtPlace: e.target.value })} /></Field>
               </div>
-              <div style={{ marginTop: 8 }}><Field label="주요 내용"><textarea style={{ ...inp, minHeight: 80 }} value={d.evtContent || ""} onChange={e => setD({ evtContent: e.target.value })} /></Field></div>
+              <div style={{ marginTop: 8 }}><AiTextarea label="주요 내용" field="행사 주요 내용(학회/전시회/박람회 참가 보고서)" value={d.evtContent || ""} minHeight={80} ctx={aiCtx} onChange={v => setD({ evtContent: v })} /></div>
             </div>
           )}
 
@@ -368,7 +412,7 @@ export default function GrantDocs() {
           {sections.has("reason") && (
             <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>📝 사유서(확인서)</div>
-              <Field label="서술 내용"><textarea style={{ ...inp, minHeight: 120 }} value={d.reasonText || ""} onChange={e => setD({ reasonText: e.target.value })} /></Field>
+              <AiTextarea label="서술 내용" field="사유서(확인서) 서술 내용" value={d.reasonText || ""} minHeight={120} ctx={aiCtx} onChange={v => setD({ reasonText: v })} />
             </div>
           )}
 

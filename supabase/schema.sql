@@ -147,3 +147,7 @@ create table if not exists grant_docs (
 alter table grant_docs enable row level security;
 create policy "grant_docs_all" on grant_docs for all to authenticated using (true) with check (true);
 alter table app_settings add column if not exists grant_profile jsonb;
+
+-- ===== Edge Function: grant-write =====
+-- supabase/functions/grant-write — 서류 서술형 칸의 짧은 초안을 Claude API(claude-opus-4-8)로
+-- 공식 서류 문체(보고체)로 확장. biz-report와 같은 ANTHROPIC_API_KEY secret 사용(커밋 금지).
