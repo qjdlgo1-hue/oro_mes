@@ -148,6 +148,11 @@ alter table grant_docs enable row level security;
 create policy "grant_docs_all" on grant_docs for all to authenticated using (true) with check (true);
 alter table app_settings add column if not exists grant_profile jsonb;
 
+-- 공고(프로그램) 구분: 'cud'=2026 창업중심대학사업(성균관대), 'td'=2026 기술닥터사업 상용화지원(경기테크노파크)
+-- td 비목·증빙 기준은 「기술닥터사업」 관리지침(2025.02.05) 제35·37·39조 — src/lib/grantforms.ts TD_EVIDENCE에 상수화
+alter table grant_docs add column if not exists program text not null default 'cud';
+create index if not exists grant_docs_program_idx on grant_docs (program, created_at desc);
+
 -- ===== Edge Function: grant-write =====
 -- supabase/functions/grant-write — 서류 서술형 칸의 짧은 초안을 Claude API(claude-opus-4-8)로
 -- 공식 서류 문체(보고체)로 확장. biz-report와 같은 ANTHROPIC_API_KEY secret 사용(커밋 금지).

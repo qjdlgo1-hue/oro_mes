@@ -1,5 +1,12 @@
-// 창업중심대학사업 서식 레지스트리 — 서식 목록·지출항목·항목별 기본 서식 매핑
-// 서식 본문(문구)은 업로드된 HWP 원문에서 추출한 그대로 GrantForms.tsx에 재현됨.
+// 지원사업 서식 레지스트리 — 공고(프로그램)별 서식 목록·지출항목(비목)·기본 서식 매핑·증빙 가이드
+// 서식 본문(문구)은 업로드된 HWP/HWPX 원문에서 추출한 그대로 GrantForms(.TD).tsx에 재현됨.
+
+// ===== 공고(프로그램) =====
+export type ProgramKey = "cud" | "td";
+export const PROGRAMS: { key: ProgramKey; name: string; short: string; org: string }[] = [
+  { key: "cud", name: "2026년 창업중심대학사업", short: "창업중심대학", org: "성균관대학교 창업지원단장" },
+  { key: "td", name: "2026년 기술닥터사업 상용화지원", short: "기술닥터 상용화", org: "(재)경기테크노파크 원장" },
+];
 
 export type FormKey = "f1" | "f2" | "f3" | "f4" | "f5" | "f6" | "f7" | "f8" | "f9" | "f10" | "f11" | "f12";
 
@@ -41,6 +48,89 @@ export const FORM_PRESETS: Record<string, FormKey[]> = {
   "광고선전비": ["f1", "f12"],
 };
 
+// ===== 기술닥터사업 상용화지원 (경기테크노파크) =====
+// 근거: 「기술닥터사업」 관리지침(2025.02.05) 제35·37·39조, 표준서식(2025.01.13)
+export type TdFormKey = "t2" | "t5" | "t6" | "t7" | "t8" | "t11" | "t11b";
+export type TdFieldSection = "tdproj" | "tdbank" | "tdlog" | "tdledger" | "tdchange";
+
+export const TD_FORMS: { key: TdFormKey; no: string; title: string; sections: TdFieldSection[] }[] = [
+  { key: "t2", no: "제2호", title: "협약체결·입금계좌 제출 공문", sections: ["tdproj", "tdbank"] },
+  { key: "t5", no: "제5호", title: "기술지원 일지", sections: ["tdproj", "tdlog"] },
+  { key: "t6", no: "제6호", title: "사업비 사용실적 보고서", sections: ["tdproj"] },
+  { key: "t7", no: "제7호", title: "사업비 사용 명세서", sections: ["tdproj", "tdledger"] },
+  { key: "t8", no: "제8호", title: "비목별 사용 명세서", sections: ["tdproj", "tdledger"] },
+  { key: "t11", no: "제11-1호", title: "협약변경 승인요청서", sections: ["tdproj", "tdchange"] },
+  { key: "t11b", no: "제11-2호", title: "협약변경 보고", sections: ["tdproj", "tdchange"] },
+];
+
+// 비목(세목) — 관리지침 제35조② 사업비 비목별 계상기준 순서 그대로
+export const TD_ITEMS = [
+  "기술지원인력 수당", "참여연구인력 인건비",
+  "(실험)재료비", "외주용역비", "시험분석·인증비", "홍보·마케팅비", "지식재산보호비", "이자",
+] as const;
+// 세목 → 상위 비목 (제7·8호 명세서의 구분)
+export const TD_ITEM_GROUP: Record<string, "인건비" | "직접비" | "기타"> = {
+  "기술지원인력 수당": "인건비", "참여연구인력 인건비": "인건비",
+  "(실험)재료비": "직접비", "외주용역비": "직접비", "시험분석·인증비": "직접비",
+  "홍보·마케팅비": "직접비", "지식재산보호비": "직접비", "이자": "기타",
+};
+
+// 세목 → 기본 서식 (정산 3종은 항상 세트, 집행 성격에 따라 추가)
+export const TD_PRESETS: Record<string, TdFormKey[]> = {
+  "기술지원인력 수당": ["t5", "t6", "t7", "t8"],
+  "참여연구인력 인건비": ["t6", "t7", "t8"],
+  "(실험)재료비": ["t6", "t7", "t8"],
+  "외주용역비": ["t6", "t7", "t8"],
+  "시험분석·인증비": ["t6", "t7", "t8"],
+  "홍보·마케팅비": ["t6", "t7", "t8"],
+  "지식재산보호비": ["t6", "t7", "t8"],
+  "이자": ["t6", "t7", "t8"],
+};
+
+// 세목별 챙겨야 할 증빙서류·한도(관리지침 제35·39조 그대로)
+export const TD_EVIDENCE: Record<string, { docs: string[]; limits: string[] }> = {
+  "기술지원인력 수당": {
+    docs: ["기술지원 일지 [제5호]", "이체확인증 (기술닥터 통장 입금, 세금 제외 후)", "원천징수영수증"],
+    limits: ["1회 30만원 이내(세금 포함), 총 10회 이내", "반드시 기술닥터 1명 이상 참여"],
+  },
+  "참여연구인력 인건비": {
+    docs: ["근로계약서", "4대보험 가입 증빙자료", "이체확인증(급여 이체)", "원천징수영수증"],
+    limits: ["총 사업비의 15% 이내", "공고일 기준 신규 고용인력만 가능(기존 직원 편성 불가)", "급여총액×과제참여율 (기본급+내부규정 제수당, 4대보험 사측부담금 미포함)"],
+  },
+  "(실험)재료비": {
+    docs: ["견적서", "거래명세표", "전자세금계산서(공급받는자 보관용 — 간이영수증 불인정)", "이체확인증(상대방 계좌번호 포함)", "거래처 사업자등록증", "상대통장사본", "물품증명사진·납품자료"],
+    limits: ["시약·재료 구입비 등", "범용성/자산성 비용 편성 불가, 부가세·관세 등 제수수료 불가"],
+  },
+  "외주용역비": {
+    docs: ["견적서", "거래명세표", "전자세금계산서(공급받는자 보관용)", "이체확인증", "거래처 사업자등록증", "상대통장사본", "결과물 증빙(사진·산출물)", "※ 공급가액 200만원 이상: 외주용역계약서(과업지시서 — 주문내역·설계도 등 포함) 필수"],
+    limits: ["총 사업비의 60% 이내", "제품 디자인·PCB 설계·금형설계 등", "생산금형 제작 불가(시작금형까지만)"],
+  },
+  "시험분석·인증비": {
+    docs: ["견적서", "전자세금계산서", "이체확인증", "시험분석 결과지·인증서 사본", "※ 민간기관 이용 시: 공공기관·대학 또는 타 국가공인기관 비교견적 1부 이상 필수"],
+    limits: ["기관 선정 순위: ①기술닥터 협약기관 ②정부·지방 공공기관/대학/국가공인기관 ③민간기관(주관기관 사전승인 필요)", "산업/시장분석 등 마케팅성 비용·자체 시험분석비 제외"],
+  },
+  "홍보·마케팅비": {
+    docs: ["견적서", "거래명세표", "전자세금계산서", "이체확인증", "결과물 증빙(홍보물 실물사진·게재 화면 등)"],
+    limits: ["총 사업비의 15% 이내", "홍보물 제작·광고료·홈페이지 구축(최대 200만원)·행사장 임차료·전시회 참가비(참가비만, 출장비 불가)"],
+  },
+  "지식재산보호비": {
+    docs: ["출원서 사본", "관납료·대리인수수료 영수증(세금계산서)", "이체확인증"],
+    limits: ["총 6,000천원 이내 — 국내 건당 150만원 / 해외 건당 300만원", "과제 관련 지식재산권 출원비용·중간사건 대응 제비용"],
+  },
+  "이자": {
+    docs: ["통장사본(이자 발생 내역 표시)"],
+    limits: ["사업기간 중 발생한 수입이자 — 직접비에 한해 원금 산입 사용 가능"],
+  },
+};
+
+// 정산 제출물 안내 (관리지침 제37조)
+export const TD_SETTLE_DOCS = [
+  "사업비 사용실적 보고서 1부 [제6호]", "사업비 사용 명세서 1부 [제7호]", "비목별 사용 명세서 1부 [제8호]",
+  "비목별 관련 증빙서류 사본 각 1부 (우측 상단 일련번호, 명세서 순서로 편철)",
+  "통장사본 1부 (표지 이면 + 개설일~제출일 전체 거래내역)",
+  "협약변경 신청서류 일체 및 승인 내역 (해당 시)",
+];
+
 export const money = (v: any): string => {
   const n = Number(String(v ?? "").replace(/[^\d.-]/g, ""));
   return isFinite(n) && String(v ?? "").trim() !== "" ? n.toLocaleString("ko-KR") : "";
@@ -52,9 +142,11 @@ export const num = (v: any): number => {
   return isFinite(n) ? n : 0;
 };
 
-// 건 하나의 집행액: 지급요청서 지급액 → 합계 → 단가×수량 → 용역금액 순으로 채택
+// 건 하나의 집행액: 지급요청서 지급액 → 합계 → 단가×수량 → 용역금액 → 원장(기술닥터 제8호) 합계 순으로 채택
 export function docAmount(data: Record<string, any>): number {
-  return num(data?.payAmount) || num(data?.total) || (calcTotal(data?.unitPrice, data?.qty) ?? 0) || num(data?.svcAmount);
+  const ledger = Array.isArray(data?.ledger)
+    ? data.ledger.reduce((s: number, r: any) => s + num(r?.amount), 0) + num(data?.tdTax) : 0;
+  return num(data?.payAmount) || num(data?.total) || (calcTotal(data?.unitPrice, data?.qty) ?? 0) || num(data?.svcAmount) || ledger;
 }
 
 // 정산 현황: 지출항목별 건수·집행액 집계 (+예산이 있으면 잔액/집행률)
@@ -62,6 +154,7 @@ export type SettleLine = { item: string; count: number; amount: number; budget: 
 export function settleSummary(
   docs: { expense_item?: string; data: Record<string, any> }[],
   budgets: Record<string, any> = {},
+  items: readonly string[] = EXPENSE_ITEMS, // 공고별 비목 순서 (cud=지출항목 9종, td=세목 8종)
 ): { lines: SettleLine[]; totalAmount: number; totalBudget: number } {
   const by = new Map<string, { count: number; amount: number }>();
   for (const d of docs) {
@@ -70,10 +163,10 @@ export function settleSummary(
     cur.count++; cur.amount += docAmount(d.data || {});
     by.set(k, cur);
   }
-  // 서식 원문 순서(EXPENSE_ITEMS) 우선, 예산만 있는 항목도 표시, 그 외는 뒤에
+  // 규정 순서(items) 우선, 예산만 있는 항목도 표시, 그 외는 뒤에
   const keys = [
-    ...EXPENSE_ITEMS.filter(i => by.has(i) || num(budgets[i]) > 0),
-    ...[...by.keys()].filter(k => !(EXPENSE_ITEMS as readonly string[]).includes(k)),
+    ...items.filter(i => by.has(i) || num(budgets[i]) > 0),
+    ...[...by.keys()].filter(k => !items.includes(k)),
   ];
   const lines = keys.map(item => ({
     item,
