@@ -512,10 +512,10 @@ export async function aiGrantWrite(payload: { field: string; draft: string; cont
   return String(data?.text || "");
 }
 
-// ===== 지원사업(창업중심대학사업) 서류 자동작성 =====
+// ===== 지원사업 서류 자동작성 (공고별: cud=창업중심대학, td=기술닥터 상용화지원) =====
 export type GrantPhoto = { path: string; name?: string; qty?: string };
 export type GrantDoc = {
-  id?: string; title: string; expense_item?: string;
+  id?: string; title: string; expense_item?: string; program?: string; // 'cud' | 'td'
   forms: string[]; data: Record<string, any>; photos: GrantPhoto[]; created_at?: string;
 };
 export type GrantProfile = {
@@ -523,22 +523,24 @@ export type GrantProfile = {
   bank?: string; holder?: string; account?: string; manager?: string; address?: string; corpNo?: string;
   budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용
   signPath?: string; // 서명(도장) PNG — storage 경로 또는 data: URL(로컬 모드). 모든 서식의 (인) 위에 표시
+  // 기술닥터사업 상용화지원 전용 정보 (과제·협약 사업비 — 서식 공통 반영)
+  td?: { project?: string; periodFrom?: string; periodTo?: string; doctor?: string; support?: string; share?: string; docNo?: string };
 };
 const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
-export async function listGrantDocs(): Promise<GrantDoc[]> {
+export async function listGrantDocs(program = "cud"): Promise<GrantDoc[]> {
   if (supabase) {
-    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,forms,created_at").order("created_at", { ascending: false }).limit(200);
+    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,program,forms,created_at").eq("program", program).order("created_at", { ascending: false }).limit(200);
     if (error) throw error; return (data || []) as GrantDoc[];
   }
-  return lsGet<GrantDoc[]>(LS_GRANT, []).map(({ data: _d, photos: _p, ...r }) => ({ ...r, data: {}, photos: [] })).reverse();
+  return lsGet<GrantDoc[]>(LS_GRANT, []).filter(r => (r.program || "cud") === program).map(({ data: _d, photos: _p, ...r }) => ({ ...r, data: {}, photos: [] })).reverse();
 }
 // 정산 현황용 목록 — 금액 계산에 필요한 data 포함(사진 제외)
-export async function listGrantSettle(): Promise<GrantDoc[]> {
+export async function listGrantSettle(program = "cud"): Promise<GrantDoc[]> {
   if (supabase) {
-    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,forms,data,created_at").order("created_at", { ascending: false }).limit(500);
+    const { data, error } = await supabase.from("grant_docs").select("id,title,expense_item,program,forms,data,created_at").eq("program", program).order("created_at", { ascending: false }).limit(500);
     if (error) throw error; return (data || []).map(r => ({ ...r, photos: [] })) as GrantDoc[];
   }
-  return lsGet<GrantDoc[]>(LS_GRANT, []).map(({ photos: _p, ...r }) => ({ ...r, photos: [] })).reverse();
+  return lsGet<GrantDoc[]>(LS_GRANT, []).filter(r => (r.program || "cud") === program).map(({ photos: _p, ...r }) => ({ ...r, photos: [] })).reverse();
 }
 export async function getGrantDoc(id: string): Promise<GrantDoc | null> {
   if (supabase) {
