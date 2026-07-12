@@ -8,7 +8,7 @@ import { usePaged } from "../lib/usePaged";
 import {
   GrantDoc, GrantPhoto, GrantProfile,
   listGrantDocs, listGrantSettle, getGrantDoc, saveGrantDoc, deleteGrantDoc, getGrantProfile, saveGrantProfile,
-  downscaleImage, storageUpload, storageObjectUrl, aiGrantWrite,
+  downscaleImage, storageUpload, storageObjectUrl, aiGrantWrite, aiGrantRead, GrantReadResult,
 } from "../lib/db";
 import {
   FORMS, FormKey, EXPENSE_ITEMS, FORM_PRESETS, calcTotal, money, docAmount, settleSummary,
@@ -263,6 +263,69 @@ export default function GrantDocs() {
   const tdLedger: any[] = Array.isArray(d.ledger) ? d.ledger : [];
   const setLedger = (rows: any[]) => setD({ ledger: rows });
 
+  // ---- 거래명세서(PDF/사진) AI 인식 → 건 자동 입력 ----
+  const [readBusy, setReadBusy] = useState(false);
+  const [readPrev, setReadPrev] = useState<{ data: Record<string, any>; title: string } | null>(null);
+  function applyRead(r: GrantReadResult) {
+    if (!cur) return;
+    setReadPrev({ data: { ...cur.data }, title: cur.title });
+    const items = (r.items || []).filter(it => it?.name);
+    const first = items[0];
+    const nameLabel = first?.name ? (items.length > 1 ? `${first.name} 외 ${items.length - 1}건` : String(first.name)) : "";
+    if (prog === "td") {
+      const rows = items.map(it => ({
+        item: cur.expense_item, desc: [it?.name, it?.spec].filter(Boolean).join(" "),
+        date: r.date || "", payee: r.vendor || "", amount: it?.amount != null ? String(it.amount) : "",
+      }));
+      setCur(c => c ? {
+        ...c, title: c.title || nameLabel,
+        data: { ...c.data, vendor: r.vendor || c.data.vendor, ledger: [...(Array.isArray(c.data.ledger) ? c.data.ledger : []), ...rows] },
+      } : c);
+    } else {
+      setCur(c => c ? {
+        ...c, title: c.title || nameLabel,
+        data: {
+          ...c.data,
+          itemName: nameLabel || c.data.itemName,
+          vendor: r.vendor || c.data.vendor,
+          ...(items.length === 1 ? {
+            qty: first?.qty != null ? String(first.qty) : c.data.qty,
+            unitPrice: first?.unitPrice != null ? String(first.unitPrice) : c.data.unitPrice,
+          } : {}),
+          total: r.supplyTotal != null ? String(r.supplyTotal) : c.data.total,
+          payAmount: r.supplyTotal != null ? String(r.supplyTotal) : c.data.payAmount,
+          deliverDate: r.date || c.data.deliverDate,
+        },
+      } : c);
+    }
+  }
+  function readStatement() {
+    const el = document.createElement("input");
+    el.type = "file"; el.accept = ".pdf,image/*";
+    el.onchange = async () => {
+      const f = el.files?.[0]; if (!f) return;
+      if (f.size > 8 * 1024 * 1024) { toast.error("8MB 이하 파일만 올릴 수 있습니다."); return; }
+      const mediaType = f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : f.type;
+      if (!mediaType || !(mediaType === "application/pdf" || mediaType.startsWith("image/"))) { toast.error("PDF 또는 이미지 파일만 지원합니다."); return; }
+      setReadBusy(true);
+      try {
+        const b64 = await new Promise<string>((res, rej) => {
+          const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1] || ""); fr.onerror = rej; fr.readAsDataURL(f);
+        });
+        const r = await aiGrantRead({ fileBase64: b64, mediaType });
+        if (!r.items?.length && !r.vendor && r.supplyTotal == null) toast.error("문서에서 거래 정보를 찾지 못했습니다. 선명한 파일로 다시 시도해 주세요.");
+        else { applyRead(r); toast.success("거래명세서를 읽어 채웠습니다 — 내용을 검토하세요."); }
+      } catch (e: any) { toast.error("거래명세서 인식 실패: " + errMsg(e)); }
+      setReadBusy(false);
+    };
+    el.click();
+  }
+  const undoRead = () => {
+    if (!readPrev) return;
+    setCur(c => c ? { ...c, title: readPrev.title, data: readPrev.data } : c);
+    setReadPrev(null);
+  };
+
   // AI 다듬기에 전달할 건 정보 — 초안에 없는 사실을 지어내지 않도록 실제 값만 전달
   const aiCtx = {
     "지원사업": progDef.name,
@@ -514,6 +577,17 @@ export default function GrantDocs() {
               </select>
             </Field>
             <Field label="작성일" w={150}><input type="date" style={inp} value={d.writeDate || ""} onChange={e => setD({ writeDate: e.target.value })} /></Field>
+          </div>
+
+          {/* 거래명세서 AI 인식 */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <button className="btn ghost" disabled={readBusy || busy} onClick={readStatement}>
+              {readBusy ? "⏳ 인식 중…" : "📄 거래명세서 불러오기 (PDF/사진)"}
+            </button>
+            {readPrev && <a style={{ cursor: "pointer", color: "var(--muted)", fontSize: 13 }} onClick={undoRead}>↩ 인식 전으로 되돌리기</a>}
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              품명·수량·단가·금액·업체·일자를 AI가 읽어 자동 입력합니다{prog === "td" ? " (품목이 집행 행으로 추가됩니다)" : ""}.
+            </span>
           </div>
 
           {/* 서식 선택 */}

@@ -512,6 +512,24 @@ export async function aiGrantWrite(payload: { field: string; draft: string; cont
   return String(data?.text || "");
 }
 
+// 거래명세서/세금계산서 AI 인식 — PDF·이미지에서 품목/금액/거래처 추출 (Edge Function 'grant-doc-read')
+export type GrantReadResult = {
+  vendor?: string | null; bizno?: string | null; date?: string | null;
+  items?: { name?: string | null; spec?: string | null; qty?: number | null; unitPrice?: number | null; amount?: number | null }[] | null;
+  supplyTotal?: number | null; vat?: number | null; total?: number | null;
+};
+export async function aiGrantRead(payload: { fileBase64: string; mediaType: string }): Promise<GrantReadResult> {
+  if (!supabase) throw new Error("로컬 모드에서는 거래명세서 AI 인식을 사용할 수 없습니다.");
+  const { data, error } = await supabase.functions.invoke("grant-doc-read", { body: payload });
+  if (error) {
+    let msg = error.message;
+    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return (data?.data || {}) as GrantReadResult;
+}
+
 // ===== 지원사업 서류 자동작성 (공고별: cud=창업중심대학, td=기술닥터 상용화지원) =====
 export type GrantPhoto = { path: string; name?: string; qty?: string };
 export type GrantDoc = {
