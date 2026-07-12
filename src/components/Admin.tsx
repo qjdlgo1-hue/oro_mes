@@ -363,7 +363,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           <div style={{ display: "grid", gap: 6 }}>
             {trash.orders.map(o => (
               <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, flexWrap: "wrap" }}>
-                <span style={{ background: "#eef3f9", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>주문</span>
+                <span style={{ background: "var(--tint)", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>주문</span>
                 <b>{o.name}</b><span className="muted">{o.order_date} · {money(o.qty)}g · {o.customer} · 삭제 {String(o.deleted_at || "").slice(0, 10)}</span>
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
                   <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => restoreItem("order", o)}>↩ 복구</button>
@@ -420,7 +420,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                         {shared && <span title={`'${shared.shared}'와 같은 권한을 사용합니다 — 한쪽을 바꾸면 함께 바뀝니다`}
                           style={{ fontWeight: 400, fontSize: 10.5, color: "var(--warn)", background: "#fff7e6", borderRadius: 5, padding: "0 6px", marginLeft: 6, cursor: "help" }}>공유</span>}
                       </td>
-                      <td style={{ ...TD, textAlign: "center", color: "#1aa260", fontWeight: 700 }}>✓</td>
+                      <td style={{ ...TD, textAlign: "center", color: "var(--ok)", fontWeight: 700 }}>✓</td>
                       {["manager", "user"].map(role => {
                         const viewOn = s.view.every(k => !!matrix[`${role}:${k}`]);
                         return (
@@ -462,7 +462,7 @@ function PermPill({ on, disabled, label, title, onChange, strong }: {
       display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 16, padding: "2px 10px 2px 7px",
       fontSize: 12, whiteSpace: "nowrap", cursor: disabled ? "default" : "pointer",
       border: "1px solid " + (on ? "var(--accent)" : "var(--line)"),
-      background: on ? "#eff6ff" : "#fff", color: on ? "var(--accent)" : "inherit",
+      background: on ? "var(--tint2)" : "#fff", color: on ? "var(--accent)" : "inherit",
       opacity: disabled ? .38 : 1, fontWeight: strong ? 700 : 400,
     }}>
       <input type="checkbox" checked={on} disabled={disabled} onChange={e => onChange(e.target.checked)} style={{ margin: 0, accentColor: "var(--accent)" }} />

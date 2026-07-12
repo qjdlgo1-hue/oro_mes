@@ -76,8 +76,8 @@ export default function Today({ orders }: { orders: Order[] }) {
   const Row = ({ o, end, start, pl, late }: { o: Order; end: string; start: string; pl: PlanEntry; late?: boolean }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid #f0f3f7" }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
-        <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {(pl.qty != null ? Number(pl.qty) : o.qty).toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
+        <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>· {o.spec}</span></div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>{o.customer} · {(pl.qty != null ? Number(pl.qty) : o.qty).toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
       </div>
       {canEdit && <button className="btn green" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => markDone(pl)}>완료</button>}
     </div>
@@ -92,7 +92,7 @@ export default function Today({ orders }: { orders: Order[] }) {
 
   return (
     <div style={{ display: "grid", gap: 14, maxWidth: 1040, gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))" }}>
-      <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
+      <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "var(--muted)" }}>
         <span><b style={{ color: "var(--accent)", fontSize: 16 }}>POP</b> <span style={{ fontSize: 12 }}>(현장 생산 현황)</span> · 오늘 <b style={{ color: "var(--accent)" }}>{T}</b> · 생산계획 일정 기준 (자동 갱신)</span>
         <button className="btn ghost" style={{ marginLeft: "auto", padding: "4px 12px", fontSize: 12 }} onClick={load} disabled={syncing}>{syncing ? "갱신 중…" : "🔄 새로고침"}</button>
         {lastSync && <span style={{ fontSize: 11 }}>갱신 {lastSync.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} · 30초마다 자동</span>}
@@ -107,12 +107,12 @@ export default function Today({ orders }: { orders: Order[] }) {
         {groups.today.map(g => <Row key={g.o.id} {...g} pl={g.p} />)}
       </Section>
 
-      <Section title="🟢 COC 발행 필요 (생산완료 · 성적서 미발행)" color="#1aa260" count={groups.cocNeeded.length}>
+      <Section title="🟢 COC 발행 필요 (생산완료 · 성적서 미발행)" color="var(--ok)" count={groups.cocNeeded.length}>
         {groups.cocNeeded.map(o => (
           <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid #f0f3f7" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>· {o.spec}</span></div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>{o.customer} · {o.qty.toLocaleString()}g</div>
+              <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>· {o.spec}</span></div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>{o.customer} · {o.qty.toLocaleString()}g</div>
             </div>
             <button className="btn ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => { window.location.hash = "coc/" + o.id; }}>📄 발행하기 →</button>
           </div>

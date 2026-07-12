@@ -65,7 +65,7 @@ export default function ProdConsumeImport() {
         </div>
         <p className="muted" style={{ fontSize: 12, margin: "8px 2px 0" }}>이카운트 <b>[생산입고/소모현황 I]</b> 엑셀을 업로드하세요. 분석은 <b>대시보드 → 생산·소모</b>에서 봅니다. · 총 {rows.length}행 · 생산합 {nf(totalProd)}</p>
         {preview &&
-          <div style={{ marginTop: 10, background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: 12 }}>
+          <div style={{ marginTop: 10, background: "var(--tint2)", border: "1px solid var(--tint2)", borderRadius: 8, padding: 12 }}>
             <b>인식 {preview.length}행</b> · 신규 {newCount} · 중복 {preview.length - newCount}
             <div style={{ overflow: "auto", maxHeight: 240, border: "1px solid var(--line)", borderRadius: 8, background: "#fff", marginTop: 8 }}>
               <table style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -73,7 +73,7 @@ export default function ProdConsumeImport() {
                 <tbody>
                   {preview.slice(0, 30).map((r, i) => { const dup = existing.has(r.sig); return (
                     <tr key={i} style={dup ? { opacity: .5 } : undefined}>
-                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "var(--ok)" }}>{dup ? "중복" : "신규"}</span></td>
                       <td style={tdL}>{r.idate || "-"}</td><td style={tdL}>{r.prod_name}</td><td style={tdL}>{r.mat_name || ""}</td>
                       <td style={td}>{r.prod_qty ? nf1(Number(r.prod_qty)) : ""}</td><td style={td}>{r.act_qty ? nf1(Number(r.act_qty)) : ""}</td>
                     </tr>

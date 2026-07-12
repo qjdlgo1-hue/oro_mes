@@ -254,7 +254,7 @@ export default function Support() {
             공고명: {project.announce || "-"} · 협약기간: {project.period_from || "-"} ~ {project.period_to || "-"} · 기업명: {project.company} · 납품업체(기본): {project.vendor || "-"}
           </p>}
         {projEdit &&
-          <div style={{ marginTop: 12, background: "#f5f9ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: 12, display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+          <div style={{ marginTop: 12, background: "var(--tint)", border: "1px solid var(--tint2)", borderRadius: 8, padding: 12, display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
             <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>공고명</label><input style={{ ...inp, width: "100%" }} value={projEdit.announce || ""} onChange={e => setProjEdit({ ...projEdit, announce: e.target.value })} /></div>
             <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>과제명 (필수)</label><input style={{ ...inp, width: "100%" }} value={projEdit.name} onChange={e => setProjEdit({ ...projEdit, name: e.target.value })} /></div>
             <div><label style={lbl}>기업명</label><input style={{ ...inp, width: "100%" }} value={projEdit.company || ""} onChange={e => setProjEdit({ ...projEdit, company: e.target.value })} /></div>
@@ -283,7 +283,7 @@ export default function Support() {
           {projInsps.length === 0 ? <p className="muted">아직 저장된 검수조서가 없습니다.</p> :
             <div style={{ display: "grid", gap: 6 }}>
               {projInsps.map(i => (
-                <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, background: form?.id === i.id ? "#eff6ff" : "#fff" }}>
+                <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, background: form?.id === i.id ? "var(--tint2)" : "#fff" }}>
                   <b>{i.inspect_date || "-"}</b>
                   <span className="muted">검수자 {i.inspector || "-"} · {(i.items || []).length}품목 · 사진 {(i.photos || []).length}</span>
                   <button className="btn ghost" style={{ marginLeft: "auto", padding: "2px 10px", fontSize: 12 }} onClick={() => loadInsp(i)}>열기</button>
@@ -327,7 +327,7 @@ export default function Support() {
                     <td style={{ ...bd, textAlign: "center" }}><button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => delItem(idx)}>×</button></td>
                   </tr>
                 ))}
-                <tr style={{ fontWeight: 700, background: "#eef3f9" }}>
+                <tr style={{ fontWeight: 700, background: "var(--tint)" }}>
                   <td style={{ ...bd, textAlign: "center" }} colSpan={5}>합 계</td>
                   <td style={{ ...bd, textAlign: "right" }}>{won(sumPrice)}</td>
                   <td style={{ ...bd, textAlign: "right" }}>{won(sumAmount)}</td>
@@ -347,7 +347,7 @@ export default function Support() {
               </div>
             </div>
             <div
-              style={{ flex: 1, minWidth: 240, borderRadius: 8, ...(dragOver ? { outline: "2px dashed var(--accent)", outlineOffset: 4, background: "#eff6ff" } : {}) }}
+              style={{ flex: 1, minWidth: 240, borderRadius: 8, ...(dragOver ? { outline: "2px dashed var(--accent)", outlineOffset: 4, background: "var(--tint2)" } : {}) }}
               onDragOver={e => { e.preventDefault(); setDragOver(true); }}
               onDragLeave={() => setDragOver(false)}
               onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles([...e.dataTransfer.files]); }}
@@ -455,7 +455,7 @@ export default function Support() {
                       <td style={{ ...bd, textAlign: "right", fontWeight: 700 }}>{won(r.amount)}</td><td style={bd}>{r.note}</td>
                     </tr>
                   ))}
-                  <tr style={{ fontWeight: 700, background: "#eef3f9" }}><td style={bd} colSpan={9}>합 계</td><td style={{ ...bd, textAlign: "right" }}>{won(settleTotal)}</td><td style={bd}></td></tr>
+                  <tr style={{ fontWeight: 700, background: "var(--tint)" }}><td style={bd} colSpan={9}>합 계</td><td style={{ ...bd, textAlign: "right" }}>{won(settleTotal)}</td><td style={bd}></td></tr>
                 </tbody>
               </table>
               {settleRemaining > 0 && <button className="btn ghost" style={{ width: "100%", marginTop: 6 }} onClick={settleMore}>더 보기 (남은 {settleRemaining.toLocaleString()}건)</button>}

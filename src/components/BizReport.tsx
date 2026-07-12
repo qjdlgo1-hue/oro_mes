@@ -165,10 +165,10 @@ export default function BizReport() {
 
       {kpis && (
         <div className="no-print" style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-          {kpis.sales.hasData && kpiCard("매출(공급가액)", nf(kpis.sales.total) + "원", "#1aa260")}
-          {kpis.production.hasData && kpiCard("생산량", nf(kpis.production.totalQty) + "g", "#2563eb")}
+          {kpis.sales.hasData && kpiCard("매출(공급가액)", nf(kpis.sales.total) + "원", "var(--ok)")}
+          {kpis.production.hasData && kpiCard("생산량", nf(kpis.production.totalQty) + "g", "var(--accent)")}
           {kpiCard("수주", nf(kpis.orders.count) + "건")}
-          {kpiCard("납기 지연", nf(kpis.orders.late) + "건", kpis.orders.late > 0 ? "#c0392b" : "#1aa260")}
+          {kpiCard("납기 지연", nf(kpis.orders.late) + "건", kpis.orders.late > 0 ? "#c0392b" : "var(--ok)")}
           {kpis.spend.hasData && kpiCard("지출(증빙)", nf(kpis.spend.total) + "원", "#f59e0b")}
         </div>
       )}

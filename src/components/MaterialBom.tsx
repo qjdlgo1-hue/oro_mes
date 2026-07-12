@@ -71,7 +71,7 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
                 products.map(p => { const b = bom[p.name] || { agcn: 0, pgc: 0, note: "" }; return (
                   <tr key={p.name}>
                     <td style={{ ...TD, fontWeight: 700 }}>{p.name}</td>
-                    <td style={{ ...TD, color: "#6b7280" }}>{p.spec}</td>
+                    <td style={{ ...TD, color: "var(--muted)" }}>{p.spec}</td>
                     <td style={{ ...TD, color: "#374151" }}>{p.customers}</td>
                     <td style={{ ...TD, textAlign: "right" }}>{canEdit ? <input type="number" inputMode="decimal" style={inp} value={b.agcn || ""} onChange={e => setVal(p.name, "agcn", e.target.value)} /> : num(b.agcn)}</td>
                     <td style={{ ...TD, textAlign: "right" }}>{canEdit ? <input type="number" inputMode="decimal" style={inp} value={b.pgc || ""} onChange={e => setVal(p.name, "pgc", e.target.value)} /> : num(b.pgc)}</td>

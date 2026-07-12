@@ -193,7 +193,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                 </tr>
               </thead>
               <tbody>
-                {calRowsList.length === 0 ? <tr><td className="fixcol c-no" /><td colSpan={4 + nDays} style={{ padding: 12, color: "#6b7280" }}>이 달 배송 예정 건이 없습니다.</td></tr> :
+                {calRowsList.length === 0 ? <tr><td className="fixcol c-no" /><td colSpan={4 + nDays} style={{ padding: 12, color: "var(--muted)" }}>이 달 배송 예정 건이 없습니다.</td></tr> :
                   calRowsList.map((r, idx) => {
                     const dd = +r.del.slice(8, 10);
                     return (

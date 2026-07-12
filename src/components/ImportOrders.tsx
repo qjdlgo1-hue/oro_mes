@@ -159,8 +159,8 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
         <div className="card">
           <h3 style={{ marginTop: 0 }}>주문 가져오기</h3>
-          <div style={{ background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>
-            <b style={{ color: "#2563eb" }}>이카운트에서 가져오는 방법</b><br />
+          <div style={{ background: "var(--tint2)", border: "1px solid var(--tint2)", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>
+            <b style={{ color: "var(--accent)" }}>이카운트에서 가져오는 방법</b><br />
             <b>가장 빠름(추천):</b> 이카운트 <b>[판매 &gt; 주문서현황]</b> 조회 → 브라우저 즐겨찾기의 <b>「ORO 주문복사」</b> 클릭(표 자동 복사) → 아래 붙여넣기 칸에 <b>Ctrl+V</b> → <b>붙여넣기 인식</b> → <b>신규만 추가</b>.<br />
             <span className="muted">「ORO 주문복사」 즐겨찾기가 없으면 설치용 파일(ORO_ecount_order_copy.html)로 한 번만 설치하세요. 없어도 아래 ①②로 가능합니다.</span>
           </div>
@@ -175,9 +175,9 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           </div>
 
           {preview.length > 0 &&
-            <div style={{ marginTop: 12, padding: 10, background: "#f5f9ff", borderRadius: 8 }}>
+            <div style={{ marginTop: 12, padding: 10, background: "var(--tint)", borderRadius: 8 }}>
               <div style={{ fontSize: 13, marginBottom: 8 }}>
-                <b style={{ color: "#1aa260" }}>신규 {newCount}건</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}건</b>
+                <b style={{ color: "var(--ok)" }}>신규 {newCount}건</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}건</b>
               </div>
               <div style={{ overflow: "auto", maxHeight: 240, border: "1px solid var(--line)", borderRadius: 8, background: "#fff", marginBottom: 8 }}>
                 <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
@@ -186,7 +186,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   <tbody>
                     {marked.slice(0, 30).map(({ o, dup }, i) => (
                       <tr key={i} style={dup ? { opacity: .5 } : undefined}>
-                        <td style={cell}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                        <td style={cell}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "var(--ok)" }}>{dup ? "중복" : "신규"}</span></td>
                         <td style={cell}>{o.order_date}</td><td style={cell}>{o.gubun}</td>
                         <td style={{ ...cell, fontWeight: 700 }}>{o.name}</td><td style={cell}>{o.spec}</td>
                         <td style={{ ...cell, textAlign: "right" }}>{o.qty.toLocaleString()}</td><td style={cell}>{o.customer}</td>
@@ -225,7 +225,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   const collapsed = colY2.has(y);
                   return (
                     <React.Fragment key={y}>
-                      <tr style={{ cursor: "pointer", background: "#eef3f9", fontWeight: 700 }} onClick={() => toggleY2(y)}>
+                      <tr style={{ cursor: "pointer", background: "var(--tint)", fontWeight: 700 }} onClick={() => toggleY2(y)}>
                         <td style={{ padding: "5px 4px" }}>{collapsed ? "▶" : "▼"} {y}년</td>
                         <td style={{ padding: "5px 4px", textAlign: "center" }}>{yv.total}</td>
                       </tr>
@@ -270,9 +270,9 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, marginLeft: "auto" }}><input type="checkbox" checked={showChanged} onChange={e => setShowChanged(e.target.checked)} /> 변동만 보기</label>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <span style={{ background: "#eef3f9", color: "#374151", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>수주 합계 <b>{sumSu.toLocaleString()}</b>g</span>
-          <span style={{ background: "#eff6ff", color: "#2563eb", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>생산 합계 <b>{sumSa.toLocaleString()}</b>g</span>
-          <span style={{ background: sumSa - sumSu === 0 ? "#f1f3f7" : sumSa - sumSu > 0 ? "#e8f6ee" : "#fdeaea", color: sumSa - sumSu > 0 ? "#1aa260" : sumSa - sumSu < 0 ? "#c0392b" : "#6b7280", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>차이 {sumSa - sumSu > 0 ? "+" : ""}{(sumSa - sumSu).toLocaleString()}g</span>
+          <span style={{ background: "var(--tint)", color: "#374151", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>수주 합계 <b>{sumSu.toLocaleString()}</b>g</span>
+          <span style={{ background: "var(--tint2)", color: "var(--accent)", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>생산 합계 <b>{sumSa.toLocaleString()}</b>g</span>
+          <span style={{ background: sumSa - sumSu === 0 ? "#f1f3f7" : sumSa - sumSu > 0 ? "#e8f6ee" : "#fdeaea", color: sumSa - sumSu > 0 ? "var(--ok)" : sumSa - sumSu < 0 ? "#c0392b" : "var(--muted)", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>차이 {sumSa - sumSu > 0 ? "+" : ""}{(sumSa - sumSu).toLocaleString()}g</span>
           <span style={{ background: "#fff7e6", color: "#9a6700", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>변동 {changedCnt}건</span>
         </div>
         {displayRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
@@ -286,7 +286,7 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   <div className="mrow"><span className="k">품목</span><span className="v">{o.order_no && o.order_no.includes("수동") ? "✋ " : ""}{o.name}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처</span><span className="v" style={{ fontWeight: 400 }}>{o.customer}</span></div>
-                  <div className="mrow"><span className="k">수주 / 생산 / 차이</span><span className="v" style={{ fontWeight: 400 }}>{o.qty.toLocaleString()} / <b style={{ color: "#2563eb" }}>{pqOf(o).toLocaleString()}</b> / {(() => { const d = pqOf(o) - (Number(o.qty) || 0); return <span style={{ color: d > 0 ? "#1aa260" : d < 0 ? "#c0392b" : "#888", fontWeight: 700 }}>{d !== 0 ? (d > 0 ? "+" : "") + d.toLocaleString() : "-"}</span>; })()}g</span></div>
+                  <div className="mrow"><span className="k">수주 / 생산 / 차이</span><span className="v" style={{ fontWeight: 400 }}>{o.qty.toLocaleString()} / <b style={{ color: "var(--accent)" }}>{pqOf(o).toLocaleString()}</b> / {(() => { const d = pqOf(o) - (Number(o.qty) || 0); return <span style={{ color: d > 0 ? "var(--ok)" : d < 0 ? "#c0392b" : "#888", fontWeight: 700 }}>{d !== 0 ? (d > 0 ? "+" : "") + d.toLocaleString() : "-"}</span>; })()}g</span></div>
                   <div className="mrow"><span className="k">완료일 / 상태 / COC</span><span className="v" style={{ fontWeight: 400 }}>{cp || "-"} · {done ? "완료" : (cp ? "진행중" : "미계획")} · {hasCoc ? "발행" : "-"}</span></div>
                   {canDelete && <button className="btn danger" style={{ marginTop: 8, width: "100%" }} onClick={() => removeOrder(o)}>삭제</button>}
                 </div>
@@ -311,12 +311,12 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                       <td style={{ ...cell, fontWeight: 700 }}>{editing ? <input style={inp} value={draft.name ?? ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} /> : o.name}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.spec ?? ""} onChange={e => setDraft(d => ({ ...d, spec: e.target.value }))} /> : o.spec}</td>
                       <td style={{ ...cell, textAlign: "right" }}>{editing ? <input style={{ ...inp, textAlign: "right" }} type="number" value={draft.qty ?? 0} onChange={e => setDraft(d => ({ ...d, qty: Number(e.target.value) }))} /> : o.qty.toLocaleString()}</td>
-                      <td style={{ ...cell, textAlign: "right", color: "#2563eb", fontWeight: 700 }}>{pv.toLocaleString()}</td>
-                      <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: diff > 0 ? "#1aa260" : diff < 0 ? "#c0392b" : "#bbb" }}>{diff !== 0 ? (diff > 0 ? "+" : "") + diff.toLocaleString() : "-"}</td>
+                      <td style={{ ...cell, textAlign: "right", color: "var(--accent)", fontWeight: 700 }}>{pv.toLocaleString()}</td>
+                      <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: diff > 0 ? "var(--ok)" : diff < 0 ? "#c0392b" : "#bbb" }}>{diff !== 0 ? (diff > 0 ? "+" : "") + diff.toLocaleString() : "-"}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.customer ?? ""} onChange={e => setDraft(d => ({ ...d, customer: e.target.value }))} /> : o.customer}</td>
                       <td style={{ ...cell, textAlign: "center", color: cp ? "#1f4e78" : "#bbb", fontWeight: cp ? 700 : 400 }}>{cp || "-"}</td>
-                      <td style={{ ...cell, textAlign: "center", color: done ? "#1aa260" : (cp ? "#2f6cb0" : "#bbb"), fontWeight: done ? 700 : 400 }}>{done ? "완료" : (cp ? "진행중" : "미계획")}</td>
-                      <td style={{ ...cell, textAlign: "center", color: hasCoc ? "#1aa260" : "#bbb" }}>{hasCoc ? "발행" : "-"}</td>
+                      <td style={{ ...cell, textAlign: "center", color: done ? "var(--ok)" : (cp ? "#2f6cb0" : "#bbb"), fontWeight: done ? 700 : 400 }}>{done ? "완료" : (cp ? "진행중" : "미계획")}</td>
+                      <td style={{ ...cell, textAlign: "center", color: hasCoc ? "var(--ok)" : "#bbb" }}>{hasCoc ? "발행" : "-"}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.note ?? ""} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} /> : o.note}</td>
                       <td style={{ ...cell, whiteSpace: "nowrap" }}>
                         {editing ? (

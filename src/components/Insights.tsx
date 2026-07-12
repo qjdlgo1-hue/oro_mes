@@ -174,12 +174,12 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
         {/* KPI */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           {isIn ? <>
-            {kpi("총 생산량(g)", nf(total), "#2563eb")}
+            {kpi("총 생산량(g)", nf(total), "var(--accent)")}
             {kpi("생산 건수", nf(scoped.length))}
             {kpi("품목 수", nf(itemCnt))}
           </> : <>
-            {kpi("총 판매액", nf(total) + "원", "#1aa260")}
-            {kpi("내자", nf(domestic) + "원", "#2563eb")}
+            {kpi("총 판매액", nf(total) + "원", "var(--ok)")}
+            {kpi("내자", nf(domestic) + "원", "var(--accent)")}
             {kpi("외자", nf(foreign) + "원", "#f59e0b")}
             {kpi("거래처 수", nf(custCnt))}
           </>}
@@ -196,14 +196,14 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={70} />
                 <Tooltip formatter={(v: any) => nf(v) + (isIn ? " g" : " 원")} />
                 {isIn
-                  ? <Bar dataKey="value" name="생산량" fill="#2563eb" cursor="pointer" onClick={onBar} />
+                  ? <Bar dataKey="value" name="생산량" fill="var(--accent)" cursor="pointer" onClick={onBar} />
                   : (trade === "all"
                     ? <>
                         <Legend />
-                        <Bar dataKey="내자" stackId="a" fill="#2563eb" cursor="pointer" onClick={onBar} />
+                        <Bar dataKey="내자" stackId="a" fill="var(--accent)" cursor="pointer" onClick={onBar} />
                         <Bar dataKey="외자" stackId="a" fill="#f59e0b" cursor="pointer" onClick={onBar} />
                       </>
-                    : <Bar dataKey="value" name={trade} fill={trade === "외자" ? "#f59e0b" : "#2563eb"} cursor="pointer" onClick={onBar} />)}
+                    : <Bar dataKey="value" name={trade} fill={trade === "외자" ? "#f59e0b" : "var(--accent)"} cursor="pointer" onClick={onBar} />)}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -234,7 +234,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                     <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} />
                     <YAxis type="category" dataKey="name" width={yw} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: any) => nf(v) + " 원"} />
-                    <Bar dataKey="value" fill="#1aa260" />
+                    <Bar dataKey="value" fill="var(--ok)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -247,7 +247,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
                 <ResponsiveContainer>
                   <PieChart>
                     <Pie data={tradePie} dataKey="value" nameKey="name" outerRadius={90} label={(e: any) => `${e.name} ${Math.round(e.percent * 100)}%`}>
-                      <Cell fill="#2563eb" /><Cell fill="#f59e0b" />
+                      <Cell fill="var(--accent)" /><Cell fill="#f59e0b" />
                     </Pie>
                     <Tooltip formatter={(v: any) => nf(v) + " 원"} />
                     <Legend />
