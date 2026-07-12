@@ -153,6 +153,10 @@ alter table app_settings add column if not exists grant_profile jsonb;
 alter table grant_docs add column if not exists program text not null default 'cud';
 create index if not exists grant_docs_program_idx on grant_docs (program, created_at desc);
 
+-- ===== Edge Function: grant-doc-read =====
+-- supabase/functions/grant-doc-read — 거래명세서/세금계산서 PDF·이미지를 Claude API로 판독해
+-- 품목/금액/거래처 JSON 추출 → 건 자동 입력. ANTHROPIC_API_KEY secret 재사용(커밋 금지).
+
 -- ===== Edge Function: grant-write =====
 -- supabase/functions/grant-write — 서류 서술형 칸의 짧은 초안을 Claude API(claude-opus-4-8)로
 -- 공식 서류 문체(보고체)로 확장. biz-report와 같은 ANTHROPIC_API_KEY secret 사용(커밋 금지).
