@@ -1,5 +1,6 @@
-// 기술닥터사업 상용화지원 서식 7종 — 업로드된 표준서식 HWPX(2025.01.13)에서 추출한
+// 기술닥터사업 상용화지원 서식 8종 — 업로드된 표준서식 HWPX(2025.01.13)에서 추출한
 // 실제 치수(셀 폭 비율·행 높이 mm·글자 pt)와 동일하게 재현. 수신처 (재)경기테크노파크 원장.
+import { Fragment } from "react";
 import { GrantPhoto, GrantProfile } from "../lib/db";
 import { TdFormKey, TD_ITEMS, TD_ITEM_GROUP, money, num, dateParts } from "../lib/grantforms";
 import { Stamp } from "./GrantForms";
@@ -77,6 +78,166 @@ function T2({ p, d, sign }: P) {
       </p>
       <div style={{ textAlign: "center", fontSize: "20pt", marginTop: "14mm" }}>
         {p.company || "OO기업"} {p.ceo || "O O O"} 대표 <Stamp sign={sign} />
+      </div>
+    </div>
+  );
+}
+
+// 제4호. 상용화지원 결과보고서 — 4개 페이지(.gpage)로 원본 구성 그대로
+function T4({ p, d, photos, img, sign }: P) {
+  const td = p.td || {};
+  const dp = dateParts(d.writeDate);
+  const lbl: React.CSSProperties = { fontSize: "11pt" };
+  const val: React.CSSProperties = { fontSize: "11pt", textAlign: "center" };
+  const H = { height: "9.9mm" };
+  const secH: React.CSSProperties = { fontSize: "14pt", fontWeight: 700, margin: "5mm 0 2mm" };
+  const bodyCell: React.CSSProperties = { verticalAlign: "top", padding: "2mm 2.5mm", fontSize: "10.5pt", whiteSpace: "pre-wrap", lineHeight: 1.6 };
+  const goals: any[] = Array.isArray(d.rptGoals) ? d.rptGoals : [];
+  const tasks: any[] = Array.isArray(d.rptTasks) ? d.rptTasks : [];
+  const sched: any[] = Array.isArray(d.rptSched) ? d.rptSched : [];
+  const rounds: any[] = Array.isArray(d.rptRounds) ? d.rptRounds : [];
+  const eff: Record<string, any> = d.rptEffect || {};
+  const months = [1, 2, 3, 4, 5, 6];
+  const hasMonth = (csv: string | undefined, m: number) => String(csv || "").split(/[,\s]+/).includes(String(m));
+  const EFFECT_ROWS = [
+    ["sales", "매출액 (단위: 천원)"], ["export", "수출액 (단위: 천원)"], ["saving", "비용절감 (단위: 천원)"], ["staff", "재직인원 수(명)"],
+    ["patentReg", "지식재산권 보유(건) — 특허등록"], ["patentApp", "지식재산권 보유(건) — 출원"], ["cert", "인증 보유(건)"], ["tech", "기술 도입 및 판매(건)"], ["rnd", "R&D비용(예상금액: 천원)"],
+  ] as const;
+  const mini: React.CSSProperties = { fontSize: "8.5pt", textAlign: "center", padding: "0.7mm 1mm" };
+  const cap = (i: number) => photos[i]?.name || "";
+  const pimg = (i: number, maxH: string) => photos[i] && img(photos[i].path)
+    ? <img src={img(photos[i].path)} alt="" style={{ maxWidth: "100%", maxHeight: maxH, objectFit: "contain" }} />
+    : <span className="gph">[과정{i + 1}]</span>;
+  return (
+    <div>
+      {/* ── 1페이지: 표지/과제개요 ── */}
+      <div className="gpage">
+        <FormNo no="제4호" />
+        <table className="gt gx" style={{ width: "72%", margin: "6mm auto 4mm" }}><tbody>
+          <tr><td style={{ height: "24.4mm", textAlign: "center", fontSize: "22pt", fontWeight: 700 }}>상용화지원 결과보고서</td></tr>
+        </tbody></table>
+        <p style={{ textAlign: "center", fontSize: "12pt", margin: "0 0 6mm" }}>{dp.y || "    "}년  {dp.m || "  "}월  {dp.d || "  "}일</p>
+        <table className="gt gx"><tbody>
+          <tr style={H}><th rowSpan={2} style={{ width: "10.6%", ...lbl }}>과제개요</th><th style={{ width: "10.6%", ...lbl }}>과제명</th><td colSpan={4} style={val}>{td.project}</td></tr>
+          <tr style={H}><th style={lbl}>과제기간</th><td colSpan={4} style={val}>{kdate(td.periodFrom, "  년  월  일")} ~ {kdate(td.periodTo, "  년  월  일")} (6개월)</td></tr>
+          <tr style={H}><th style={lbl}>기술닥터</th><th style={lbl}>소속</th><td style={{ width: "35.3%", ...val }}>{td.doctorOrg}</td><th style={{ width: "9%", ...lbl }}>이름</th><td style={val}>{td.doctor}</td></tr>
+          <tr style={H}><th rowSpan={5} style={lbl}>수행기업</th><th style={lbl}>기업명</th><td style={val}>{p.company}</td><th style={lbl}>대표자</th><td style={val}>{p.ceo} <Stamp sign={sign} /></td></tr>
+          <tr style={H}><th style={lbl}>주소</th><td colSpan={3} style={val}>{p.address}</td></tr>
+          <tr style={H}><th style={lbl}>실무<br />담당자<br />이름</th><td style={val}>{td.mgrName}</td><th style={lbl}>e-mail</th><td style={val}>{td.mgrEmail}</td></tr>
+          <tr style={H}><th style={lbl}>부서</th><td style={val}>{td.mgrDept}</td><th style={lbl}>직위</th><td style={val}>{td.mgrTitle}</td></tr>
+          <tr style={H}><th style={lbl}>일반전화</th><td style={val}>{td.mgrTel}</td><th style={lbl}>휴대폰</th><td style={val}>{td.mgrPhone}</td></tr>
+        </tbody></table>
+      </div>
+
+      {/* ── 2페이지: 1. 과제 수행 결과 ── */}
+      <div className="gpage">
+        <div style={secH}>1. 과제 수행 결과</div>
+        <table className="gt gx"><tbody>
+          <tr><th style={{ width: "14.2%", fontSize: "10.5pt" }}>기술닥터의<br />현장애로<br />기술지원 내용</th>
+            <td style={{ ...bodyCell, height: "17.3mm" }}>{d.rptField || <span className="gph">※ 현장애로기술지원 내용 요약</span>}</td></tr>
+          <tr><th style={{ fontSize: "10.5pt" }}>기술닥터의<br />중기애로<br />기술지원 내용</th>
+            <td style={{ ...bodyCell, height: "46.4mm" }}>{d.rptMid || <span className="gph">※ 중기애로기술지원 과제 중 기술닥터의 지원내용 요약</span>}</td></tr>
+          <tr><th style={{ fontSize: "10.5pt" }}>기술닥터의<br />상용화지원 내용</th>
+            <td style={{ ...bodyCell, height: "56.2mm" }}>{d.rptCom || <span className="gph">※ 상용화지원 과제 중 기술닥터의 지원내용 요약</span>}</td></tr>
+          <tr><th style={{ fontSize: "10.5pt" }}>과제 수행<br />결과물</th>
+            <td style={{ ...bodyCell, height: "47.9mm" }}>{d.rptResult || <span className="gph">※ 제작도면과의 비교, 완성도, 제품외형, 성능 등 과제 수행의 결과물 기술</span>}</td></tr>
+          <tr><th style={{ fontSize: "10.5pt" }}>사업계획<br />대비<br />목표달성정도</th>
+            <td style={{ ...bodyCell }}>
+              <div style={{ minHeight: "16mm" }}>{d.rptGoalText || <span className="gph">※ 사업계획 대비 정량/정성목표 달성성과 — 관련사진, data, 표, 그래프 등을 종합적으로 이용하여 작성. 정량 목표는 객관적 증빙자료(공인인증기관 성능테스트 등) 삽입</span>}</div>
+              <div style={{ fontWeight: 700, fontSize: "9.5pt", margin: "2mm 0 1mm" }}>목표달성</div>
+              <table className="gt gx" style={{ marginBottom: "2mm" }}><tbody>
+                <tr><th style={mini}>No.</th><th style={mini}>본 과제를 통한<br />달성 성능 지표명</th><th style={mini}>시장 충족 성능<br />OR 기준이 되는 성능</th><th style={mini}>본 과제를 통한<br />달성목표</th><th style={mini}>목표달성 결과</th><th style={mini}>달성도<br />(%)</th><th style={mini}>달성여부 증빙</th></tr>
+                {(goals.length ? goals : [{}]).map((g, i) => (
+                  <tr key={i}><td style={mini}>{i + 1}</td><td style={mini}>{g.name || ""}</td><td style={mini}>{g.market || ""}</td><td style={mini}>{g.target || ""}</td><td style={mini}>{g.result || ""}</td><td style={mini}>{g.rate || ""}</td><td style={mini}>{g.evidence || ""}</td></tr>
+                ))}
+              </tbody></table>
+              <div style={{ fontWeight: 700, fontSize: "9.5pt", margin: "2mm 0 1mm" }}>2. 세부추진내용</div>
+              <table className="gt gx" style={{ marginBottom: "2mm" }}><tbody>
+                <tr><th style={{ ...mini, width: "8%" }}>No.</th><th style={{ ...mini, width: "26%" }}>추진항목</th><th style={mini}>추진내용 및 방법</th></tr>
+                {(tasks.length ? tasks : [{}]).map((t, i) => (
+                  <tr key={i}><td style={mini}>{i + 1}</td><td style={mini}>{t.item || ""}</td><td style={{ ...mini, textAlign: "left" }}>{t.method || ""}</td></tr>
+                ))}
+              </tbody></table>
+              <div style={{ fontWeight: 700, fontSize: "9.5pt", margin: "2mm 0 1mm" }}>3. 추진일정 <span style={{ fontWeight: 400 }}>(세부 근거는 과제 성격에 맞게 수정가능)</span></div>
+              <table className="gt gx"><tbody>
+                <tr><th style={{ ...mini, width: "7%" }}>구분</th><th style={{ ...mini, width: "24%" }}>항목</th><th style={{ ...mini, width: "9%" }} />{months.map(m => <th key={m} style={mini}>{m}월</th>)}</tr>
+                {(sched.length ? sched : [{ item: "" }]).map((s, i) => (
+                  <Fragment key={i}>
+                    <tr><td rowSpan={2} style={mini}>{i + 1}</td><td rowSpan={2} style={{ ...mini, textAlign: "left" }}>{s.item || ""}</td><td style={mini}>계획</td>
+                      {months.map(m => <td key={m} style={{ ...mini, background: hasMonth(s.plan, m) ? "#9db8d9" : undefined }} />)}</tr>
+                    <tr><td style={mini}>실적</td>
+                      {months.map(m => <td key={m} style={{ ...mini, background: hasMonth(s.actual, m) ? "#5b7fb0" : undefined }} />)}</tr>
+                  </Fragment>
+                ))}
+              </tbody></table>
+            </td></tr>
+          <tr><th style={{ fontSize: "10.5pt" }}>상품화계획<br />및<br />사업성</th>
+            <td style={{ ...bodyCell, height: "75.3mm" }}>{d.rptBiz || <span className="gph">※ 사업성평가, 사업화/상용화 계획, 예상매출액 등 상세하게 기술</span>}</td></tr>
+          <tr><th rowSpan={2} style={{ fontSize: "10.5pt" }}>지원(기대)<br />효과</th>
+            <td style={{ ...bodyCell }}>
+              <div style={{ fontSize: "9pt" }}>※ 정량적 기대효과 (예상지원성과) — 매출, 수출, 재직인원수 필수</div>
+              <table className="gt gx" style={{ marginTop: "1mm" }}><tbody>
+                <tr><th style={mini}>구  분</th><th style={mini}>전년도</th><th style={mini}>해당연도<br />예상</th><th style={mini}>차년도<br />예상</th><th style={mini}>차차년도<br />예상</th><th style={{ ...mini, width: "28%" }}>세부근거</th></tr>
+                {EFFECT_ROWS.map(([k, label]) => {
+                  const e = eff[k] || {};
+                  return (
+                    <tr key={k}>
+                      <th style={{ ...mini, textAlign: "left" }}>{label}</th>
+                      <td style={mini}>{e.y0 || ""}</td><td style={mini}>{e.y1 || ""}</td><td style={mini}>{e.y2 || ""}</td><td style={mini}>{e.y3 || ""}</td>
+                      <td style={{ ...mini, textAlign: "left" }}>{e.basis || ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+              <div style={{ fontSize: "9pt", marginTop: "1mm" }}>※ 기타 기대성과 (벤처등록/이노비즈인증/기업부설연구소설립/특허 취득/기타 성과)<br />{d.rptEtcEffect}</div>
+            </td></tr>
+          <tr><td style={{ ...bodyCell, height: "60mm" }}>{d.rptQualEffect || <span className="gph">※ 정성적 기대효과(매출상승, 비용절감, 신규인력 채용, 제품이미지 개선 등의 예상성과를 구체적이고 객관적인 수치로 표시){"\n"}※ 기타 파급효과</span>}</td></tr>
+        </tbody></table>
+      </div>
+
+      {/* ── 3페이지: 2. 세부 수행과정 ── */}
+      <div className="gpage">
+        <div style={secH}>2. 세부 수행과정 (제작과정 등 상세설명)</div>
+        <table className="gt gx"><tbody>
+          {[0, 1, 2].map(i => (
+            <Fragment key={i}>
+              <tr><td style={{ height: "58.8mm", textAlign: "center", verticalAlign: "middle", padding: "2mm" }}>{pimg(i, "55mm")}</td></tr>
+              <tr><td style={{ height: "16.4mm", verticalAlign: "top", padding: "1.5mm 2.5mm", fontSize: "10.5pt", whiteSpace: "pre-wrap" }}>{cap(i) || <span className="gph">[과정설명]</span>}</td></tr>
+            </Fragment>
+          ))}
+        </tbody></table>
+        <p style={{ fontSize: "10.5pt", margin: "3mm 0 1mm" }}>※ 제품제작과정 실물사진 등 3매 이상 첨부</p>
+        <table className="gt gx"><tbody>
+          {[3, 4, 5].map(i => (
+            <tr key={i}>
+              <td style={{ width: "50%", height: "68.8mm", textAlign: "center", verticalAlign: "middle", padding: "2mm" }}>{pimg(i, "64mm")}</td>
+              <td style={{ verticalAlign: "top", padding: "2mm 2.5mm", fontSize: "10.5pt", whiteSpace: "pre-wrap" }}>{cap(i) || <span className="gph">[과정설명]</span>}</td>
+            </tr>
+          ))}
+        </tbody></table>
+      </div>
+
+      {/* ── 4페이지: 3. 기술닥터 지원내용 ── */}
+      <div>
+        <div style={secH}>3. 기술닥터 지원내용</div>
+        <table className="gt gx"><tbody>
+          <tr style={{ height: "9.8mm" }}>
+            <th style={{ width: "13.7%", ...lbl }}>기술닥터</th><th style={{ width: "8.2%", ...lbl }}>소속</th><td style={{ width: "27.3%", ...val }}>{td.doctorOrg}</td>
+            <th style={{ width: "7.1%", ...lbl }}>이름</th><td style={{ width: "17.8%", ...val }}>{td.doctor}</td><th style={{ width: "7.1%", ...lbl }}>직위</th><td style={val}>{td.doctorTitle}</td>
+          </tr>
+          <tr><th style={lbl}>기술적<br />달성 목표</th><td colSpan={6} style={{ ...bodyCell, height: "17mm" }}>{d.rptGoalTech || <span className="gph">※ 정량적/구체적으로 기술</span>}</td></tr>
+          <tr><th style={lbl}>목표 대비<br />지원결과</th><td colSpan={6} style={{ ...bodyCell, height: "17mm" }}>{d.rptGoalResult || <span className="gph">※ 정량적/구체적으로 기술</span>}</td></tr>
+          <tr><th style={lbl}>회차별<br />기술지원내용</th><td colSpan={6} style={{ ...bodyCell }}>
+            <table className="gt gx" style={{ marginBottom: "1.5mm" }}><tbody>
+              <tr><th style={{ ...mini, width: "10%" }}>회차</th><th style={mini}>기술지원 주요내용</th></tr>
+              {Array.from({ length: 10 }, (_, i) => (
+                <tr key={i} style={{ height: "12.5mm" }}><td style={mini}>{i + 1}</td><td style={{ ...mini, textAlign: "left", whiteSpace: "pre-wrap" }}>{rounds[i]?.content || ""}</td></tr>
+              ))}
+            </tbody></table>
+            <div style={{ fontSize: "9pt" }}>※ 기술지도에 관한 내용만 가능하며, 마케팅 등 기술지도 범위를 벗어난 내용은 불인정</div>
+          </td></tr>
+        </tbody></table>
+        <p style={{ fontSize: "10.5pt", margin: "2mm 0 0" }}>&nbsp;&nbsp;※ 첨부 : 기술지원일지[상용화서식 제5호] 각 1부.</p>
       </div>
     </div>
   );
@@ -312,6 +473,7 @@ function T11({ p, d, sign: _s, report }: P & { report?: boolean }) {
 export default function GrantFormTD({ form, ...props }: P & { form: TdFormKey }) {
   switch (form) {
     case "t2": return <T2 {...props} />;
+    case "t4": return <T4 {...props} />;
     case "t5": return <T5 {...props} />;
     case "t6": return <T6 {...props} />;
     case "t7": return <T7 {...props} />;

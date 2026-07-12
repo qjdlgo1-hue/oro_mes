@@ -50,11 +50,12 @@ export const FORM_PRESETS: Record<string, FormKey[]> = {
 
 // ===== 기술닥터사업 상용화지원 (경기테크노파크) =====
 // 근거: 「기술닥터사업」 관리지침(2025.02.05) 제35·37·39조, 표준서식(2025.01.13)
-export type TdFormKey = "t2" | "t5" | "t6" | "t7" | "t8" | "t11" | "t11b";
-export type TdFieldSection = "tdproj" | "tdbank" | "tdlog" | "tdledger" | "tdchange";
+export type TdFormKey = "t2" | "t4" | "t5" | "t6" | "t7" | "t8" | "t11" | "t11b";
+export type TdFieldSection = "tdproj" | "tdbank" | "tdlog" | "tdledger" | "tdchange" | "tdreport";
 
 export const TD_FORMS: { key: TdFormKey; no: string; title: string; sections: TdFieldSection[] }[] = [
   { key: "t2", no: "제2호", title: "협약체결·입금계좌 제출 공문", sections: ["tdproj", "tdbank"] },
+  { key: "t4", no: "제4호", title: "상용화지원 결과보고서", sections: ["tdproj", "tdreport"] },
   { key: "t5", no: "제5호", title: "기술지원 일지", sections: ["tdproj", "tdlog"] },
   { key: "t6", no: "제6호", title: "사업비 사용실적 보고서", sections: ["tdproj"] },
   { key: "t7", no: "제7호", title: "사업비 사용 명세서", sections: ["tdproj", "tdledger"] },
