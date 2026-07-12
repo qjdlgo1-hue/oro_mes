@@ -329,6 +329,18 @@ export default function GrantDocs() {
                   <Field label="지원금(원)" w={150}><input style={inp} value={prof.td?.support || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, support: e.target.value } })} /></Field>
                   <Field label="기업부담금(원, 현금)" w={160}><input style={inp} value={prof.td?.share || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, share: e.target.value } })} /></Field>
                 </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="기술닥터 소속" w={170}><input style={inp} value={prof.td?.doctorOrg || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, doctorOrg: e.target.value } })} /></Field>
+                  <Field label="기술닥터 직위" w={120}><input style={inp} value={prof.td?.doctorTitle || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, doctorTitle: e.target.value } })} /></Field>
+                  <Field label="실무담당자" w={110}><input style={inp} value={prof.td?.mgrName || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrName: e.target.value } })} /></Field>
+                  <Field label="부서" w={110}><input style={inp} value={prof.td?.mgrDept || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrDept: e.target.value } })} /></Field>
+                  <Field label="직위" w={90}><input style={inp} value={prof.td?.mgrTitle || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrTitle: e.target.value } })} /></Field>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="담당자 e-mail" w={190}><input style={inp} value={prof.td?.mgrEmail || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrEmail: e.target.value } })} /></Field>
+                  <Field label="일반전화" w={140}><input style={inp} value={prof.td?.mgrTel || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrTel: e.target.value } })} /></Field>
+                  <Field label="휴대폰" w={140}><input style={inp} value={prof.td?.mgrPhone || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, mgrPhone: e.target.value } })} /></Field>
+                </div>
               </div>
             )}
             <div>
@@ -562,6 +574,100 @@ export default function GrantDocs() {
               </div>
             </div>
           )}
+          {prog === "td" && sections.has("tdreport") && (() => {
+            const goals: any[] = Array.isArray(d.rptGoals) ? d.rptGoals : [];
+            const tasks: any[] = Array.isArray(d.rptTasks) ? d.rptTasks : [];
+            const sched: any[] = Array.isArray(d.rptSched) ? d.rptSched : [];
+            const rounds: any[] = Array.isArray(d.rptRounds) ? d.rptRounds : [];
+            const eff: Record<string, any> = d.rptEffect || {};
+            const setEff = (k: string, patch: Record<string, string>) => setD({ rptEffect: { ...eff, [k]: { ...(eff[k] || {}), ...patch } } });
+            const EFFECT_ROWS: [string, string][] = [
+              ["sales", "매출액(천원)"], ["export", "수출액(천원)"], ["saving", "비용절감(천원)"], ["staff", "재직인원(명)"],
+              ["patentReg", "특허등록(건)"], ["patentApp", "특허출원(건)"], ["cert", "인증(건)"], ["tech", "기술도입·판매(건)"], ["rnd", "R&D비용(천원)"],
+            ];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>📕 결과보고서(제4호) <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 사진(수행과정)은 아래 증빙사진에 올리고 '품명' 칸에 과정설명을 쓰세요 (1~3번: 세로형, 4~6번: 가로형)</span></div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <AiTextarea label="① 현장애로기술지원 내용 요약" field="결과보고서-현장애로기술지원 내용 요약" value={d.rptField || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ rptField: v })} />
+                  <AiTextarea label="② 중기애로기술지원 내용 요약" field="결과보고서-중기애로기술지원 과제 중 기술닥터 지원내용 요약" value={d.rptMid || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptMid: v })} />
+                  <AiTextarea label="③ 상용화지원 내용 요약" field="결과보고서-상용화지원 과제 중 기술닥터 지원내용 요약" value={d.rptCom || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptCom: v })} />
+                  <AiTextarea label="④ 과제 수행 결과물 (제작도면 비교·완성도·성능 등)" field="결과보고서-과제 수행 결과물 기술" value={d.rptResult || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptResult: v })} />
+                  <AiTextarea label="⑤ 사업계획 대비 목표달성 서술" field="결과보고서-사업계획 대비 정량/정성 목표달성 성과" value={d.rptGoalText || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptGoalText: v })} />
+                  <AiTextarea label="⑥ 상품화계획 및 사업성" field="결과보고서-사업성평가·사업화/상용화 계획·예상매출액" value={d.rptBiz || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptBiz: v })} />
+                  <AiTextarea label="⑦ 정성적 기대효과 + 기타 파급효과" field="결과보고서-정성적 기대효과(구체적 수치 포함)" value={d.rptQualEffect || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ rptQualEffect: v })} />
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>목표달성 표</div>
+                {goals.map((g, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 130 }} placeholder="달성 성능 지표명" value={g.name || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 120 }} placeholder="시장 충족 성능" value={g.market || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, market: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 110 }} placeholder="달성목표" value={g.target || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, target: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 110 }} placeholder="달성 결과" value={g.result || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, result: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 80 }} placeholder="달성도%" value={g.rate || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, rate: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 120 }} placeholder="증빙(시험성적서 등)" value={g.evidence || ""} onChange={e => setD({ rptGoals: goals.map((x, j) => j === i ? { ...x, evidence: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ rptGoals: goals.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ rptGoals: [...goals, {}] })}>＋ 목표 행</button>
+
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>세부추진내용</div>
+                {tasks.map((t, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                    <input style={{ ...inp, width: 180 }} placeholder="추진항목" value={t.item || ""} onChange={e => setD({ rptTasks: tasks.map((x, j) => j === i ? { ...x, item: e.target.value } : x) })} />
+                    <input style={{ ...inp, flex: 1, minWidth: 200 }} placeholder="추진내용 및 방법" value={t.method || ""} onChange={e => setD({ rptTasks: tasks.map((x, j) => j === i ? { ...x, method: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ rptTasks: tasks.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ rptTasks: [...tasks, {}] })}>＋ 추진 행</button>
+
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>추진일정 <span className="muted" style={{ fontWeight: 400 }}>(월은 쉼표로: 예 1,2,3)</span></div>
+                {sched.map((s, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 160 }} placeholder="항목 (예: ~ 설계)" value={s.item || ""} onChange={e => setD({ rptSched: sched.map((x, j) => j === i ? { ...x, item: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="계획월 (1,2)" value={s.plan || ""} onChange={e => setD({ rptSched: sched.map((x, j) => j === i ? { ...x, plan: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="실적월 (1,2)" value={s.actual || ""} onChange={e => setD({ rptSched: sched.map((x, j) => j === i ? { ...x, actual: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ rptSched: sched.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ rptSched: [...sched, {}] })}>＋ 일정 행</button>
+
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>정량적 기대효과 <span className="muted" style={{ fontWeight: 400 }}>(전년도/해당연도/차년도/차차년도/세부근거)</span></div>
+                {EFFECT_ROWS.map(([k, label]) => {
+                  const e0 = eff[k] || {};
+                  return (
+                    <div key={k} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, width: 130 }}>{label}</span>
+                      <input style={{ ...inp, width: 90 }} placeholder="전년도" value={e0.y0 || ""} onChange={e => setEff(k, { y0: e.target.value })} />
+                      <input style={{ ...inp, width: 90 }} placeholder="해당연도" value={e0.y1 || ""} onChange={e => setEff(k, { y1: e.target.value })} />
+                      <input style={{ ...inp, width: 90 }} placeholder="차년도" value={e0.y2 || ""} onChange={e => setEff(k, { y2: e.target.value })} />
+                      <input style={{ ...inp, width: 90 }} placeholder="차차년도" value={e0.y3 || ""} onChange={e => setEff(k, { y3: e.target.value })} />
+                      <input style={{ ...inp, flex: 1, minWidth: 140 }} placeholder="세부근거" value={e0.basis || ""} onChange={e => setEff(k, { basis: e.target.value })} />
+                    </div>
+                  );
+                })}
+                <div style={{ marginTop: 6 }}><Field label="기타 기대성과 (벤처등록/이노비즈/연구소 설립 등)"><input style={inp} value={d.rptEtcEffect || ""} onChange={e => setD({ rptEtcEffect: e.target.value })} /></Field></div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <AiTextarea label="기술적 달성 목표 (정량적/구체적)" field="결과보고서-기술적 달성 목표" value={d.rptGoalTech || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ rptGoalTech: v })} />
+                  <AiTextarea label="목표 대비 지원결과" field="결과보고서-목표 대비 지원결과" value={d.rptGoalResult || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ rptGoalResult: v })} />
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>회차별 기술지원내용 (1~10회)</div>
+                {Array.from({ length: 10 }, (_, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, marginBottom: 4, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, width: 34, textAlign: "right" }}>{i + 1}회</span>
+                    <input style={{ ...inp, flex: 1 }} value={rounds[i]?.content || ""} onChange={e => {
+                      const next = [...rounds]; while (next.length <= i) next.push({});
+                      next[i] = { ...next[i], content: e.target.value }; setD({ rptRounds: next });
+                    }} />
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
           {prog === "td" && sections.has("tdledger") && (
             <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>💰 집행 내역(제7·8호 명세서) <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 행을 추가하면 명세서에 자동 반영</span></div>

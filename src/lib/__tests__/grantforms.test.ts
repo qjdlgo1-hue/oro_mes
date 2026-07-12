@@ -51,6 +51,8 @@ describe("grantforms", () => {
   it("기술닥터: 세목 8종 모두 프리셋·증빙·비목그룹 보유, 프리셋 서식 키 유효", () => {
     expect(PROGRAMS.map(p => p.key)).toEqual(["cud", "td"]);
     const keys = new Set(TD_FORMS.map(f => f.key));
+    expect(keys.size).toBe(TD_FORMS.length); // 서식 키 중복 없음
+    expect(keys.has("t4")).toBe(true); // 결과보고서(제4호) 등록
     TD_ITEMS.forEach(it => {
       expect(TD_PRESETS[it]?.length).toBeGreaterThan(0);
       expect(TD_EVIDENCE[it]?.docs.length).toBeGreaterThan(0);

@@ -524,7 +524,11 @@ export type GrantProfile = {
   budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용
   signPath?: string; // 서명(도장) PNG — storage 경로 또는 data: URL(로컬 모드). 모든 서식의 (인) 위에 표시
   // 기술닥터사업 상용화지원 전용 정보 (과제·협약 사업비 — 서식 공통 반영)
-  td?: { project?: string; periodFrom?: string; periodTo?: string; doctor?: string; support?: string; share?: string; docNo?: string };
+  td?: {
+    project?: string; periodFrom?: string; periodTo?: string; doctor?: string; support?: string; share?: string; docNo?: string;
+    doctorOrg?: string; doctorTitle?: string; // 기술닥터 소속·직위 (결과보고서)
+    mgrName?: string; mgrEmail?: string; mgrDept?: string; mgrTitle?: string; mgrTel?: string; mgrPhone?: string; // 실무담당자
+  };
 };
 const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
 export async function listGrantDocs(program = "cud"): Promise<GrantDoc[]> {
