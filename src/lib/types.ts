@@ -50,4 +50,10 @@ export type Receipt = {
   image_path?: string | null;
   image_paths?: string[] | null;
   deleted_at?: string | null; // 소프트 삭제(휴지통)
+  // 해외출장 지출 (해외영수증/여비교통비(해외)): 외화·환율·출장 단위
+  currency?: string | null;   // 통화 코드 (USD/JPY/EUR …)
+  fx_amount?: number | null;  // 외화 금액
+  fx_rate?: number | null;    // 적용 환율 (지출일 매매기준율)
+  trip?: string | null;       // 출장명 (예: 2026-08 일본 전시회)
+  subcat?: string | null;     // 세부항목 (항공료/숙박비/식대 …)
 };

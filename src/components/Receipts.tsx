@@ -7,10 +7,12 @@ import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
 import { confirmDialog } from "../lib/confirm";
+import { OVERSEA_ACCOUNT, OVERSEA_RTYPE, TRIP_SUBCATS, CURRENCIES, TRIP_CHECKLIST, isOversea, fxToKrw } from "../lib/receiptfx";
 
 type QItem = Receipt & { file?: File };
-const ACCOUNTS = ["복리후생비", "여비교통비", "차량유지비", "소모품비", "비품", "사무용품비", "접대비", "통신비", "운반비", "지급수수료", "도서인쇄비", "교육훈련비", "광고선전비", "보험료", "임차료", "세금과공과", "수선비", "기타"];
+const ACCOUNTS = ["복리후생비", "여비교통비", OVERSEA_ACCOUNT, "차량유지비", "소모품비", "비품", "사무용품비", "접대비", "통신비", "운반비", "지급수수료", "도서인쇄비", "교육훈련비", "광고선전비", "보험료", "임차료", "세금과공과", "수선비", "기타"];
 const RULES: [RegExp, string][] = [
+  [/해외출장|출국|인보이스|invoice|보딩|boarding|로밍|비자|visa|면세점|해외숙박|per\s?diem|일비/i, OVERSEA_ACCOUNT],
   [/엔진오일|엔진 오일|주유|경유|휘발유|디젤|lpg|타이어|차량|자동차|정비|세차|하이패스|주차|통행료|렌트|오토오아시스|카센터/i, "차량유지비"],
   [/택시|버스|지하철|기차|ktx|srt|항공|비행기|출장|숙박|호텔|모텔|고속/i, "여비교통비"],
   [/식대|점심|저녁|아침|회식|카페|커피|간식|음료|다과|마트|편의점|식당|배달/i, "복리후생비"],
@@ -30,7 +32,7 @@ const RULES: [RegExp, string][] = [
   [/수리|수선|고장|as|에이에스|점검/i, "수선비"],
 ];
 function suggestAccount(text: string): string { const t = (text || "").toLowerCase(); for (const [re, acc] of RULES) if (re.test(t)) return acc; return ""; }
-const TYPES = ["카드", "세금계산서", "현금영수증", "간이영수증"];
+const TYPES = ["카드", "세금계산서", "현금영수증", "간이영수증", OVERSEA_RTYPE];
 const won = (n: any) => (Number(n) || 0).toLocaleString("ko-KR");
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const emptyForm = (): Receipt => ({ rdate: todayIso(), vendor: "", bizno: "", supply: 0, vat: 0, total: 0, rtype: "카드", account: "복리후생비", memo: "" });
@@ -104,7 +106,49 @@ export default function Receipts() {
   const sumT = useMemo(() => shown.reduce((a, r) => a + Number(r.total || 0), 0), [shown]);
 
   function setField<K extends keyof Receipt>(k: K, v: Receipt[K]) { setForm(f => ({ ...f, [k]: v })); }
-  function onTotal(v: number) { const supply = v > 0 ? Math.round(v / 1.1) : 0; setForm(f => ({ ...f, total: v, supply, vat: v > 0 ? v - supply : 0 })); }
+  // 해외 지출: 부가세 매입공제 불가 → vat 0, 공급가액=합계. 국내: 합계에서 ÷1.1 역산
+  const oversea = isOversea(form);
+  function onTotal(v: number) {
+    if (isOversea(form)) { setForm(f => ({ ...f, total: v, supply: v, vat: 0 })); return; }
+    const supply = v > 0 ? Math.round(v / 1.1) : 0;
+    setForm(f => ({ ...f, total: v, supply, vat: v > 0 ? v - supply : 0 }));
+  }
+  // 외화·환율 입력 → 원화 자동 환산
+  function onFx(patch: Partial<Receipt>) {
+    setForm(f => {
+      const n = { ...f, ...patch };
+      const krw = fxToKrw(n.fx_amount, n.fx_rate);
+      return krw != null ? { ...n, total: krw, supply: krw, vat: 0 } : n;
+    });
+  }
+  function onRtype(v: string) {
+    setForm(f => {
+      const n = { ...f, rtype: v };
+      if (v === OVERSEA_RTYPE) return { ...n, vat: 0, supply: Number(n.total) || 0, account: f.account === "여비교통비" || f.account === "복리후생비" ? OVERSEA_ACCOUNT : f.account, currency: n.currency || "USD" };
+      return n;
+    });
+  }
+  // 기존 출장명 목록 (datalist)
+  const tripNames = useMemo(() => [...new Set(rows.map(r => r.trip).filter(Boolean))] as string[], [rows]);
+
+  // ---- 출장별 정산 ----
+  const [view, setView] = useState<"list" | "trips">("list");
+  const [selTrip, setSelTrip] = useState<string | null>(null);
+  const trips = useMemo(() => {
+    const map = new Map<string, Receipt[]>();
+    rows.filter(r => r.trip).forEach(r => { const k = r.trip!; map.set(k, [...(map.get(k) || []), r]); });
+    return [...map.entries()].map(([name, list]) => {
+      const ds = list.map(r => r.rdate).sort();
+      const bySub = new Map<string, number>();
+      list.forEach(r => bySub.set(r.subcat || "기타", (bySub.get(r.subcat || "기타") || 0) + Number(r.total || 0)));
+      return {
+        name, list: [...list].sort((a, b) => a.rdate < b.rdate ? -1 : 1),
+        from: ds[0], to: ds[ds.length - 1],
+        total: list.reduce((s, r) => s + Number(r.total || 0), 0), bySub,
+      };
+    }).sort((a, b) => a.from < b.from ? 1 : -1);
+  }, [rows]);
+  const curTrip = trips.find(t => t.name === selTrip) || null;
 
   async function add(r?: QItem) {
     const rec = r || form;
@@ -112,7 +156,8 @@ export default function Receipts() {
     if (!rec.vendor.trim()) { toast.error("거래처명을 입력하세요."); return; }
     if (!(Number(rec.total) > 0)) { toast.error("합계금액을 입력하세요."); return; }
     let supply = Number(rec.supply) || 0, vat = Number(rec.vat) || 0;
-    if (!supply) { supply = Math.round(Number(rec.total) / 1.1); vat = Number(rec.total) - supply; }
+    if (isOversea(rec)) { supply = Number(rec.total); vat = 0; } // 해외 지출: 매입세액공제 불가
+    else if (!supply) { supply = Math.round(Number(rec.total) / 1.1); vat = Number(rec.total) - supply; }
     setBusy(true);
     try {
       await addReceipt({ ...rec, supply, vat, total: Number(rec.total), company, period }, file);
@@ -152,8 +197,16 @@ export default function Receipts() {
         const b64 = await fileToBase64(files[i]);
         const rec = await readReceiptAI(b64, files[i].type || "image/jpeg");
         let total = Number(rec["합계"]) || 0, supply = Number(rec["공급가액"]) || 0, vat = Number(rec["부가세"]) || 0;
-        if (total && !supply) { supply = Math.round(total / 1.1); vat = total - supply; }
-        found.push({ rdate: rec["거래일자"] || todayIso(), vendor: rec["거래처명"] || "", bizno: rec["사업자번호"] || "", supply, vat, total, rtype: rec["증빙유형"] || "카드", account: rec["계정과목"] || "기타", memo: rec["비고"] || "", file: files[i] });
+        const currency = String(rec["통화"] || "").toUpperCase();
+        const fxAmount = Number(rec["외화금액"]) || 0;
+        const over = rec["증빙유형"] === OVERSEA_RTYPE || (!!currency && currency !== "KRW" && fxAmount > 0);
+        if (over) { vat = 0; supply = total; } // 해외: 매입세액공제 불가, 환율은 입력칸에서 수동
+        else if (total && !supply) { supply = Math.round(total / 1.1); vat = total - supply; }
+        found.push({
+          rdate: rec["거래일자"] || todayIso(), vendor: rec["거래처명"] || "", bizno: rec["사업자번호"] || "", supply, vat, total,
+          rtype: rec["증빙유형"] || "카드", account: rec["계정과목"] || "기타", memo: rec["비고"] || "", file: files[i],
+          ...(over ? { currency: currency || "USD", fx_amount: fxAmount || null } : {}),
+        });
       } catch (err: any) { toast.error(`${i + 1}번째 사진 인식 실패: ${errMsg(err)}`); }
     }
     setScanning(""); setQueue(q => [...q, ...found]);
@@ -164,12 +217,12 @@ export default function Receipts() {
 
   function exportExcel() {
     if (!shown.length) { toast.error("내보낼 데이터가 없어요."); return; }
-    const header = ["번호", "거래일자", "거래처명", "사업자번호", "공급가액", "부가세", "합계", "증빙유형", "계정과목", "비고", "원본"];
-    const data = shown.map((r, i) => [i + 1, r.rdate, r.vendor, r.bizno, r.supply, r.vat, r.total, r.rtype, r.account, r.memo, r.image_path ? "있음" : ""]);
-    data.push([] as any); data.push(["", "", "【합계】", "", sumS, sumV, sumT, "", "", "", ""] as any);
+    const header = ["번호", "거래일자", "거래처명", "사업자번호", "공급가액", "부가세", "합계", "증빙유형", "계정과목", "통화", "외화금액", "환율", "출장명", "세부항목", "비고", "원본"];
+    const data = shown.map((r, i) => [i + 1, r.rdate, r.vendor, r.bizno, r.supply, r.vat, r.total, r.rtype, r.account, r.currency || "", r.fx_amount ?? "", r.fx_rate ?? "", r.trip || "", r.subcat || "", r.memo, r.image_path ? "있음" : ""]);
+    data.push([] as any); data.push(["", "", "【합계】", "", sumS, sumV, sumT, "", "", "", "", "", "", "", "", ""] as any);
     const aoa = [[company + " 증빙 자료"], ["대상기간", periodLabel], [], header, ...data];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    (ws as any)["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 6 }];
+    (ws as any)["!cols"] = [{ wch: 5 }, { wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 6 }, { wch: 10 }, { wch: 8 }, { wch: 16 }, { wch: 10 }, { wch: 18 }, { wch: 6 }];
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "증빙장부");
     XLSX.writeFile(wb, `증빙장부_${periodLabel || todayIso()}.xlsx`);
   }
@@ -274,12 +327,38 @@ export default function Receipts() {
           <h3 style={{ marginTop: 0 }}>✎ 직접 입력 / 확인·수정</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div><label style={lbl}>거래일자</label><input type="date" style={fin} value={form.rdate} onChange={e => setField("rdate", e.target.value)} /></div>
-            <div><label style={lbl}>증빙유형</label><select style={fin} value={form.rtype} onChange={e => setField("rtype", e.target.value)}>{TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+            <div><label style={lbl}>증빙유형</label><select style={fin} value={form.rtype} onChange={e => onRtype(e.target.value)}>{TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
           </div>
-          <label style={lbl}>거래처명</label><input style={fin} placeholder="예: 하나로마트" value={form.vendor} onChange={e => setField("vendor", e.target.value)} />
-          <label style={lbl}>사업자번호 (있으면)</label><input style={fin} placeholder="123-45-67890" value={form.bizno} onChange={e => setField("bizno", e.target.value)} />
-          <label style={lbl}>합계금액 (실제 결제액)</label><input type="number" inputMode="numeric" style={fin} placeholder="11000" value={form.total || ""} onChange={e => onTotal(Number(e.target.value))} />
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -6, marginBottom: 8 }}>합계만 넣으면 공급가액·부가세 자동 역산(÷1.1)</div>
+          <label style={lbl}>거래처명</label><input style={fin} placeholder={oversea ? "예: Hilton Tokyo" : "예: 하나로마트"} value={form.vendor} onChange={e => setField("vendor", e.target.value)} />
+          <label style={lbl}>사업자번호 {oversea ? <span style={{ fontWeight: 400 }}>(해외 — 없으면 비움)</span> : "(있으면)"}</label><input style={fin} placeholder={oversea ? "해외 지출 — 생략 가능" : "123-45-67890"} value={form.bizno} onChange={e => setField("bizno", e.target.value)} />
+          {oversea && (
+            <div style={{ border: "1px solid #bfe0df", background: "var(--tint2)", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>✈ 해외 지출 (외화 → 원화 자동 환산)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr", gap: 8 }}>
+                <div><label style={lbl}>통화</label>
+                  <select style={{ ...fin, marginBottom: 6 }} value={form.currency || "USD"} onChange={e => onFx({ currency: e.target.value })}>
+                    {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+                  </select></div>
+                <div><label style={lbl}>외화금액</label><input type="number" inputMode="decimal" style={{ ...fin, marginBottom: 6 }} placeholder="120.50" value={form.fx_amount ?? ""} onChange={e => onFx({ fx_amount: e.target.value === "" ? null : Number(e.target.value) })} /></div>
+                <div><label style={lbl}>적용환율(원)</label><input type="number" inputMode="decimal" style={{ ...fin, marginBottom: 6 }} placeholder="1390" value={form.fx_rate ?? ""} onChange={e => onFx({ fx_rate: e.target.value === "" ? null : Number(e.target.value) })} /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div><label style={lbl}>출장명</label>
+                  <input style={{ ...fin, marginBottom: 0 }} list="triplist" placeholder="예: 2026-08 일본 전시회" value={form.trip || ""} onChange={e => setField("trip", e.target.value)} />
+                  <datalist id="triplist">{tripNames.map(t => <option key={t} value={t} />)}</datalist></div>
+                <div><label style={lbl}>세부항목</label>
+                  <select style={{ ...fin, marginBottom: 0 }} value={form.subcat || ""} onChange={e => setField("subcat", e.target.value)}>
+                    <option value="">(선택)</option>{TRIP_SUBCATS.map(s => <option key={s}>{s}</option>)}
+                  </select></div>
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.6 }}>
+                환율은 지출일 기준 매매기준율(서울외국환중개/관세청 고시). 법인카드 결제분은 카드사 청구 원화금액을 합계에 직접 입력하세요.
+                해외 지출은 부가세 매입공제 불가 → 부가세 0 자동 처리.
+              </div>
+            </div>
+          )}
+          <label style={lbl}>합계금액 (원화{oversea ? " — 외화×환율 자동" : ", 실제 결제액"})</label><input type="number" inputMode="numeric" style={fin} placeholder="11000" value={form.total || ""} onChange={e => onTotal(Number(e.target.value))} />
+          {!oversea && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -6, marginBottom: 8 }}>합계만 넣으면 공급가액·부가세 자동 역산(÷1.1)</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div><label style={lbl}>공급가액</label><input type="number" inputMode="numeric" style={fin} value={form.supply || ""} onChange={e => setField("supply", Number(e.target.value))} /></div>
             <div><label style={lbl}>부가세</label><input type="number" inputMode="numeric" style={fin} value={form.vat || ""} onChange={e => setField("vat", Number(e.target.value))} /></div>
@@ -303,14 +382,41 @@ export default function Receipts() {
 
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <h3 style={{ margin: 0 }}>≡ 증빙 목록 {shown.length ? `(${shown.length}건)` : ""}</h3>
-            <select value={qFilter} onChange={e => { const v = e.target.value; setQFilter(v); if (v !== "전체") setPeriod(periodLabelOf(v)); }} style={{ padding: 6 }}>{quarters.map(q => <option key={q} value={q}>{q}</option>)}</select>
-            <button className="btn green" onClick={exportExcel}>📊 엑셀</button>
-            <button className="btn" disabled={pdfBusy} onClick={pdfSummary}>{pdfBusy ? "⏳ 생성 중…" : "📄 PDF 요약본"}</button>
-            <button className="btn ghost" disabled={busy} onClick={zipOriginals}>{busy ? "⏳ 압축 중…" : "🗂 원본 ZIP"}</button>
+            <div className="seg">
+              <button className={view === "list" ? "on" : ""} onClick={() => { setView("list"); setSelTrip(null); }}>≡ 목록</button>
+              <button className={view === "trips" ? "on" : ""} onClick={() => setView("trips")}>✈ 출장 정산</button>
+            </div>
+            {view === "list" && <>
+              <select value={qFilter} onChange={e => { const v = e.target.value; setQFilter(v); if (v !== "전체") setPeriod(periodLabelOf(v)); }} style={{ padding: 6 }}>{quarters.map(q => <option key={q} value={q}>{q}</option>)}</select>
+              <button className="btn green" onClick={exportExcel}>📊 엑셀</button>
+              <button className="btn" disabled={pdfBusy} onClick={pdfSummary}>{pdfBusy ? "⏳ 생성 중…" : "📄 PDF 요약본"}</button>
+              <button className="btn ghost" disabled={busy} onClick={zipOriginals}>{busy ? "⏳ 압축 중…" : "🗂 원본 ZIP"}</button>
+            </>}
+            {view === "trips" && <span className="muted" style={{ fontSize: 12 }}>출장명이 입력된 증빙이 출장별로 묶입니다.</span>}
           </div>
 
-          {isMobile ? (
+          {view === "trips" ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {trips.length === 0 && <p className="muted">출장명이 입력된 증빙이 없습니다. 해외 지출 입력 시 '출장명'을 채우면 여기로 묶입니다.</p>}
+              {trips.map(t => (
+                <div key={t.name} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <b>✈ {t.name}</b>
+                    <span className="muted" style={{ fontSize: 12 }}>{t.from} ~ {t.to} · {t.list.length}건</span>
+                    <b style={{ marginLeft: "auto" }}>{won(t.total)}원</b>
+                    <button className="btn" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setSelTrip(selTrip === t.name ? null : t.name)}>
+                      {selTrip === t.name ? "정산서 닫기" : "🖨 정산서"}
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    {[...t.bySub.entries()].map(([s, v]) => (
+                      <span key={s} style={{ background: "var(--tint2)", borderRadius: 5, padding: "1px 8px", fontSize: 11.5 }}>{s} {won(v)}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : isMobile ? (
             <div>
               {shown.length === 0 ? <p className="muted">{loaded ? "증빙이 없어요." : "불러오는 중…"}</p> :
                 shown.map(r => {
@@ -320,6 +426,7 @@ export default function Receipts() {
                       <div className="mrow"><span className="k">{r.rdate} · {quarterOf(r.rdate)}</span><span className="v">{won(r.total)}원</span></div>
                       <div className="mrow"><span className="k">거래처</span><span className="v">{r.vendor}</span></div>
                       <div className="mrow"><span className="k">유형 / 계정</span><span className="v" style={{ fontWeight: 400 }}>{r.rtype} · {r.account}</span></div>
+                      {r.currency && r.fx_amount ? <div className="mrow"><span className="k">해외</span><span className="v" style={{ fontWeight: 400 }}>{r.currency} {r.fx_amount} @{won(r.fx_rate)}{r.trip ? ` · ✈ ${r.trip}` : ""}{r.subcat ? ` · ${r.subcat}` : ""}</span></div> : null}
                       <div className="mrow"><span className="k">공급가액 / 부가세</span><span className="v" style={{ fontWeight: 400 }}>{won(r.supply)} / {won(r.vat)}</span></div>
                       {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "var(--muted)", fontWeight: 400 }}>{r.memo}</span></div> : null}
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -341,9 +448,11 @@ export default function Receipts() {
                       const warn = r.memo && (r.memo.includes("확인") || r.memo.includes("추정"));
                       return (
                         <tr key={r.id}>
-                          <td style={cell}>{r.rdate}</td><td style={cell}>{quarterOf(r.rdate)}</td><td style={cell}>{r.vendor}</td>
+                          <td style={cell}>{r.rdate}</td><td style={cell}>{quarterOf(r.rdate)}</td>
+                          <td style={cell}>{r.vendor}{r.trip ? <span style={{ marginLeft: 4, background: "var(--tint2)", borderRadius: 4, padding: "0 5px", fontSize: 10 }}>✈ {r.trip}</span> : null}</td>
                           <td style={cell}><span style={{ background: "#eef2f7", borderRadius: 4, padding: "1px 6px" }}>{r.rtype}</span></td>
-                          <td style={{ ...cell, textAlign: "right" }}>{won(r.supply)}</td><td style={{ ...cell, textAlign: "right" }}>{won(r.vat)}</td><td style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{won(r.total)}</td>
+                          <td style={{ ...cell, textAlign: "right" }}>{won(r.supply)}</td><td style={{ ...cell, textAlign: "right" }}>{won(r.vat)}</td>
+                          <td style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{won(r.total)}{r.currency && r.fx_amount ? <div style={{ fontWeight: 400, fontSize: 10, color: "var(--muted)" }}>{r.currency} {r.fx_amount} @{won(r.fx_rate)}</div> : null}</td>
                           <td style={cell}>{r.account}</td>
                           <td style={{ ...cell, color: warn ? "#b45309" : "var(--muted)" }}>{warn ? `⚠ ${r.memo}` : r.memo}</td>
                           <td style={{ ...cell, textAlign: "center" }}>{receiptImgs(r).length ? <button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => openViewer(r)}>{receiptImgs(r).length}장</button> : <span style={{ color: "#c0392b" }}>없음</span>}</td>
@@ -355,15 +464,81 @@ export default function Receipts() {
               </table>
             </div>
           )}
-          <div style={{ display: "flex", gap: 24, marginTop: 14, padding: "12px 16px", background: "#e6f0ea", borderRadius: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 13 }}>건수 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{shown.length}건</b></div>
-            <div style={{ fontSize: 13 }}>공급가액 합 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumS)}</b></div>
-            <div style={{ fontSize: 13 }}>부가세 합 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumV)}</b></div>
-            <div style={{ fontSize: 13 }}>총 합계 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumT)}</b></div>
-          </div>
-          <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>※ 원본 '없음'은 5년 보관 대비 위험 — 사진으로 추가하면 자동 보관됩니다. 세무사 전달: 엑셀 + PDF 요약본 + 원본 ZIP.</p>
+          {view === "list" && <>
+            <div style={{ display: "flex", gap: 24, marginTop: 14, padding: "12px 16px", background: "#e6f0ea", borderRadius: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 13 }}>건수 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{shown.length}건</b></div>
+              <div style={{ fontSize: 13 }}>공급가액 합 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumS)}</b></div>
+              <div style={{ fontSize: 13 }}>부가세 합 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumV)}</b></div>
+              <div style={{ fontSize: 13 }}>총 합계 <b style={{ display: "block", fontSize: 18, color: "#2f6f4f" }}>{won(sumT)}</b></div>
+            </div>
+            <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>※ 원본 '없음'은 5년 보관 대비 위험 — 사진으로 추가하면 자동 보관됩니다. 세무사 전달: 엑셀 + PDF 요약본 + 원본 ZIP.</p>
+          </>}
         </div>
       </div>
+
+      {/* ===== 출장 정산서 (인쇄 대상 — .gdoc) ===== */}
+      {curTrip && (
+        <div>
+          <div className="no-print" style={{ display: "flex", gap: 8, alignItems: "center", margin: "0 2px 8px" }}>
+            <h4 style={{ margin: 0 }}>🖨 출장 정산서 미리보기</h4>
+            <button className="btn" onClick={() => window.print()}>인쇄/PDF</button>
+            <span className="muted" style={{ fontSize: 12 }}>인쇄하면 이 정산서만 A4로 출력됩니다.</span>
+          </div>
+          <div className="gdoc">
+            <h2 className="gtitle">해외출장 경비 정산서</h2>
+            <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
+              <tr style={{ height: "7mm" }}>
+                <th style={{ width: "16%" }}>회 사 명</th><td style={{ width: "34%", textAlign: "center" }}>{company}</td>
+                <th style={{ width: "16%" }}>작 성 일</th><td style={{ textAlign: "center" }}>{todayIso()}</td>
+              </tr>
+              <tr style={{ height: "7mm" }}>
+                <th>출 장 명</th><td style={{ textAlign: "center" }}>{curTrip.name}</td>
+                <th>출장 기간</th><td style={{ textAlign: "center" }}>{curTrip.from} ~ {curTrip.to}</td>
+              </tr>
+            </tbody></table>
+            <div style={{ fontSize: "13pt", fontWeight: 700, margin: "5mm 0 1.5mm" }}>□ 지출 내역</div>
+            <table className="gt gx" style={{ fontSize: "10pt" }}>
+              <thead><tr style={{ height: "6.5mm" }}>
+                <th style={{ width: "6%" }}>No</th><th style={{ width: "13%" }}>일자</th><th style={{ width: "13%" }}>세부항목</th>
+                <th>거래처/내용</th><th style={{ width: "16%" }}>외화금액</th><th style={{ width: "10%" }}>환율</th><th style={{ width: "14%" }}>원화(원)</th>
+              </tr></thead>
+              <tbody>
+                {curTrip.list.map((r, i) => (
+                  <tr key={r.id || i} style={{ height: "6mm" }}>
+                    <td style={{ textAlign: "center" }}>{i + 1}</td>
+                    <td style={{ textAlign: "center" }}>{r.rdate}</td>
+                    <td style={{ textAlign: "center" }}>{r.subcat || ""}</td>
+                    <td style={{ paddingLeft: "2mm" }}>{r.vendor}{r.memo ? ` — ${r.memo}` : ""}</td>
+                    <td style={{ textAlign: "right", paddingRight: "2mm" }}>{r.currency && r.fx_amount ? `${r.currency} ${r.fx_amount}` : ""}</td>
+                    <td style={{ textAlign: "right", paddingRight: "2mm" }}>{r.fx_rate ? won(r.fx_rate) : ""}</td>
+                    <td style={{ textAlign: "right", paddingRight: "2mm" }}>{won(r.total)}</td>
+                  </tr>
+                ))}
+                <tr style={{ height: "7mm", fontWeight: 700 }}>
+                  <td colSpan={6} style={{ textAlign: "center" }}>합 계 ({curTrip.list.length}건)</td>
+                  <td style={{ textAlign: "right", paddingRight: "2mm" }}>{won(curTrip.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style={{ fontSize: "13pt", fontWeight: 700, margin: "5mm 0 1.5mm" }}>□ 세부항목별 소계</div>
+            <table className="gt gx" style={{ fontSize: "10.5pt" }}><tbody>
+              {[...curTrip.bySub.entries()].map(([s, v]) => (
+                <tr key={s} style={{ height: "6mm" }}><th style={{ width: "30%" }}>{s}</th><td style={{ textAlign: "right", paddingRight: "3mm" }}>{won(v)}원</td></tr>
+              ))}
+            </tbody></table>
+            <div style={{ fontSize: "13pt", fontWeight: 700, margin: "5mm 0 1.5mm" }}>□ 증빙 체크리스트</div>
+            <table className="gt gx" style={{ fontSize: "10.5pt" }}><tbody>
+              {TRIP_CHECKLIST.map(c => (
+                <tr key={c} style={{ height: "6.5mm" }}><td style={{ width: "8%", textAlign: "center", fontFamily: "sans-serif" }}>□</td><td style={{ paddingLeft: "2mm" }}>{c}</td></tr>
+              ))}
+            </tbody></table>
+            <p style={{ fontSize: "9.5pt", marginTop: "3mm", lineHeight: 1.7 }}>
+              ※ 국외 지출은 법정지출증빙(세금계산서·현금영수증) 수취의무 제외 대상이며 부가세 매입세액공제 불가.<br />
+              ※ 원화 환산은 지출일 기준 매매기준율 적용, 법인카드 결제분은 카드사 청구 원화금액 기준.
+            </p>
+          </div>
+        </div>
+      )}
 
       {viewer &&
         <div onClick={() => setViewer(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
