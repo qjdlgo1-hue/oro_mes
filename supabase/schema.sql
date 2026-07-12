@@ -38,6 +38,13 @@ insert into profiles (id, email) select id, email from auth.users on conflict (i
 -- 소프트 삭제(휴지통): 관리자 휴지통에서 복구/영구삭제
 alter table orders add column if not exists deleted_at timestamptz;
 alter table receipts add column if not exists deleted_at timestamptz;
+-- 해외출장비 증빙: 외화(통화/외화금액/적용환율 — 지출일 매매기준율), 출장명, 세부항목
+-- 국외 지출은 법정지출증빙 수취의무 제외·부가세 매입세액공제 불가(vat=0) — 상세는 src/lib/receiptfx.ts
+alter table receipts add column if not exists currency text;
+alter table receipts add column if not exists fx_amount numeric;
+alter table receipts add column if not exists fx_rate numeric;
+alter table receipts add column if not exists trip text;
+alter table receipts add column if not exists subcat text;
 create index if not exists idx_orders_deleted on orders(deleted_at) where deleted_at is not null;
 create index if not exists idx_receipts_deleted on receipts(deleted_at) where deleted_at is not null;
 
