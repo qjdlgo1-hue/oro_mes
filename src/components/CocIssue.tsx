@@ -208,7 +208,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   // styles
   const fI: React.CSSProperties = { width: "100%", padding: 6, border: "1px solid var(--line)", borderRadius: 5, fontSize: 13 };
   const lb: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#475569" };
-  const Badge = ({ v }: { v: string }) => v ? <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: v === "PASS" ? "#1aa260" : "#c0392b", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>{v}</span> : null;
+  const Badge = ({ v }: { v: string }) => v ? <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: v === "PASS" ? "var(--ok)" : "#c0392b", borderRadius: 4, padding: "1px 5px", marginLeft: 6 }}>{v}</span> : null;
 
   function F(field: string, label: string, w?: string) {
     return <div style={{ width: w || "auto" }}><label style={lb}>{label}</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={data[field] ?? ""} disabled={locked} onChange={e => setField(field, e.target.value)} /></div>;
@@ -228,7 +228,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
           <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => setFmtOpen(o => !o)}>서식 설정 {fmtOpen ? "▲" : "▼"}</button>
           </>}
           {fmtOpen &&
-            <div style={{ padding: 8, background: "#f5f9ff", borderRadius: 8, fontSize: 12 }}>
+            <div style={{ padding: 8, background: "var(--tint)", borderRadius: 8, fontSize: 12 }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                 <label style={{ flex: 1 }}>용지<select value={fmt.paper || "A4"} onChange={e => setFmt({ paper: e.target.value })} style={{ width: "100%", padding: 5 }}><option>A4</option><option>Letter</option></select></label>
                 <label style={{ flex: 1 }}>여백mm<input type="number" value={fmt.marginMm ?? 10} onChange={e => setFmt({ marginMm: Number(e.target.value) })} style={{ width: "100%", padding: 5 }} /></label>
@@ -255,8 +255,8 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
           {/* 입력 폼 */}
           <div className="card no-print" style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-              <h3 style={{ margin: 0 }}>성적서 입력 {data.issueNo ? <span style={{ color: "#1aa260", fontSize: 13 }}>· {data.issueNo} (v{data.version})</span> : <span className="muted" style={{ fontSize: 12 }}>· 미발행</span>}
-                <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: saveState === "error" ? "#c0392b" : saveState === "saving" ? "#b45309" : "#6b7280" }}>
+              <h3 style={{ margin: 0 }}>성적서 입력 {data.issueNo ? <span style={{ color: "var(--ok)", fontSize: 13 }}>· {data.issueNo} (v{data.version})</span> : <span className="muted" style={{ fontSize: 12 }}>· 미발행</span>}
+                <span style={{ fontSize: 11, fontWeight: 400, marginLeft: 8, color: saveState === "error" ? "#c0392b" : saveState === "saving" ? "#b45309" : "var(--muted)" }}>
                   {saveState === "saving" ? "저장 중…" : saveState === "saved" ? "저장됨 ✓" : saveState === "error" ? "⚠ 저장 실패" : ""}
                 </span>
               </h3>
@@ -276,7 +276,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
               {F("customer", "고객사")}{F("model", "모델명")}{F("size", "사이즈")}{F("comp", "조성")}
               {F("netwt", "중량(g)")}
-              <div><label style={lb}>생산일</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={effProd} disabled={locked} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "#1aa260" }}>{prodManual ? <>직접수정 {!locked && <span style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span>}</> : "생산계획 자동"}</div></div>
+              <div><label style={lb}>생산일</label><input style={{ ...fI, ...(locked ? { background: "#f3f4f6" } : {}) }} value={effProd} disabled={locked} onChange={e => setField("prod", e.target.value)} /><div style={{ fontSize: 9, color: prodManual ? "#c0392b" : "var(--ok)" }}>{prodManual ? <>직접수정 {!locked && <span style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }} onClick={clearProd}>↻자동</span>}</> : "생산계획 자동"}</div></div>
               <div><label style={lb}>유효기간</label><input style={{ ...fI, background: "#f3f4f6" }} value={effExp} readOnly /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginTop: 10 }}>
@@ -299,7 +299,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
               <span style={{ fontSize: 11, color: "#555" }}>{data.issueNo ? `${t.issue}: ${data.issueNo}` : ""}</span>
             </div>
             <h2>{t.title}{lang === "ko" && t.sub ? <span style={{ fontSize: 14, display: "block", color: "#555" }}>{t.sub}</span> : ""}</h2>
-            {overall && <div style={{ textAlign: "right", marginTop: -10, marginBottom: 6 }}><span style={{ fontWeight: 700, color: overall === "PASS" ? "#1aa260" : "#c0392b" }}>{t.overall}: {overall}</span></div>}
+            {overall && <div style={{ textAlign: "right", marginTop: -10, marginBottom: 6 }}><span style={{ fontWeight: 700, color: overall === "PASS" ? "var(--ok)" : "#c0392b" }}>{t.overall}: {overall}</span></div>}
             <div className="sec-title">{t.pinfo}</div>
             <table className="info"><tbody>
               <tr><td className="lbl">{t.manu}</td><td>ORO</td><td className="lbl">{t.cust}</td><td>{data.customer}</td></tr>

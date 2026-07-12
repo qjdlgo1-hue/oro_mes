@@ -242,7 +242,7 @@ export default function Receipts() {
           <h3 style={{ marginTop: 0 }}>📷 영수증 사진 인식 (AI)</h3>
           {canEdit ? <>
             <div onClick={() => galRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={onDrop}
-              style={{ border: "2px dashed #b9c2d0", borderRadius: 10, padding: 18, textAlign: "center", cursor: "pointer", color: "#6b7280" }}>
+              style={{ border: "2px dashed #b9c2d0", borderRadius: 10, padding: 18, textAlign: "center", cursor: "pointer", color: "var(--muted)" }}>
               <div style={{ fontSize: 28 }}>🖼️</div>갤러리에서 선택 / 파일 끌어다 놓기<div style={{ fontSize: 11 }}>여러 장 가능 · AI 인식 + 원본 자동 보관</div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -260,7 +260,7 @@ export default function Receipts() {
               {queue.map((r, i) => (
                 <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8, marginBottom: 6, fontSize: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}><span>{r.vendor || "(거래처 미상)"}</span><span>{won(r.total)}원</span></div>
-                  <div style={{ color: "#6b7280" }}>{r.rdate} · {r.rtype} · {r.account}{r.memo ? ` · ⚠ ${r.memo}` : ""}{r.file ? " · 📎원본" : ""}</div>
+                  <div style={{ color: "var(--muted)" }}>{r.rdate} · {r.rtype} · {r.account}{r.memo ? ` · ⚠ ${r.memo}` : ""}{r.file ? " · 📎원본" : ""}</div>
                   <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                     <button className="btn ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => { setForm({ ...r }); setFormFile(r.file || null); setQueue(q => q.filter((_, x) => x !== i)); }}>입력칸으로</button>
                     <button className="btn green" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => { add(r); setQueue(q => q.filter((_, x) => x !== i)); }}>바로 추가</button>
@@ -279,14 +279,14 @@ export default function Receipts() {
           <label style={lbl}>거래처명</label><input style={fin} placeholder="예: 하나로마트" value={form.vendor} onChange={e => setField("vendor", e.target.value)} />
           <label style={lbl}>사업자번호 (있으면)</label><input style={fin} placeholder="123-45-67890" value={form.bizno} onChange={e => setField("bizno", e.target.value)} />
           <label style={lbl}>합계금액 (실제 결제액)</label><input type="number" inputMode="numeric" style={fin} placeholder="11000" value={form.total || ""} onChange={e => onTotal(Number(e.target.value))} />
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: -6, marginBottom: 8 }}>합계만 넣으면 공급가액·부가세 자동 역산(÷1.1)</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: -6, marginBottom: 8 }}>합계만 넣으면 공급가액·부가세 자동 역산(÷1.1)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div><label style={lbl}>공급가액</label><input type="number" inputMode="numeric" style={fin} value={form.supply || ""} onChange={e => setField("supply", Number(e.target.value))} /></div>
             <div><label style={lbl}>부가세</label><input type="number" inputMode="numeric" style={fin} value={form.vat || ""} onChange={e => setField("vat", Number(e.target.value))} /></div>
           </div>
           <label style={lbl}>계정과목</label><select style={fin} value={form.account} onChange={e => setField("account", e.target.value)}>{ACCOUNTS.map(a => <option key={a}>{a}</option>)}</select>
           {accSuggest && accSuggest !== form.account &&
-            <div style={{ fontSize: 12, color: "#1f4e78", marginTop: -6, marginBottom: 8, background: "#eef3fb", borderRadius: 6, padding: "5px 8px" }}>
+            <div style={{ fontSize: 12, color: "#1f4e78", marginTop: -6, marginBottom: 8, background: "var(--tint)", borderRadius: 6, padding: "5px 8px" }}>
               💡 추천 계정: <b>{accSuggest}</b> <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 6 }} onClick={() => setField("account", accSuggest)}>적용</button>
               <span className="muted" style={{ fontSize: 10 }}> (비고·거래처 내용 기준)</span>
             </div>}
@@ -295,7 +295,7 @@ export default function Receipts() {
           {canEdit && <>
             <label style={lbl}>원본 사진 첨부 (선택)</label>
             <input ref={attachRef} type="file" accept="image/*" onChange={e => setFormFile(e.target.files?.[0] || null)} style={{ marginBottom: 8 }} />
-            {formFile && <div style={{ fontSize: 11, color: "#1aa260", marginBottom: 8 }}>📎 {formFile.name} — 추가 시 원본 보관됨</div>}
+            {formFile && <div style={{ fontSize: 11, color: "var(--ok)", marginBottom: 8 }}>📎 {formFile.name} — 추가 시 원본 보관됨</div>}
             <button className="btn" style={{ width: "100%" }} disabled={busy} onClick={() => add()}>목록에 추가</button>
           </>}
           <button className="btn ghost" style={{ width: "100%", marginTop: 8 }} onClick={() => { setForm(emptyForm()); setFormFile(null); }}>입력칸 비우기</button>
@@ -321,7 +321,7 @@ export default function Receipts() {
                       <div className="mrow"><span className="k">거래처</span><span className="v">{r.vendor}</span></div>
                       <div className="mrow"><span className="k">유형 / 계정</span><span className="v" style={{ fontWeight: 400 }}>{r.rtype} · {r.account}</span></div>
                       <div className="mrow"><span className="k">공급가액 / 부가세</span><span className="v" style={{ fontWeight: 400 }}>{won(r.supply)} / {won(r.vat)}</span></div>
-                      {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "#6b7280", fontWeight: 400 }}>{r.memo}</span></div> : null}
+                      {r.memo ? <div className="mrow"><span className="k">비고</span><span className="v" style={{ color: warn ? "#b45309" : "var(--muted)", fontWeight: 400 }}>{r.memo}</span></div> : null}
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         {receiptImgs(r).length > 0 && <button className="btn ghost" style={{ flex: 1 }} onClick={() => openViewer(r)}>📎 원본 {receiptImgs(r).length}장</button>}
                         {canEdit && <button className="btn danger" style={{ flex: 1 }} onClick={() => del(r)}>삭제</button>}
@@ -336,7 +336,7 @@ export default function Receipts() {
                 <thead><tr>{["일자", "분기", "거래처", "유형", "공급가액", "부가세", "합계", "계정과목", "비고", "원본", ""].map(h =>
                   <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {shown.length === 0 ? <tr><td colSpan={11} style={{ ...cell, textAlign: "center", color: "#6b7280", padding: 30 }}>{loaded ? "증빙이 없어요. 사진을 올리거나 직접 입력하세요." : "불러오는 중…"}</td></tr> :
+                  {shown.length === 0 ? <tr><td colSpan={11} style={{ ...cell, textAlign: "center", color: "var(--muted)", padding: 30 }}>{loaded ? "증빙이 없어요. 사진을 올리거나 직접 입력하세요." : "불러오는 중…"}</td></tr> :
                     shown.map(r => {
                       const warn = r.memo && (r.memo.includes("확인") || r.memo.includes("추정"));
                       return (
@@ -345,7 +345,7 @@ export default function Receipts() {
                           <td style={cell}><span style={{ background: "#eef2f7", borderRadius: 4, padding: "1px 6px" }}>{r.rtype}</span></td>
                           <td style={{ ...cell, textAlign: "right" }}>{won(r.supply)}</td><td style={{ ...cell, textAlign: "right" }}>{won(r.vat)}</td><td style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{won(r.total)}</td>
                           <td style={cell}>{r.account}</td>
-                          <td style={{ ...cell, color: warn ? "#b45309" : "#6b7280" }}>{warn ? `⚠ ${r.memo}` : r.memo}</td>
+                          <td style={{ ...cell, color: warn ? "#b45309" : "var(--muted)" }}>{warn ? `⚠ ${r.memo}` : r.memo}</td>
                           <td style={{ ...cell, textAlign: "center" }}>{receiptImgs(r).length ? <button className="btn ghost" style={{ padding: "1px 7px", fontSize: 11 }} onClick={() => openViewer(r)}>{receiptImgs(r).length}장</button> : <span style={{ color: "#c0392b" }}>없음</span>}</td>
                           <td style={cell}>{canEdit && <button className="btn danger" style={{ padding: "1px 7px", fontSize: 12 }} aria-label="증빙 삭제" onClick={() => del(r)}>×</button>}</td>
                         </tr>

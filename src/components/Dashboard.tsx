@@ -74,8 +74,8 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
                       <td style={{ ...TD, fontWeight: 700 }}>{name}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
-                      <td style={{ ...TD, textAlign: "right", color: rate >= 100 ? "#1aa260" : "var(--accent)" }}>{rate}%</td>
-                      <td style={TD}><Bar val={v.qty} max={mx} color="#9bb8d9" /><Bar val={v.doneQty} max={mx} color="#1aa260" /></td>
+                      <td style={{ ...TD, textAlign: "right", color: rate >= 100 ? "var(--ok)" : "var(--accent)" }}>{rate}%</td>
+                      <td style={TD}><Bar val={v.qty} max={mx} color="#9bb8d9" /><Bar val={v.doneQty} max={mx} color="var(--ok)" /></td>
                     </tr>
                   );
                 })}
@@ -115,20 +115,20 @@ export default function Dashboard({ orders }: { orders: Order[] }) {
                       <td style={{ ...TD, textAlign: "right" }}>{won(yv.qty)}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{yv.doneCnt}</td>
                       <td style={{ ...TD, textAlign: "right" }}>{won(yv.doneQty)}</td>
-                      <td style={{ ...TD, textAlign: "right", color: yrate >= 100 ? "#1aa260" : "var(--accent)" }}>{yrate}%</td>
-                      <td style={TD}><Bar val={yv.qty} max={maxYearQty} color="#7ba0cc" /><Bar val={yv.doneQty} max={maxYearQty} color="#1aa260" /></td>
+                      <td style={{ ...TD, textAlign: "right", color: yrate >= 100 ? "var(--ok)" : "var(--accent)" }}>{yrate}%</td>
+                      <td style={TD}><Bar val={yv.qty} max={maxYearQty} color="#7ba0cc" /><Bar val={yv.doneQty} max={maxYearQty} color="var(--ok)" /></td>
                     </tr>
                     {!collapsed && yv.months.map(([ym, v]) => {
                       const rate = v.qty ? Math.round(v.doneQty / v.qty * 100) : 0;
                       return (
-                        <tr key={ym} style={{ cursor: "pointer", background: ym === curYm ? "#eef3fb" : "" }} onClick={() => setSel(ym)}>
+                        <tr key={ym} style={{ cursor: "pointer", background: ym === curYm ? "var(--tint)" : "" }} onClick={() => setSel(ym)}>
                           <td style={{ ...TD, paddingLeft: 22 }}>{ym.slice(5)}월</td>
                           <td style={{ ...TD, textAlign: "right" }}>{v.cnt}</td>
                           <td style={{ ...TD, textAlign: "right" }}>{won(v.qty)}</td>
                           <td style={{ ...TD, textAlign: "right" }}>{v.doneCnt}</td>
                           <td style={{ ...TD, textAlign: "right" }}>{won(v.doneQty)}</td>
-                          <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "#1aa260" : "var(--accent)" }}>{rate}%</td>
-                          <td style={TD}><Bar val={v.qty} max={maxQty} color="#9bb8d9" /><Bar val={v.doneQty} max={maxQty} color="#1aa260" /></td>
+                          <td style={{ ...TD, textAlign: "right", fontWeight: 700, color: rate >= 100 ? "var(--ok)" : "var(--accent)" }}>{rate}%</td>
+                          <td style={TD}><Bar val={v.qty} max={maxQty} color="#9bb8d9" /><Bar val={v.doneQty} max={maxQty} color="var(--ok)" /></td>
                         </tr>
                       );
                     })}

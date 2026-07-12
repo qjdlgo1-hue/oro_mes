@@ -542,7 +542,7 @@ export default function GrantDocs() {
             {docs.length === 0 && <p className="muted" style={{ fontSize: 13 }}>등록된 건이 없습니다. '새 건 만들기'로 시작하세요.</p>}
             {paged.map(r => (
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13, flexWrap: "wrap" }}>
-                <span style={{ background: "#eef3f9", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>{r.expense_item || "-"}</span>
+                <span style={{ background: "var(--tint)", borderRadius: 4, padding: "1px 6px", fontSize: 11 }}>{r.expense_item || "-"}</span>
                 <b>{r.title}</b>
                 <span className="muted" style={{ fontSize: 12 }}>서식 {r.forms?.length || 0}종 · {String(r.created_at || "").slice(0, 10)}</span>
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
@@ -935,7 +935,7 @@ export default function GrantDocs() {
 
           {/* 사진 */}
           <div
-            style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10, borderRadius: 8, ...(dragOver ? { outline: "2px dashed var(--accent)", outlineOffset: 4, background: "#eff6ff" } : {}) }}
+            style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10, borderRadius: 8, ...(dragOver ? { outline: "2px dashed var(--accent)", outlineOffset: 4, background: "var(--tint2)" } : {}) }}
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles([...e.dataTransfer.files]); }}

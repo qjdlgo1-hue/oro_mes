@@ -6,7 +6,7 @@ import { usePersistState } from "../lib/usePersist";
 import { useIsMobile } from "../lib/useIsMobile";
 import MonthPicker from "./MonthPicker";
 
-const PIE = ["#2563eb", "#f59e0b", "#1aa260", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0", "#6b7280", "#14b8a6"];
+const PIE = ["var(--accent)", "#f59e0b", "var(--ok)", "#a855f7", "#ef4444", "#0ea5e9", "#84cc16", "#e879a0", "var(--muted)", "#14b8a6"];
 type PV = "prod" | "mat" | "std" | "unit";
 
 export default function ProdConsumeAnalysis() {
@@ -72,7 +72,7 @@ export default function ProdConsumeAnalysis() {
   const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
 
-  const HBar = ({ data, color = "#2563eb", onPick }: { data: { name: string; value: number }[]; color?: string; onPick?: (n: string) => void }) => (
+  const HBar = ({ data, color = "var(--accent)", onPick }: { data: { name: string; value: number }[]; color?: string; onPick?: (n: string) => void }) => (
     <div style={{ width: "100%", height: Math.max(180, Math.min(data.length, 12) * 30 + 30) }}>
       <ResponsiveContainer>
         <BarChart layout="vertical" data={data.slice(0, 12)} margin={{ left: 10, right: 16 }}>
@@ -115,7 +115,7 @@ export default function ProdConsumeAnalysis() {
                   전체 기간 보기{!prodAll && ` (이전 ${prodByMonth.length - 12}개월 숨김)`}
                 </label>}
             </div>
-            <div style={{ width: "100%", height: 300 }}><ResponsiveContainer><BarChart data={prodAll ? prodByMonth : prodByMonth.slice(-12)}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="#2563eb" /></BarChart></ResponsiveContainer></div>
+            <div style={{ width: "100%", height: 300 }}><ResponsiveContainer><BarChart data={prodAll ? prodByMonth : prodByMonth.slice(-12)}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name="생산량" fill="var(--accent)" /></BarChart></ResponsiveContainer></div>
           </div>
           <div className="card"><h4 style={{ marginTop: 0 }}>품목별 생산량 (상위)</h4><HBar data={prodByItem} /></div>
         </div>
@@ -125,19 +125,19 @@ export default function ProdConsumeAnalysis() {
       {view === "mat" &&
         <div style={{ display: "grid", gap: 16 }}>
           <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}>
-            <div className="card"><h4 style={{ marginTop: 0 }}>원재료별 실제소모 (클릭=상세)</h4><HBar data={matByItem} color="#1aa260" onPick={setSelMat} /></div>
-            <div className="card"><h4 style={{ marginTop: 0 }}>소모 표 (클릭=상세)</h4><div style={{ overflow: "auto", maxHeight: "44vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th></tr></thead><tbody>{matByItem.map(r => <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div></div>
+            <div className="card"><h4 style={{ marginTop: 0 }}>원재료별 실제소모 (클릭=상세)</h4><HBar data={matByItem} color="var(--ok)" onPick={setSelMat} /></div>
+            <div className="card"><h4 style={{ marginTop: 0 }}>소모 표 (클릭=상세)</h4><div style={{ overflow: "auto", maxHeight: "44vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th></tr></thead><tbody>{matByItem.map(r => <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "var(--tint2)" : undefined }}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.value)}</td></tr>)}</tbody></table></div></div>
           </div>
 
           {selMat &&
-            <div className="card" style={{ border: "2px solid #2563eb" }}>
+            <div className="card" style={{ border: "2px solid var(--accent)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <h4 style={{ margin: 0 }}>🔎 {selMat} 소비 상세 <span className="muted" style={{ fontSize: 12 }}>· {matDetail.length}건 · 실제소모 {nf1(matDetActTotal)}</span></h4>
                 <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={() => setSelMat(null)}>닫기</button>
               </div>
-              {matDetailMonthly.length > 0 && <div style={{ width: "100%", height: 200 }}><ResponsiveContainer><BarChart data={matDetailMonthly}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name={selMat} fill="#2563eb" /></BarChart></ResponsiveContainer></div>}
+              {matDetailMonthly.length > 0 && <div style={{ width: "100%", height: 200 }}><ResponsiveContainer><BarChart data={matDetailMonthly}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Bar dataKey="value" name={selMat} fill="var(--accent)" /></BarChart></ResponsiveContainer></div>}
               <div style={{ overflow: "auto", maxHeight: "46vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>일자</th><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={th}>표준소모</th><th style={th}>실제소모</th><th style={th}>차이</th></tr></thead>
-                <tbody>{matDetail.map((r, i) => <tr key={r.id || i}><td style={tdL}>{r.idate || "-"}</td><td style={tdL}>{r.prod_name}</td><td style={td}>{nf1(Number(r.std_qty) || 0)}</td><td style={{ ...td, fontWeight: 700 }}>{nf1(Number(r.act_qty) || 0)}</td><td style={{ ...td, color: (Number(r.diff) || 0) > 0 ? "#1aa260" : (Number(r.diff) || 0) < 0 ? "#c0392b" : "#6b7280" }}>{nf1(Number(r.diff) || 0)}</td></tr>)}</tbody></table></div>
+                <tbody>{matDetail.map((r, i) => <tr key={r.id || i}><td style={tdL}>{r.idate || "-"}</td><td style={tdL}>{r.prod_name}</td><td style={td}>{nf1(Number(r.std_qty) || 0)}</td><td style={{ ...td, fontWeight: 700 }}>{nf1(Number(r.act_qty) || 0)}</td><td style={{ ...td, color: (Number(r.diff) || 0) > 0 ? "var(--ok)" : (Number(r.diff) || 0) < 0 ? "#c0392b" : "var(--muted)" }}>{nf1(Number(r.diff) || 0)}</td></tr>)}</tbody></table></div>
             </div>}
 
           <div className="card">
@@ -168,8 +168,8 @@ export default function ProdConsumeAnalysis() {
                     <th style={{ ...th, minWidth: 88, whiteSpace: "nowrap" }}>합계{matrixAll || hiddenCnt <= 0 ? "" : "(표시분)"}</th>
                   </tr></thead>
                   <tbody>{matrix.rows.map(r => (
-                    <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "#eff6ff" : undefined }}>
-                      <td style={{ ...tdL, position: "sticky", left: 0, background: selMat === r.name ? "#eff6ff" : "#fff", zIndex: 1, whiteSpace: "nowrap" }}>{r.name}</td>
+                    <tr key={r.name} onClick={() => setSelMat(r.name)} style={{ cursor: "pointer", background: selMat === r.name ? "var(--tint2)" : undefined }}>
+                      <td style={{ ...tdL, position: "sticky", left: 0, background: selMat === r.name ? "var(--tint2)" : "#fff", zIndex: 1, whiteSpace: "nowrap" }}>{r.name}</td>
                       {shownMonths.map(m => <td key={m} style={{ ...td, whiteSpace: "nowrap" }}>{r.byM[m] ? nf1(r.byM[m]) : "-"}</td>)}
                       <td style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}>{nf1(matrixAll ? r.total : rowTotal(r))}</td>
                     </tr>
@@ -184,16 +184,16 @@ export default function ProdConsumeAnalysis() {
 
       {view === "std" &&
         <>
-          <div className="card"><h4 style={{ marginTop: 0 }}>표준 vs 실제 소모 (상위 10)</h4><div style={{ width: "100%", height: 320 }}><ResponsiveContainer><BarChart data={stdVs.slice(0, 10)} margin={{ left: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={60} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Legend /><Bar dataKey="표준" fill="#94a3b8" /><Bar dataKey="실제" fill="#2563eb" /></BarChart></ResponsiveContainer></div></div>
+          <div className="card"><h4 style={{ marginTop: 0 }}>표준 vs 실제 소모 (상위 10)</h4><div style={{ width: "100%", height: 320 }}><ResponsiveContainer><BarChart data={stdVs.slice(0, 10)} margin={{ left: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={60} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={64} /><Tooltip formatter={(v: any) => nf(Number(v))} /><Legend /><Bar dataKey="표준" fill="#94a3b8" /><Bar dataKey="실제" fill="var(--accent)" /></BarChart></ResponsiveContainer></div></div>
           <div className="card"><h4 style={{ marginTop: 0 }}>월별 로스(차이) 금액</h4><div style={{ width: "100%", height: 220 }}><ResponsiveContainer><BarChart data={lossByMonth}><CartesianGrid strokeDasharray="3 3" stroke="#eef0f3" /><XAxis dataKey="name" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => v.toLocaleString()} width={70} /><Tooltip formatter={(v: any) => nf(Number(v)) + " 원"} /><Bar dataKey="value" name="로스금액" fill="#ef4444" /></BarChart></ResponsiveContainer></div></div>
           <div className="card"><h4 style={{ marginTop: 0 }}>표준 대비 실제 · 로스</h4><div style={{ overflow: "auto", maxHeight: "50vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>표준소모</th><th style={th}>실제소모</th><th style={th}>차이</th><th style={th}>로스금액</th></tr></thead>
-            <tbody>{stdVs.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.표준)}</td><td style={td}>{nf1(r.실제)}</td><td style={{ ...td, color: r.diff > 0 ? "#1aa260" : r.diff < 0 ? "#c0392b" : "#6b7280", fontWeight: 700 }}>{r.diff > 0 ? "+" : ""}{nf1(r.diff)}</td><td style={{ ...td, color: r.loss ? "#c0392b" : "#bbb" }}>{r.loss ? nf(r.loss) : "-"}</td></tr>)}</tbody></table></div>
+            <tbody>{stdVs.map(r => <tr key={r.name}><td style={tdL}>{r.name}</td><td style={td}>{nf1(r.표준)}</td><td style={td}>{nf1(r.실제)}</td><td style={{ ...td, color: r.diff > 0 ? "var(--ok)" : r.diff < 0 ? "#c0392b" : "var(--muted)", fontWeight: 700 }}>{r.diff > 0 ? "+" : ""}{nf1(r.diff)}</td><td style={{ ...td, color: r.loss ? "#c0392b" : "#bbb" }}>{r.loss ? nf(r.loss) : "-"}</td></tr>)}</tbody></table></div>
             <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>차이 = 표준소모 − 실제소모 (양수=절감, 음수=초과). 로스금액 = 초과분 × 단가.</p></div>
         </>}
 
       {view === "unit" &&
         <div className="card"><h4 style={{ marginTop: 0 }}>원단위 실측 (제품 1단위당 원재료 소모 = 실제 BOM)</h4><div style={{ overflow: "auto", maxHeight: "62vh" }}><table style={{ borderCollapse: "collapse", width: "100%" }}><thead><tr><th style={{ ...th, textAlign: "left" }}>생산품목</th><th style={{ ...th, textAlign: "left" }}>원재료/반제품</th><th style={th}>실제소모</th><th style={th}>생산량</th><th style={th}>원단위</th></tr></thead>
-          <tbody>{unitData.map((r, i) => <tr key={i}><td style={tdL}>{r.prod}</td><td style={tdL}>{r.mat}</td><td style={td}>{nf1(r.act)}</td><td style={td}>{nf1(r.prodQty)}</td><td style={{ ...td, fontWeight: 700, color: "#2563eb" }}>{r.prodQty > 0 ? nf3(r.unit) : "계산불가"}</td></tr>)}</tbody></table></div>
+          <tbody>{unitData.map((r, i) => <tr key={i}><td style={tdL}>{r.prod}</td><td style={tdL}>{r.mat}</td><td style={td}>{nf1(r.act)}</td><td style={td}>{nf1(r.prodQty)}</td><td style={{ ...td, fontWeight: 700, color: "var(--accent)" }}>{r.prodQty > 0 ? nf3(r.unit) : "계산불가"}</td></tr>)}</tbody></table></div>
           <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>원단위 = 실제소모 ÷ 생산량. 기존 원재료(BOM) 탭 추정치와 비교·보정.</p></div>}
     </div>
   );

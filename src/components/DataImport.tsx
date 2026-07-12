@@ -13,8 +13,8 @@ import MonthPicker from "./MonthPicker";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
 const CFG: Record<InoutKind, Cfg> = {
-  in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "#2563eb" },
-  out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "#1aa260" },
+  in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "var(--accent)" },
+  out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "var(--ok)" },
 };
 
 export default function DataImport({ kind }: { kind: InoutKind }) {
@@ -108,8 +108,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
         <div className="card">
           <h3 style={{ marginTop: 0, color: cfg.accent }}>{cfg.title}</h3>
-          <div style={{ background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>
-            <b style={{ color: "#2563eb" }}>{cfg.source}</b> 을(를) 조회 → <b>표 복사(머리글 포함)</b> → 아래에 붙여넣기 → <b>인식</b> → <b>누적 추가</b>. 같은 행은 자동으로 중복 제외되어, 매월 반복해도 안전하게 쌓입니다.
+          <div style={{ background: "var(--tint2)", border: "1px solid var(--tint2)", borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.6 }}>
+            <b style={{ color: "var(--accent)" }}>{cfg.source}</b> 을(를) 조회 → <b>표 복사(머리글 포함)</b> → 아래에 붙여넣기 → <b>인식</b> → <b>누적 추가</b>. 같은 행은 자동으로 중복 제외되어, 매월 반복해도 안전하게 쌓입니다.
           </div>
           <textarea value={text} onChange={e => setText(e.target.value)} placeholder={`${cfg.source} 표 붙여넣기...`} style={box} />
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -118,7 +118,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
           </div>
           {preview.length > 0 && <>
             <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              인식 {preview.length}건 · <b style={{ color: "#1aa260" }}>신규 {newRows.length}</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}</b>
+              인식 {preview.length}건 · <b style={{ color: "var(--ok)" }}>신규 {newRows.length}</b> · <b style={{ color: "#888" }}>중복(유지) {dupCount}</b>
               {!canEdit && " · 추가 권한 없음"}
             </p>
             <div style={{ overflow: "auto", maxHeight: 260, border: "1px solid var(--line)", borderRadius: 8 }}>
@@ -134,7 +134,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 <tbody>
                   {marked.slice(0, 30).map(({ r, dup }, i) => (
                     <tr key={i} style={dup ? { opacity: .5 } : undefined}>
-                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "#1aa260" }}>{dup ? "중복" : "신규"}</span></td>
+                      <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: dup ? "#9aa3af" : "var(--ok)" }}>{dup ? "중복" : "신규"}</span></td>
                       <td style={tdL}>{r.idate}</td><td style={tdL}>{r.item_code}</td><td style={tdL}>{r.name}</td>
                       <td style={td}>{fmt(Number(r.qty) || 0)}</td>
                       {isOut && <td style={tdL}>{r.customer || ""}</td>}
@@ -160,7 +160,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 </tr></thead>
                 <tbody>
                   {byMonth.map(([ym, v]) => (
-                    <tr key={ym} style={ym === curYm ? { background: "#eff6ff" } : undefined}>
+                    <tr key={ym} style={ym === curYm ? { background: "var(--tint2)" } : undefined}>
                       <td style={tdL}><a className="xlink" style={{ border: "none", padding: 0, background: "none", cursor: "pointer" }} onClick={() => setSelYm(ym)}>{ym.slice(0, 4)}년 {+ym.slice(5, 7)}월</a></td>
                       <td style={td}>{v.n}</td>
                       <td style={td}>{fmt(v.qty)}</td>

@@ -94,8 +94,8 @@ export default function ProdInOut() {
           </label>
           <button className="btn" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀 저장</button>
         </div>
-        <div style={{ background: "#eff6ff", border: "1px solid #dbe7ff", borderRadius: 8, padding: "10px 12px", marginTop: 12, fontSize: 12, lineHeight: 1.6 }}>
-          <b style={{ color: "#2563eb" }}>사용법</b> · 이카운트에서 해당 월로 조회한 뒤 <b>표를 복사</b>(헤더 포함)해 아래 두 칸에 각각 붙여넣으세요. <b>품목코드·수량 열을 자동 인식</b>해 품목코드 기준으로 합산·비교합니다.<br />
+        <div style={{ background: "var(--tint2)", border: "1px solid var(--tint2)", borderRadius: 8, padding: "10px 12px", marginTop: 12, fontSize: 12, lineHeight: 1.6 }}>
+          <b style={{ color: "var(--accent)" }}>사용법</b> · 이카운트에서 해당 월로 조회한 뒤 <b>표를 복사</b>(헤더 포함)해 아래 두 칸에 각각 붙여넣으세요. <b>품목코드·수량 열을 자동 인식</b>해 품목코드 기준으로 합산·비교합니다.<br />
           <span className="muted">왼쪽=생산입고 조회(제품창고 입고) · 오른쪽=판매현황(매출=출하). 표 머리글(품목코드/품목명/수량)이 포함되도록 복사하면 가장 정확합니다.</span>
         </div>
       </div>
@@ -136,7 +136,7 @@ export default function ProdInOut() {
                       <td style={tdL}>{r.name || "-"}</td>
                       <td style={td}>{fmt(r.outQ)}</td>
                       <td style={td}>{fmt(r.inQ)}</td>
-                      <td style={{ ...td, fontWeight: 700, color: r.diff > 0 ? "#1aa260" : r.diff < 0 ? "#c0392b" : "#6b7280" }}>
+                      <td style={{ ...td, fontWeight: 700, color: r.diff > 0 ? "var(--ok)" : r.diff < 0 ? "#c0392b" : "var(--muted)" }}>
                         {r.diff > 0 ? "+" : ""}{fmt(r.diff)}
                       </td>
                     </tr>
@@ -144,16 +144,16 @@ export default function ProdInOut() {
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: "#eef3f9", fontWeight: 700 }}>
+                <tr style={{ background: "var(--tint)", fontWeight: 700 }}>
                   <td style={{ ...tdL }} colSpan={2}>합계</td>
                   <td style={td}>{fmt(merged.tOut)}</td>
                   <td style={td}>{fmt(merged.tIn)}</td>
-                  <td style={{ ...td, color: merged.tDiff > 0 ? "#1aa260" : merged.tDiff < 0 ? "#c0392b" : "#6b7280" }}>{merged.tDiff > 0 ? "+" : ""}{fmt(merged.tDiff)}</td>
+                  <td style={{ ...td, color: merged.tDiff > 0 ? "var(--ok)" : merged.tDiff < 0 ? "#c0392b" : "var(--muted)" }}>{merged.tDiff > 0 ? "+" : ""}{fmt(merged.tDiff)}</td>
                 </tr>
               </tfoot>
             </table>
             <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
-              차이 = 생산입고 − 출하. <b style={{ color: "#1aa260" }}>양(+)</b>이면 재고 증가(입고가 많음), <b style={{ color: "#c0392b" }}>음(−)</b>이면 재고 감소(출하가 많음). <span style={{ background: "#fff7e6" }}>노란 줄</span>은 한쪽에만 있는 품목입니다.
+              차이 = 생산입고 − 출하. <b style={{ color: "var(--ok)" }}>양(+)</b>이면 재고 증가(입고가 많음), <b style={{ color: "#c0392b" }}>음(−)</b>이면 재고 감소(출하가 많음). <span style={{ background: "#fff7e6" }}>노란 줄</span>은 한쪽에만 있는 품목입니다.
             </p>
           </div>}
       </div>

@@ -195,7 +195,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
           mview === "cal" ? (
             <div className="card" style={{ padding: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3, marginBottom: 4 }}>
-                {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "var(--accent)" : "#6b7280" }}>{w}</div>)}
+                {WD.map((w, i) => <div key={w} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: i === 0 ? "#c0392b" : i === 6 ? "var(--accent)" : "var(--muted)" }}>{w}</div>)}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 }}>
                 {cells.map((d, i) => {
@@ -242,8 +242,8 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처 / 생산수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {pqty(o, p).toLocaleString()}g {canEdit && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 4 }} onClick={() => openQty(o)}>변경</button>}</span></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <label style={{ fontSize: 12, color: "#6b7280" }}>시작일<input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-                    <label style={{ fontSize: 12, color: "#6b7280" }}>기간(일)<input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span} onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })} style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                    <label style={{ fontSize: 12, color: "var(--muted)" }}>시작일<input type="date" disabled={!canEdit} value={p.start_date} onChange={e => commit({ ...p, start_date: e.target.value })} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+                    <label style={{ fontSize: 12, color: "var(--muted)" }}>기간(일)<input type="number" inputMode="numeric" min={1} disabled={!canEdit} value={p.span} onChange={e => commit({ ...p, span: Math.max(1, Number(e.target.value) || 1) })} style={{ display: "block", width: 80, padding: 8, border: "1px solid var(--line)", borderRadius: 6 }} /></label>
                     <div style={{ fontSize: 12, color: "var(--accent)" }}>완료일<br /><b>{cp}</b></div>
                   </div>
                   {canEdit && <button className={"btn " + (p.done ? "ghost" : "green")} style={{ marginTop: 10, width: "100%" }} onClick={() => toggleDone(o, p)}>{p.done ? "완료 해제" : "생산 완료 처리"}</button>}
