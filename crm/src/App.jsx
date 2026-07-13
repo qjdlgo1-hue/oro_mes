@@ -256,6 +256,48 @@ export default function OroCrmApp() {
     })();
   }, [mode, session, authChecked]);
 
+  // ----- 실시간 동기화 (클라우드 모드 + 로그인 상태에서만) -----
+  // 다른 팀원의 변경이나 자동 수집된 메일이 저장되면 서버가 알려주고,
+  // 해당 종류만 다시 불러와 화면에 반영합니다 (0.5초 디바운스로 묶음 처리).
+  useEffect(() => {
+    if (mode !== "cloud" || !session) return;
+
+    const timers = {};
+    const refreshKind = (kind) => {
+      clearTimeout(timers[kind]);
+      timers[kind] = setTimeout(async () => {
+        try {
+          const rows = await cloudLoadOne(kind);
+          const setters = { companies: setCompanies, contacts: setContacts, deals: setDeals, activities: setActivities };
+          setters[kind](rows);
+        } catch (e) { /* 일시적 네트워크 오류는 무시 (다음 이벤트/포커스 때 재시도됨) */ }
+      }, 500);
+    };
+
+    const tableToKind = {
+      crm_companies: "companies", crm_contacts: "contacts",
+      crm_deals: "deals", crm_activities: "activities",
+    };
+    const channel = supabase.channel("crm-sync");
+    Object.keys(tableToKind).forEach((table) => {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, () => refreshKind(tableToKind[table]));
+    });
+    channel.subscribe();
+
+    // 보조: 창에 다시 돌아왔을 때 전체 새로 불러오기 (실시간 연결이 끊겼을 때 대비)
+    const refreshAll = () => Object.values(tableToKind).forEach(refreshKind);
+    const onVisible = () => { if (!document.hidden) refreshAll(); };
+    window.addEventListener("focus", refreshAll);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", refreshAll);
+      document.removeEventListener("visibilitychange", onVisible);
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, [mode, session]);
+
   // ----- 로컬 모드에서만: 데이터가 바뀔 때마다 자동으로 브라우저에 저장 -----
   // (클라우드 모드는 아래 조작 함수들이 서버에 바로 저장하므로 여기선 할 일 없음)
   useEffect(() => { if (!loading && mode === "local") localSave("companies", companies); }, [companies, loading, mode]);
