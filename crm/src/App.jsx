@@ -434,12 +434,12 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
   ];
 
   return (
-    <div style={{ width: 220, background: T.navy, color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0 }}>
-      <div style={{ padding: "22px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, color: T.gold }}>
-          ORO <span style={{ color: "#fff" }}>CRM</span>
+    <div style={{ width: 220, background: T.card, color: T.text, borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <div style={{ padding: "22px 20px", borderBottom: `1px solid ${T.border}` }}>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, color: T.navy }}>
+          ORO <span style={{ color: T.teal }}>CRM</span>
         </div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>오알오 주식회사</div>
+        <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>오알오 주식회사</div>
       </div>
 
       <div style={{ padding: "12px 10px", flex: 1 }}>
@@ -454,8 +454,9 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
                 padding: "11px 14px", marginBottom: 4, border: "none", borderRadius: 8,
                 cursor: "pointer", textAlign: "left", fontSize: 14,
                 fontWeight: active ? 700 : 500,
-                background: active ? T.teal : "transparent",
-                color: active ? "#fff" : "rgba(255,255,255,0.8)",
+                background: active ? T.tint2 : "transparent",
+                color: active ? T.teal : T.sub,
+                borderLeft: active ? `3px solid ${T.teal}` : "3px solid transparent",
               }}
             >
               <span style={{ fontSize: 15, width: 18 }}>{m.icon}</span>
@@ -467,13 +468,13 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
 
       {/* LINE 공식계정 연동 - 나중 옵션 자리 */}
       <div style={{ padding: "0 14px 12px" }}>
-        <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 8, padding: "12px 14px", fontSize: 11, color: "rgba(255,255,255,0.55)", lineHeight: 1.6 }}>
-          <div style={{ fontWeight: 700, color: "rgba(255,255,255,0.75)", marginBottom: 4 }}>💬 LINE 자동 연동</div>
+        <div style={{ background: T.tint, borderRadius: 8, padding: "12px 14px", fontSize: 11, color: T.sub, lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 700, color: T.navy, marginBottom: 4 }}>💬 LINE 자동 연동</div>
           공식계정 전환 시 활성화 예정<br />(현재는 수동 기록 사용)
         </div>
       </div>
 
-      <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.1)", fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+      <div style={{ padding: "16px 20px", borderTop: `1px solid ${T.border}`, fontSize: 12, color: T.sub }}>
         {mode === "cloud" ? (
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -481,17 +482,17 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
                 {(email || "?")[0].toUpperCase()}
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: "#fff", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{email}</div>
-                <div style={{ fontSize: 10, color: T.teal }}>☁️ 서버 저장 (팀 공유)</div>
+                <div style={{ color: T.navy, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{email}</div>
+                <div style={{ fontSize: 10, color: T.teal, fontWeight: 700 }}>☁️ 서버 저장 (팀 공유)</div>
               </div>
             </div>
-            <button onClick={onLogout} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "rgba(255,255,255,0.7)", fontSize: 11, cursor: "pointer" }}>
+            <button onClick={onLogout} style={{ width: "100%", padding: "6px", borderRadius: 6, border: `1px solid ${T.border}`, background: "#fff", color: T.sub, fontSize: 11, cursor: "pointer" }}>
               로그아웃
             </button>
           </div>
         ) : (
           <div>
-            <div style={{ fontSize: 11, marginBottom: 8 }}>💾 로컬 모드<br /><span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>이 브라우저에만 저장됨</span></div>
+            <div style={{ fontSize: 11, marginBottom: 8, color: T.navy }}>💾 로컬 모드<br /><span style={{ fontSize: 10, color: T.sub }}>이 브라우저에만 저장됨</span></div>
             <button onClick={onSwitchToCloud} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "none", background: T.teal, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
               ☁️ 서버 모드로 전환 (로그인)
             </button>
@@ -522,10 +523,10 @@ function LoginScreen({ onLocalMode }) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.navy, fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: 12, padding: 36, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 1, marginBottom: 4, color: T.gold }}>
-          ORO <span style={{ color: T.navy }}>CRM</span>
+    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.bg, fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 10, padding: 32, width: "100%", maxWidth: 360, border: `1px solid ${T.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 0.5, marginBottom: 4, color: T.navy }}>
+          ORO <span style={{ color: T.teal }}>CRM</span>
         </div>
         <div style={{ fontSize: 13, color: T.sub, marginBottom: 24 }}>MES와 같은 계정으로 로그인하세요</div>
 
