@@ -1,0 +1,11 @@
+{
+  "name": "oro-crm-mail-collector",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "네이버 메일/네이버 웍스 IMAP에서 거래처 메일을 수집해 CRM 타임라인에 기록",
+  "dependencies": {
+    "imapflow": "^1.0.164",
+    "mailparser": "^3.7.1"
+  }
+}
