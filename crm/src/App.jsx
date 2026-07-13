@@ -214,6 +214,7 @@ export default function OroCrmApp() {
   const [modal, setModal] = useState(null); // null이면 팝업 없음. {type, ...}이면 팝업 열림
 
   const isMobile = useIsMobile(); // 모바일이면 사이드바 대신 상단바+하단 탭
+  const [searchOpen, setSearchOpen] = useState(false); // 통합 검색창
 
   // ----- 로그인 상태 감시 (앱 켜질 때 1번 확인 + 이후 변화 감지) -----
   useEffect(() => {
@@ -390,7 +391,7 @@ export default function OroCrmApp() {
     >
       {/* PC: 왼쪽 메뉴 / 모바일: 상단 슬림 바 */}
       {isMobile ? (
-        <MobileTopBar mode={mode} email={session?.user?.email} onLogout={logout} onSwitchToCloud={switchToCloud} />
+        <MobileTopBar mode={mode} email={session?.user?.email} onLogout={logout} onSwitchToCloud={switchToCloud} onSearch={() => setSearchOpen(true)} />
       ) : (
         <Sidebar
           screen={screen}
@@ -400,6 +401,7 @@ export default function OroCrmApp() {
           email={session?.user?.email}
           onLogout={logout}
           onSwitchToCloud={switchToCloud}
+          onSearch={() => setSearchOpen(true)}
         />
       )}
 
@@ -461,6 +463,18 @@ export default function OroCrmApp() {
         <MobileTabBar screen={screen} setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }} />
       )}
 
+      {/* 통합 검색 오버레이 */}
+      {searchOpen && (
+        <SearchOverlay
+          companies={companies}
+          contacts={contacts}
+          deals={deals}
+          activities={activities}
+          onOpenCompany={(id) => { setSelectedCompanyId(id); setScreen("company"); setSearchOpen(false); }}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+
       {/* 팝업(모달) - 필요할 때만 나타남. initial이 있으면 수정 모드 */}
       {modal?.type === "company" && (
         <CompanyModal
@@ -517,7 +531,7 @@ function countUnreplied(activities) {
 // ===========================================================================
 // 사이드바
 // ===========================================================================
-function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitchToCloud }) {
+function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitchToCloud, onSearch }) {
   const menus = [
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
@@ -532,6 +546,13 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
           ORO <span style={{ color: T.teal }}>CRM</span>
         </div>
         <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>오알오 주식회사</div>
+      </div>
+
+      <div style={{ padding: "12px 10px 0" }}>
+        <button onClick={onSearch}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.tint, color: T.sub, cursor: "pointer", fontSize: 13, textAlign: "left" }}>
+          🔍 검색...
+        </button>
       </div>
 
       <div style={{ padding: "12px 10px", flex: 1 }}>
@@ -896,13 +917,14 @@ function CenterMessage({ children }) {
 // ===========================================================================
 // 모바일 상단 바 + 하단 탭바
 // ===========================================================================
-function MobileTopBar({ mode, email, onLogout, onSwitchToCloud }) {
+function MobileTopBar({ mode, email, onLogout, onSwitchToCloud, onSearch }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: T.card, borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
       <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.5, color: T.navy }}>
         ORO <span style={{ color: T.teal }}>CRM</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button onClick={onSearch} style={{ border: "none", background: "transparent", fontSize: 17, cursor: "pointer", padding: "2px 4px" }}>🔍</button>
         {mode === "cloud" ? (
           <>
             <div style={{ width: 24, height: 24, borderRadius: "50%", background: T.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 11 }}>
@@ -1344,6 +1366,104 @@ function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 통합 검색 오버레이 — 거래처/담당자/딜/대화를 한 번에 검색
+// ===========================================================================
+function SearchOverlay({ companies, contacts, deals, activities, onOpenCompany, onClose }) {
+  const [q, setQ] = useState("");
+  const isMobile = useIsMobile();
+
+  // ESC 키로 닫기
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const query = q.trim().toLowerCase();
+  const has = (s) => (s || "").toLowerCase().includes(query);
+  const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
+
+  const results = query
+    ? {
+        companies: companies.filter((c) => has(c.name) || has(c.domain) || has(c.product) || has(c.memo)).slice(0, 5),
+        contacts: contacts.filter((p) => has(p.name) || has(p.contact) || has(p.role)).slice(0, 5),
+        deals: deals.filter((d) => has(d.title) || has(d.spec)).slice(0, 5),
+        activities: activities.filter((a) => has(a.title) || has(a.body) || has(a.person)).slice(0, 8),
+      }
+    : null;
+  const total = results ? results.companies.length + results.contacts.length + results.deals.length + results.activities.length : 0;
+
+  const Row = ({ icon, title, sub, companyId }) => (
+    <div onClick={() => onOpenCompany(companyId)}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, cursor: "pointer" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = T.tint)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      <span style={{ fontSize: 15, width: 20 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ fontSize: 11, color: T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+      </div>
+    </div>
+  );
+
+  const Section = ({ label, children }) =>
+    children.length > 0 && (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, padding: "6px 12px 2px", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+        {children}
+      </div>
+    );
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(10,31,61,0.5)", zIndex: 120, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: isMobile ? "16px 10px" : "80px 20px" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 560, maxHeight: isMobile ? "85vh" : "70vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: `1px solid ${T.border}` }}>
+          <span style={{ fontSize: 15 }}>🔍</span>
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="거래처, 담당자, 딜, 대화 내용 검색..."
+            style={{ flex: 1, border: "none", outline: "none", fontSize: 15, fontFamily: "inherit", background: "transparent" }}
+          />
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: T.sub, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ overflow: "auto", padding: "8px 6px" }}>
+          {!query && <Empty small>검색어를 입력하세요</Empty>}
+          {query && total === 0 && <Empty small>'{q}' 검색 결과가 없습니다</Empty>}
+          {results && (
+            <>
+              <Section label={`거래처 (${results.companies.length})`}>
+                {results.companies.map((c) => (
+                  <Row key={c.id} icon="🏢" title={c.name} sub={`${c.country || ""} · ${c.domain || ""} · ${c.product || ""}`} companyId={c.id} />
+                ))}
+              </Section>
+              <Section label={`담당자 (${results.contacts.length})`}>
+                {results.contacts.map((p) => (
+                  <Row key={p.id} icon="👤" title={p.name} sub={`${companyName(p.companyId)} · ${p.role || ""} · ${p.contact || ""}`} companyId={p.companyId} />
+                ))}
+              </Section>
+              <Section label={`딜 (${results.deals.length})`}>
+                {results.deals.map((d) => (
+                  <Row key={d.id} icon="▤" title={d.title} sub={`${companyName(d.companyId)} · ${stageInfo(d.stage).label} · ${d.spec || ""}`} companyId={d.companyId} />
+                ))}
+              </Section>
+              <Section label={`대화 기록 (${results.activities.length})`}>
+                {results.activities.map((a) => (
+                  <Row key={a.id} icon={CHANNELS[a.channel]?.icon || "📝"} title={a.title} sub={`${companyName(a.companyId)} · ${a.person || ""} · ${a.date}`} companyId={a.companyId} />
+                ))}
+              </Section>
+            </>
+          )}
         </div>
       </div>
     </div>
