@@ -24,20 +24,25 @@ import {
 // ============================================================================
 
 // ---------------------------------------------------------------------------
-// [0] 디자인 색상 토큰 (한 곳에 모아두면 나중에 바꾸기 쉬움)
+// [0] 디자인 색상 토큰 — MES(src/index.css :root)와 동일한 ORO 브랜드 팔레트
+//     딥 테크 네이비 + 일렉트릭 틸 포인트 + 골드 로고 + 실버 화이트 배경
 // ---------------------------------------------------------------------------
 const T = {
-  navy: "#0F2A43",
-  navyLight: "#1B3A57",
-  teal: "#14B8A6",
-  tealDark: "#0F766E",
-  bg: "#F1F5F9",
-  card: "#FFFFFF",
-  border: "#E2E8F0",
-  text: "#0F172A",
-  sub: "#64748B",
-  danger: "#EF4444",
-  warn: "#F59E0B",
+  navy: "#0A1F3D",      // --navy  (기본 글자·헤더 배경)
+  navyLight: "#14304F",
+  teal: "#1BA3A3",      // --accent (주요 버튼 — 흰 글씨)
+  tealDark: "#147F7F",
+  gold: "#C9A84C",      // --gold  (로고·핵심 포인트)
+  bg: "#EDF1F3",        // --bg    (실버 화이트 배경)
+  card: "#FFFFFF",      // --panel
+  border: "#D7DDE2",    // --line
+  tint: "#EBF0F3",      // --tint  (옅은 실버 틴트)
+  tint2: "#E7F5F4",     // --tint2 (옅은 틸 틴트)
+  text: "#0A1F3D",
+  sub: "#66717D",       // --muted
+  danger: "#c0392b",    // --danger
+  warn: "#f59e0b",      // --warn
+  ok: "#178E6E",        // --ok
 };
 
 // ---------------------------------------------------------------------------
@@ -45,23 +50,24 @@ const T = {
 //     각 채널마다 표시할 아이콘, 색깔, 이름을 정해둡니다.
 // ---------------------------------------------------------------------------
 const CHANNELS = {
-  email: { label: "이메일", icon: "📧", color: "#2563EB", bg: "#DBEAFE" },
-  line: { label: "LINE", icon: "💬", color: "#06C755", bg: "#DCFCE7" },
-  wechat: { label: "WeChat", icon: "🟢", color: "#1AAD19", bg: "#DCFCE7" },
-  phone: { label: "전화", icon: "📞", color: "#7C3AED", bg: "#EDE9FE" },
-  memo: { label: "메모", icon: "📝", color: "#64748B", bg: "#F1F5F9" },
+  email: { label: "이메일", icon: "📧", color: "#4F7396", bg: "#E8EEF4" },
+  line: { label: "LINE", icon: "💬", color: "#1F9D55", bg: "#E4F3E9" },
+  wechat: { label: "WeChat", icon: "🟢", color: "#178E6E", bg: "#E7F5F4" },
+  phone: { label: "전화", icon: "📞", color: "#A5853B", bg: "#F5EFDF" },
+  memo: { label: "메모", icon: "📝", color: "#66717D", bg: "#EBF0F3" },
 };
 
 // ---------------------------------------------------------------------------
 // [2] 딜(영업기회) 단계 정의 - ORO 실제 영업 흐름
 // ---------------------------------------------------------------------------
+// 색은 브랜드 팔레트 안에서 진행도 순서로: 실버 → 스틸 네이비 → 틸 → 그린
 const STAGES = [
-  { key: "inquiry", label: "문의", color: "#94A3B8" },
-  { key: "quote", label: "견적", color: "#60A5FA" },
-  { key: "sample", label: "샘플 발송", color: "#818CF8" },
-  { key: "eval", label: "고객 평가", color: "#A78BFA" },
-  { key: "approve", label: "승인", color: "#34D399" },
-  { key: "mass", label: "양산", color: "#10B981" },
+  { key: "inquiry", label: "문의", color: "#8B97A3" },
+  { key: "quote", label: "견적", color: "#4F7396" },
+  { key: "sample", label: "샘플 발송", color: "#2E8FA0" },
+  { key: "eval", label: "고객 평가", color: "#1BA3A3" },
+  { key: "approve", label: "승인", color: "#178E6E" },
+  { key: "mass", label: "양산", color: "#0E6B52" },
 ];
 
 // 단계 key로 단계 정보를 빠르게 찾는 도우미 함수
@@ -325,7 +331,7 @@ export default function OroCrmApp() {
       style={{
         display: "flex",
         height: "100vh",
-        fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif",
+        fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif",
         background: T.bg,
         color: T.text,
         fontSize: 14,
@@ -430,8 +436,8 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
   return (
     <div style={{ width: 220, background: T.navy, color: "#fff", display: "flex", flexDirection: "column", flexShrink: 0 }}>
       <div style={{ padding: "22px 20px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1 }}>
-          ORO <span style={{ color: T.teal }}>CRM</span>
+        <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, color: T.gold }}>
+          ORO <span style={{ color: "#fff" }}>CRM</span>
         </div>
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>오알오 주식회사</div>
       </div>
@@ -449,7 +455,7 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
                 cursor: "pointer", textAlign: "left", fontSize: 14,
                 fontWeight: active ? 700 : 500,
                 background: active ? T.teal : "transparent",
-                color: active ? T.navy : "rgba(255,255,255,0.8)",
+                color: active ? "#fff" : "rgba(255,255,255,0.8)",
               }}
             >
               <span style={{ fontSize: 15, width: 18 }}>{m.icon}</span>
@@ -471,7 +477,7 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
         {mode === "cloud" ? (
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.teal, color: T.navy, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>
                 {(email || "?")[0].toUpperCase()}
               </div>
               <div style={{ minWidth: 0 }}>
@@ -486,7 +492,7 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
         ) : (
           <div>
             <div style={{ fontSize: 11, marginBottom: 8 }}>💾 로컬 모드<br /><span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>이 브라우저에만 저장됨</span></div>
-            <button onClick={onSwitchToCloud} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "none", background: T.teal, color: T.navy, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={onSwitchToCloud} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "none", background: T.teal, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
               ☁️ 서버 모드로 전환 (로그인)
             </button>
           </div>
@@ -516,10 +522,10 @@ function LoginScreen({ onLocalMode }) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.navy, fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 36, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 1, marginBottom: 4, color: T.navy }}>
-          ORO <span style={{ color: T.teal }}>CRM</span>
+    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.navy, fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 36, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 1, marginBottom: 4, color: T.gold }}>
+          ORO <span style={{ color: T.navy }}>CRM</span>
         </div>
         <div style={{ fontSize: 13, color: T.sub, marginBottom: 24 }}>MES와 같은 계정으로 로그인하세요</div>
 
@@ -843,7 +849,7 @@ function ActivityItem({ activity, deal, last }) {
             <span style={{ fontSize: 10, fontWeight: 700, color: ch.color, background: ch.bg, padding: "1px 7px", borderRadius: 4 }}>
               {ch.label}
             </span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: isSent ? T.tealDark : T.navy, background: isSent ? "#CCFBF1" : "#DBEAFE", padding: "1px 7px", borderRadius: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: isSent ? T.tealDark : T.navy, background: isSent ? T.tint2 : "#E8EEF4", padding: "1px 7px", borderRadius: 4 }}>
               {isSent ? "보냄 ↑" : "받음 ↓"}
             </span>
           </div>
@@ -902,14 +908,14 @@ function Pipeline({ deals, companies, moveDeal }) {
                           <button
                             onClick={() => idx > 0 && moveDeal(card.id, STAGES[idx - 1].key)}
                             disabled={idx === 0}
-                            style={{ flex: 1, fontSize: 11, padding: "5px", borderRadius: 6, border: `1px solid ${T.border}`, background: idx === 0 ? T.bg : "#fff", color: idx === 0 ? "#CBD5E1" : T.sub, cursor: idx === 0 ? "default" : "pointer", fontWeight: 600 }}
+                            style={{ flex: 1, fontSize: 11, padding: "5px", borderRadius: 6, border: `1px solid ${T.border}`, background: idx === 0 ? T.bg : "#fff", color: idx === 0 ? "#B4BEC8" : T.sub, cursor: idx === 0 ? "default" : "pointer", fontWeight: 600 }}
                           >
                             ◀ 이전
                           </button>
                           <button
                             onClick={() => idx < STAGES.length - 1 && moveDeal(card.id, STAGES[idx + 1].key)}
                             disabled={idx === STAGES.length - 1}
-                            style={{ flex: 1, fontSize: 11, padding: "5px", borderRadius: 6, border: "none", background: idx === STAGES.length - 1 ? T.bg : T.teal, color: idx === STAGES.length - 1 ? "#CBD5E1" : T.navy, cursor: idx === STAGES.length - 1 ? "default" : "pointer", fontWeight: 700 }}
+                            style={{ flex: 1, fontSize: 11, padding: "5px", borderRadius: 6, border: "none", background: idx === STAGES.length - 1 ? T.bg : T.teal, color: idx === STAGES.length - 1 ? "#B4BEC8" : "#fff", cursor: idx === STAGES.length - 1 ? "default" : "pointer", fontWeight: 700 }}
                           >
                             다음 ▶
                           </button>
@@ -1079,11 +1085,11 @@ function ActivityModal({ companyId, deals, onClose, onSave }) {
       <Field label="방향 *">
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => set("direction", "received")}
-            style={{ flex: 1, padding: "8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, border: `1px solid ${f.direction === "received" ? T.navy : T.border}`, background: f.direction === "received" ? "#DBEAFE" : "#fff", color: f.direction === "received" ? T.navy : T.sub }}>
+            style={{ flex: 1, padding: "8px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, border: `1px solid ${f.direction === "received" ? T.navy : T.border}`, background: f.direction === "received" ? "#E8EEF4" : "#fff", color: f.direction === "received" ? T.navy : T.sub }}>
             받음 ↓ (고객→나)
           </button>
           <button onClick={() => set("direction", "sent")}
-            style={{ flex: 1, padding: "8px", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600, border: `1px solid ${f.direction === "sent" ? T.tealDark : T.border}`, background: f.direction === "sent" ? "#CCFBF1" : "#fff", color: f.direction === "sent" ? T.tealDark : T.sub }}>
+            style={{ flex: 1, padding: "8px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600, border: `1px solid ${f.direction === "sent" ? T.tealDark : T.border}`, background: f.direction === "sent" ? T.tint2 : "#fff", color: f.direction === "sent" ? T.tealDark : T.sub }}>
             보냄 ↑ (나→고객)
           </button>
         </div>
@@ -1160,10 +1166,11 @@ function InfoRow({ label, value }) {
 }
 
 function TierBadge({ tier }) {
+  // 핵심 = ORO 골드, 일반 = 스틸 네이비, 잠재 = 실버
   const colors = {
-    핵심: { bg: "#FEF3C7", color: "#92400E" },
-    일반: { bg: "#E0E7FF", color: "#3730A3" },
-    잠재: { bg: "#F1F5F9", color: "#64748B" },
+    핵심: { bg: "#F5EFDF", color: "#8A6D2B" },
+    일반: { bg: "#E8EEF4", color: "#3A5578" },
+    잠재: { bg: "#EBF0F3", color: "#66717D" },
   };
   const c = colors[tier] || colors.일반;
   return <span style={{ fontSize: 11, background: c.bg, color: c.color, padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>{tier}</span>;
@@ -1186,8 +1193,9 @@ function Empty({ children, small }) {
 }
 
 function btnStyle(variant) {
-  const base = { border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, fontSize: 13, padding: "9px 16px" };
-  if (variant === "primary") return { ...base, background: T.teal, color: T.navy };
-  if (variant === "ghost") return { ...base, background: T.bg, color: T.text, border: `1px solid ${T.border}` };
+  // MES button.btn과 동일한 톤: 틸 배경 + 흰 글씨, 모서리 6px
+  const base = { border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 13, padding: "9px 16px" };
+  if (variant === "primary") return { ...base, background: T.teal, color: "#fff" };
+  if (variant === "ghost") return { ...base, background: T.tint, color: T.text, border: `1px solid ${T.border}` };
   return base;
 }
