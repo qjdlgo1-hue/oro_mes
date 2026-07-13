@@ -13,9 +13,12 @@ import {
 import {
   FORMS, FormKey, EXPENSE_ITEMS, FORM_PRESETS, calcTotal, money, docAmount, settleSummary,
   PROGRAMS, ProgramKey, TD_FORMS, TdFormKey, TD_ITEMS, TD_PRESETS, TD_EVIDENCE, TD_SETTLE_DOCS,
+  SSP_FORMS, SspFormKey, SspProgramKey, SSP_ITEMS, SSP_SUBITEMS, SSP_PRESETS, SSP_EVIDENCE,
+  sspFormsFor, sspFormNo, sspFormTitle,
 } from "../lib/grantforms";
 import GrantForm from "./GrantForms";
 import GrantFormTD from "./GrantFormsTD";
+import GrantFormSSP from "./GrantFormsSSP";
 
 const todayIso = () => { const t = new Date(); const p = (n: number) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; };
 
@@ -119,6 +122,19 @@ export default function GrantDocs() {
   // ---- 공고(프로그램) 선택 ----
   const [prog, setProg] = useState<ProgramKey>("cud");
   const progDef = PROGRAMS.find(x => x.key === prog)!;
+  const isSsp = prog === "ysc" || prog === "gsa"; // 창업성공패키지(창업사관학교) 계열
+  const sspProg = prog as SspProgramKey;
+  const sspForms = isSsp ? sspFormsFor(sspProg) : [];
+  const sspP = prof.ssp?.[prog] || {};
+  const setSspP = (patch: Record<string, string>) =>
+    setProf(pr => ({ ...pr, ssp: { ...(pr.ssp || {}), [prog]: { ...(pr.ssp?.[prog] || {}), ...patch } } }));
+  // ysc/gsa는 비목명이 cud와 겹쳐 예산을 공고별(budgetsBy)로 저장
+  const progBudgets: Record<string, string> = isSsp ? (prof.budgetsBy?.[prog] || {}) : (prof.budgets || {});
+  const setBudget = (item: string, v: string) =>
+    setProf(pr => isSsp
+      ? { ...pr, budgetsBy: { ...(pr.budgetsBy || {}), [prog]: { ...(pr.budgetsBy?.[prog] || {}), [item]: v } } }
+      : { ...pr, budgets: { ...(pr.budgets || {}), [item]: v } });
+  const progItems: readonly string[] = prog === "td" ? TD_ITEMS : isSsp ? SSP_ITEMS : EXPENSE_ITEMS;
 
   // ---- 건 목록 ----
   const [docs, setDocs] = useState<GrantDoc[]>([]);
@@ -140,7 +156,13 @@ export default function GrantDocs() {
   const setD = (patch: Record<string, any>) => setCur(c => c ? { ...c, data: { ...c.data, ...patch } } : c);
 
   function newDoc() {
-    if (prog === "td") {
+    if (isSsp) {
+      setCur({
+        title: "", program: prog, expense_item: "재료비", forms: [...(SSP_PRESETS["재료비"] || [])],
+        data: { writeDate: todayIso(), expenseItem: "재료비" },
+        photos: [],
+      });
+    } else if (prog === "td") {
       setCur({
         title: "", program: "td", expense_item: "(실험)재료비", forms: [...(TD_PRESETS["(실험)재료비"] || [])],
         data: { writeDate: todayIso(), expenseItem: "(실험)재료비" },
@@ -187,7 +209,7 @@ export default function GrantDocs() {
 
   // 지출항목(비목) 변경 → 서식 기본 추천 자동 체크 (공고별 프리셋)
   function setExpense(item: string) {
-    const preset: string[] = prog === "td" ? (TD_PRESETS[item] || ["t8"]) : (FORM_PRESETS[item] || ["f1"]);
+    const preset: string[] = isSsp ? (SSP_PRESETS[item] || ["s2"]) : prog === "td" ? (TD_PRESETS[item] || ["t8"]) : (FORM_PRESETS[item] || ["f1"]);
     setCur(c => c ? { ...c, expense_item: item, forms: [...preset], data: { ...c.data, expenseItem: item } } : c);
   }
   function toggleForm(k: string) {
@@ -198,11 +220,20 @@ export default function GrantDocs() {
   const sections = useMemo(() => {
     const s = new Set<string>();
     (cur?.forms || []).forEach(k => {
-      const secs = prog === "td" ? TD_FORMS.find(f => f.key === k)?.sections : FORMS.find(f => f.key === k)?.sections;
+      const secs = isSsp ? SSP_FORMS.find(f => f.key === k)?.sections
+        : prog === "td" ? TD_FORMS.find(f => f.key === k)?.sections : FORMS.find(f => f.key === k)?.sections;
       (secs || []).forEach(x => s.add(x));
     });
     return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur?.forms, prog]);
+
+  // 사용실적보고서(s20)·월간 활동보고서(s22)는 공고의 모든 집행 건에서 자동 집계 — 편집 중 목록 로드
+  const needAllDocs = isSsp && !!cur && (cur.forms.includes("s20") || cur.forms.includes("s22"));
+  const [allDocs, setAllDocs] = useState<GrantDoc[]>([]);
+  useEffect(() => {
+    if (needAllDocs) listGrantSettle(prog).then(setAllDocs).catch(() => setAllDocs([]));
+  }, [needAllDocs, prog]);
 
   // ---- 사진 업로드 (다중 선택 / 드래그 / 붙여넣기) ----
   async function uploadFiles(raws: File[]) {
@@ -258,6 +289,8 @@ export default function GrantDocs() {
   const img = (path: string) => imgCache[path];
   const selForms = FORMS.filter(f => cur?.forms.includes(f.key));
   const selFormsTD = TD_FORMS.filter(f => cur?.forms.includes(f.key));
+  const selFormsSSP = sspForms.filter(f => cur?.forms.includes(f.key));
+  const selCount = isSsp ? selFormsSSP.length : prog === "td" ? selFormsTD.length : selForms.length;
 
   // 기술닥터 원장(제8호) 행 편집
   const tdLedger: any[] = Array.isArray(d.ledger) ? d.ledger : [];
@@ -272,7 +305,24 @@ export default function GrantDocs() {
     const items = (r.items || []).filter(it => it?.name);
     const first = items[0];
     const nameLabel = first?.name ? (items.length > 1 ? `${first.name} 외 ${items.length - 1}건` : String(first.name)) : "";
-    if (prog === "td") {
+    if (isSsp) {
+      // 품목 → 사용내역서(구매건) 세부내역 행으로 추가
+      const rows = items.map(it => ({
+        kind: [it?.name, it?.spec].filter(Boolean).join(" "),
+        unit: it?.unitPrice != null ? String(it.unitPrice) : "", qty: it?.qty != null ? String(it.qty) : "",
+        sum: it?.amount != null ? String(it.amount) : "", note: "",
+      }));
+      setCur(c => c ? {
+        ...c, title: c.title || nameLabel,
+        data: {
+          ...c.data,
+          itemName: c.data.itemName || nameLabel, vdName: r.vendor || c.data.vdName,
+          buyDate: r.date || c.data.buyDate, deliverDate: r.date || c.data.deliverDate,
+          useAmount: r.supplyTotal != null ? String(r.supplyTotal) : c.data.useAmount,
+          buyRows: [...(Array.isArray(c.data.buyRows) ? c.data.buyRows : []), ...rows],
+        },
+      } : c);
+    } else if (prog === "td") {
       const rows = items.map(it => ({
         item: cur.expense_item, desc: [it?.name, it?.spec].filter(Boolean).join(" "),
         date: r.date || "", payee: r.vendor || "", amount: it?.amount != null ? String(it.amount) : "",
@@ -329,10 +379,10 @@ export default function GrantDocs() {
   // AI 다듬기에 전달할 건 정보 — 초안에 없는 사실을 지어내지 않도록 실제 값만 전달
   const aiCtx = {
     "지원사업": progDef.name,
-    "기업명": prof.company, "과제명": prog === "td" ? prof.td?.project : prof.project, "지출항목": cur?.expense_item,
-    "품명/용역명": d.itemName || d.svcName || cur?.title,
-    "업체": d.vendor || d.svcVendor, "수량": d.qty, "단가(원)": d.unitPrice,
-    "금액(원)": d.total || d.payAmount || d.svcAmount,
+    "기업명": prof.company, "과제명": prog === "td" ? prof.td?.project : isSsp ? sspP.taskName : prof.project, "지출항목": cur?.expense_item,
+    "품명/용역명": d.itemName || d.svcName || d.osName || cur?.title,
+    "업체": d.vendor || d.svcVendor || d.vdName, "수량": d.qty, "단가(원)": d.unitPrice,
+    "금액(원)": d.total || d.payAmount || d.svcAmount || d.useAmount,
     ...(prog === "td" ? { "기술닥터": prof.td?.doctor } : {}),
   };
 
@@ -344,7 +394,7 @@ export default function GrantDocs() {
           <div className="seg">
             {PROGRAMS.map(pr => (
               <button key={pr.key} className={prog === pr.key ? "on" : ""} onClick={() => { setProg(pr.key); setCur(null); setView("list"); }}>
-                {pr.key === "cud" ? "🎓" : "🔧"} {pr.short}
+                {pr.key === "cud" ? "🎓" : pr.key === "td" ? "🔧" : pr.key === "ysc" ? "🚀" : "🌍"} {pr.short}
               </button>
             ))}
           </div>
@@ -406,6 +456,23 @@ export default function GrantDocs() {
                 </div>
               </div>
             )}
+            {isSsp && (
+              <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{prog === "ysc" ? "🚀 딥테크 1기" : "🌍 글창사"} 과제 정보 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>(서식 공통 반영)</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="입교자명 (보통 대표자)" w={150}><input style={inp} value={sspP.trainee || ""} placeholder={prof.ceo || ""} onChange={e => setSspP({ trainee: e.target.value })} /></Field>
+                  <Field label="사업화 과제명"><input style={inp} value={sspP.taskName || ""} onChange={e => setSspP({ taskName: e.target.value })} /></Field>
+                </div>
+                <div><Field label="과제개요 (월간 활동보고서)"><textarea style={{ ...inp, minHeight: 50 }} value={sspP.taskOutline || ""} onChange={e => setSspP({ taskOutline: e.target.value })} /></Field></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="협약 시작" w={150}><input type="date" style={inp} value={sspP.periodFrom || ""} onChange={e => setSspP({ periodFrom: e.target.value })} /></Field>
+                  <Field label="협약 종료" w={150}><input type="date" style={inp} value={sspP.periodTo || ""} onChange={e => setSspP({ periodTo: e.target.value })} /></Field>
+                  <Field label="정부지원금(원)" w={150}><input style={inp} value={sspP.govFund || ""} onChange={e => setSspP({ govFund: e.target.value })} /></Field>
+                  <Field label="부담금 현금(원)" w={150}><input style={inp} value={sspP.ownCash || ""} onChange={e => setSspP({ ownCash: e.target.value })} /></Field>
+                  <Field label="부담금 현물(원)" w={150}><input style={inp} value={sspP.ownInkind || ""} onChange={e => setSspP({ ownInkind: e.target.value })} /></Field>
+                </div>
+              </div>
+            )}
             <div>
               <label style={lbl}>서명(도장) 이미지 — 배경이 투명한 PNG 권장, 한 번 등록하면 모든 서식의 (인) 위에 자동 표시</label>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -421,8 +488,7 @@ export default function GrantDocs() {
 
       {/* ===== 정산 현황 ===== */}
       {!cur && view === "settle" && (() => {
-        const progItems = prog === "td" ? TD_ITEMS : EXPENSE_ITEMS;
-        const { lines, totalAmount, totalBudget } = settleSummary(settleDocs, prof.budgets || {}, progItems);
+        const { lines, totalAmount, totalBudget } = settleSummary(settleDocs, progBudgets, progItems);
         const hasBudget = totalBudget > 0;
         const sorted = [...settleDocs].sort((a, b) =>
           String(a.data?.writeDate || a.created_at || "").localeCompare(String(b.data?.writeDate || b.created_at || "")));
@@ -439,7 +505,7 @@ export default function GrantDocs() {
               </div>
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>
-                  {prog === "td" ? "세목별 계획액(원)" : "지출항목별 예산(원)"} <span className="muted" style={{ fontWeight: 400 }}>— 입력하면 잔액·집행률이 계산됩니다 (선택, 회사 정보와 함께 저장)</span>
+                  {prog === "td" ? "세목별 계획액(원)" : isSsp ? "비목별 예산(원)" : "지출항목별 예산(원)"} <span className="muted" style={{ fontWeight: 400 }}>— 입력하면 잔액·집행률이 계산됩니다 (선택, 회사 정보와 함께 저장)</span>
                 </div>
                 {prog === "td" && (
                   <div style={{ fontSize: 12, background: "#f3f7fc", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px", marginBottom: 8, lineHeight: 1.7 }}>
@@ -447,11 +513,11 @@ export default function GrantDocs() {
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {(prog === "td" ? TD_ITEMS : EXPENSE_ITEMS).map(it => (
+                  {progItems.map(it => (
                     <div key={it} style={{ width: 165 }}>
                       <label style={lbl}>{it}</label>
-                      <input style={inp} value={prof.budgets?.[it] || ""} placeholder="예산(원)"
-                        onChange={e => setProf({ ...prof, budgets: { ...(prof.budgets || {}), [it]: e.target.value } })} />
+                      <input style={inp} value={progBudgets[it] || ""} placeholder="예산(원)"
+                        onChange={e => setBudget(it, e.target.value)} />
                     </div>
                   ))}
                 </div>
@@ -467,9 +533,9 @@ export default function GrantDocs() {
                   <th style={{ width: "18%" }}>기 업 명</th><td style={{ width: "34%", textAlign: "center" }}>{prof.company}</td>
                   <th style={{ width: "18%" }}>작 성 일</th><td style={{ textAlign: "center" }}>{todayIso()}</td>
                 </tr>
-                <tr style={{ height: "6.9mm" }}><th>과 제 명</th><td colSpan={3} style={{ textAlign: "center" }}>{prog === "td" ? prof.td?.project : prof.project}</td></tr>
+                <tr style={{ height: "6.9mm" }}><th>과 제 명</th><td colSpan={3} style={{ textAlign: "center" }}>{prog === "td" ? prof.td?.project : isSsp ? sspP.taskName : prof.project}</td></tr>
               </tbody></table>
-              <div style={{ fontSize: "13pt", fontWeight: 700, margin: "5mm 0 1.5mm" }}>□ {prog === "td" ? "세목별" : "지출항목별"} 집계</div>
+              <div style={{ fontSize: "13pt", fontWeight: 700, margin: "5mm 0 1.5mm" }}>□ {prog === "td" ? "세목별" : isSsp ? "비목별" : "지출항목별"} 집계</div>
               <table className="gt gx" style={{ fontSize: "10.5pt" }}>
                 <thead><tr style={{ height: "6.9mm" }}>
                   <th>지출항목</th><th style={{ width: "9%" }}>건수</th><th style={{ width: "17%" }}>집행액(원)</th>
@@ -516,7 +582,7 @@ export default function GrantDocs() {
                       <td style={{ textAlign: "center" }}>{String(r.data?.writeDate || r.created_at || "").slice(0, 10)}</td>
                       <td style={{ textAlign: "center" }}>{r.expense_item}</td>
                       <td style={{ paddingLeft: "2mm" }}>{r.title}</td>
-                      <td style={{ textAlign: "center" }}>{r.data?.vendor || r.data?.svcVendor || ""}</td>
+                      <td style={{ textAlign: "center" }}>{r.data?.vendor || r.data?.svcVendor || r.data?.vdName || ""}</td>
                       <td style={{ textAlign: "right" }}>{money(docAmount(r.data || {})) || "0"}</td>
                     </tr>
                   ))}
@@ -571,11 +637,19 @@ export default function GrantDocs() {
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
             <Field label="건 이름 (품명/용역명)"><input style={inp} value={cur.title} onChange={e => setCur({ ...cur, title: e.target.value })} /></Field>
-            <Field label={prog === "td" ? "비목(세목)" : "지출항목"} w={190}>
+            <Field label={prog === "td" ? "비목(세목)" : isSsp ? "비목" : "지출항목"} w={190}>
               <select style={inp} value={cur.expense_item || ""} onChange={e => setExpense(e.target.value)}>
-                {(prog === "td" ? TD_ITEMS : EXPENSE_ITEMS).map(it => <option key={it} value={it}>{it}</option>)}
+                {progItems.map(it => <option key={it} value={it}>{it}</option>)}
               </select>
             </Field>
+            {isSsp && (
+              <Field label="세목 (집행계획서 기준)" w={230}>
+                <select style={inp} value={d.subItem || ""} onChange={e => setD({ subItem: e.target.value })}>
+                  <option value="">세목 선택 (선택사항)</option>
+                  {(SSP_SUBITEMS[cur.expense_item || ""] || []).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="작성일" w={150}><input type="date" style={inp} value={d.writeDate || ""} onChange={e => setD({ writeDate: e.target.value })} /></Field>
           </div>
 
@@ -586,7 +660,7 @@ export default function GrantDocs() {
             </button>
             {readPrev && <a style={{ cursor: "pointer", color: "var(--muted)", fontSize: 13 }} onClick={undoRead}>↩ 인식 전으로 되돌리기</a>}
             <span className="muted" style={{ fontSize: 11.5 }}>
-              품명·수량·단가·금액·업체·일자를 AI가 읽어 자동 입력합니다{prog === "td" ? " (품목이 집행 행으로 추가됩니다)" : ""}.
+              품명·수량·단가·금액·업체·일자를 AI가 읽어 자동 입력합니다{prog === "td" ? " (품목이 집행 행으로 추가됩니다)" : isSsp ? " (품목이 사용내역서 세부내역 행으로 추가됩니다)" : ""}.
             </span>
           </div>
 
@@ -594,11 +668,17 @@ export default function GrantDocs() {
           <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>생성할 서식 <span className="muted" style={{ fontWeight: 400 }}>({prog === "td" ? "비목" : "지출항목"}을 바꾸면 기본 추천이 다시 체크됩니다)</span></div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {(prog === "td" ? TD_FORMS : FORMS).map(f => (
-                <label key={f.key} style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  <input type="checkbox" checked={cur.forms.includes(f.key)} onChange={() => toggleForm(f.key)} /> {f.no}. {f.title}
-                </label>
-              ))}
+              {isSsp
+                ? sspForms.map(f => (
+                  <label key={f.key} style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={cur.forms.includes(f.key)} onChange={() => toggleForm(f.key)} /> {sspFormNo(f, sspProg)}. {sspFormTitle(f, sspProg)}
+                  </label>
+                ))
+                : (prog === "td" ? TD_FORMS : FORMS).map(f => (
+                  <label key={f.key} style={{ fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    <input type="checkbox" checked={cur.forms.includes(f.key)} onChange={() => toggleForm(f.key)} /> {f.no}. {f.title}
+                  </label>
+                ))}
             </div>
           </div>
 
@@ -619,6 +699,31 @@ export default function GrantDocs() {
                 </div>
                 <div style={{ marginTop: 8, fontSize: 12, color: "#555", lineHeight: 1.7 }}>
                   {ev.limits.map(l => <div key={l}>⚠ {l}</div>)}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 창업성공패키지: 비목별 증빙 체크리스트 (서식 원문 기준) */}
+          {isSsp && SSP_EVIDENCE[cur.expense_item || ""] && (() => {
+            const ev = SSP_EVIDENCE[cur.expense_item || ""];
+            const checks: Record<string, boolean> = d.evChecks || {};
+            return (
+              <div style={{ marginTop: 12, border: "1px solid #cfe3f7", background: "#f4f9ff", borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>📎 '{cur.expense_item}' 챙길 서류 <span className="muted" style={{ fontWeight: 400 }}>— 업로드된 2026 서류양식 원문 기준</span></div>
+                <div style={{ display: "grid", gap: 4 }}>
+                  {ev.docs.map(doc => (
+                    <label key={doc} style={{ fontSize: 13, display: "flex", alignItems: "flex-start", gap: 6, cursor: "pointer" }}>
+                      <input type="checkbox" checked={!!checks[doc]} onChange={e => setD({ evChecks: { ...checks, [doc]: e.target.checked } })} style={{ marginTop: 3 }} />
+                      <span style={doc.startsWith("※") ? { color: "#b45309", fontWeight: 600 } : undefined}>{doc}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, color: "#555", lineHeight: 1.7 }}>
+                  {ev.limits.map(l => <div key={l}>⚠ {l}</div>)}
+                  {d.subItem && (SSP_SUBITEMS[cur.expense_item || ""] || []).find(s => s.name === d.subItem)?.note && (
+                    <div style={{ color: "#b45309" }}>⚠ [{d.subItem}] {(SSP_SUBITEMS[cur.expense_item || ""] || []).find(s => s.name === d.subItem)?.note}</div>
+                  )}
                 </div>
               </div>
             );
@@ -779,6 +884,563 @@ export default function GrantDocs() {
                 <AiTextarea label="변경 사유" field="협약변경 사유(변경 전후 내용의 타당성 설명)" value={d.changeReason || ""} minHeight={70} ctx={aiCtx} onChange={v => setD({ changeReason: v })} />
               </div>
               <div style={{ marginTop: 8 }}><Field label="기타사항"><textarea style={{ ...inp, minHeight: 50 }} value={d.changeEtc || ""} onChange={e => setD({ changeEtc: e.target.value })} /></Field></div>
+            </div>
+          )}
+
+          {/* ===== 창업성공패키지(딥테크·글창사): 서식별 입력 ===== */}
+          {isSsp && sections.has("spplan") && (() => {
+            const plan: Record<string, any> = d.plan || {};
+            const setPlan = (name: string, patch: Record<string, string>) => setD({ plan: { ...plan, [name]: { ...(plan[name] || {}), ...patch } } });
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🗂 사업비 집행계획서 — 세목별 소요금액·산출내역</div>
+                {Object.entries(SSP_SUBITEMS).map(([it, subs]) => (
+                  <div key={it} style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, margin: "6px 0 4px" }}>{it}</div>
+                    {subs.map(s => (
+                      <div key={s.name} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+                        <span style={{ fontSize: 12, width: 190 }}>{s.name}</span>
+                        <input style={{ ...inp, width: 130 }} placeholder="소요금액(원)" value={plan[s.name]?.amt || ""} onChange={e => setPlan(s.name, { amt: e.target.value })} />
+                        <input style={{ ...inp, flex: 1, minWidth: 180 }} placeholder={s.note || "산출내역"} value={plan[s.name]?.calc || ""} onChange={e => setPlan(s.name, { calc: e.target.value })} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spbuy") && (() => {
+            const buyRows: any[] = Array.isArray(d.buyRows) ? d.buyRows : [];
+            const setRows = (rows: any[]) => setD({ buyRows: rows });
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🛒 구매/사용내역</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {cur.forms.includes("s2") && (
+                    <Field label="세부내역서 구분" w={110}>
+                      <select style={inp} value={d.s2Type || "구매"} onChange={e => setD({ s2Type: e.target.value })}><option>구매</option><option>계약</option></select>
+                    </Field>
+                  )}
+                  <Field label="제품명"><input style={inp} value={d.itemName || ""} onChange={e => setD({ itemName: e.target.value })} /></Field>
+                  <Field label="사업비사용금액(원, VAT제외)" w={180}><input style={inp} value={d.useAmount || ""} onChange={e => setD({ useAmount: e.target.value })} /></Field>
+                  <Field label="구매일자" w={150}><input type="date" style={inp} value={d.buyDate || ""} onChange={e => setD({ buyDate: e.target.value })} /></Field>
+                  <Field label="납품일자" w={150}><input type="date" style={inp} value={d.deliverDate || ""} onChange={e => setD({ deliverDate: e.target.value })} /></Field>
+                </div>
+                {cur.forms.includes("s4") && (
+                  <div style={{ marginTop: 8 }}>
+                    <AiTextarea label="구매사유" field="사업비 사용내역서 구매사유" value={d.buyReason || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ buyReason: v })} />
+                  </div>
+                )}
+                {cur.forms.includes("s2") && (d.s2Type || "구매") === "구매" && (
+                  <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                    <AiTextarea label="구매 목표(사유)" field="구매계약 세부내역서 구매 목표(사유)" value={d.buyGoal || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ buyGoal: v })} />
+                    <AiTextarea label="구매 세부내용" field="구매계약 세부내역서 구매 세부내용" value={d.buyDetail || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ buyDetail: v })} />
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Field label="구매(납품) 계획 (수량·일정 등)"><textarea style={{ ...inp, minHeight: 50 }} value={d.buyPlan || ""} onChange={e => setD({ buyPlan: e.target.value })} /></Field>
+                      <Field label="결과물 (규격·사양 등)"><textarea style={{ ...inp, minHeight: 50 }} value={d.buyResult || ""} onChange={e => setD({ buyResult: e.target.value })} /></Field>
+                    </div>
+                    <div><Field label="기타 (추가증빙자료 등 별첨)"><input style={inp} value={d.buyEtc || ""} onChange={e => setD({ buyEtc: e.target.value })} /></Field></div>
+                  </div>
+                )}
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>세부내역 행 <span className="muted" style={{ fontWeight: 400 }}>(사용내역서 표 — 거래명세서 불러오기로 자동 추가 가능)</span></div>
+                {buyRows.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 150 }} placeholder="종류(품명)" value={r.kind || ""} onChange={e => setRows(buyRows.map((x, j) => j === i ? { ...x, kind: e.target.value } : x))} />
+                    <input style={{ ...inp, width: 110 }} placeholder="단가(원)" value={r.unit || ""} onChange={e => setRows(buyRows.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} />
+                    <input style={{ ...inp, width: 70 }} placeholder="수량" value={r.qty || ""} onChange={e => setRows(buyRows.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))} />
+                    <input style={{ ...inp, width: 120 }} placeholder="합계(VAT제외)" value={r.sum || ""} onChange={e => setRows(buyRows.map((x, j) => j === i ? { ...x, sum: e.target.value } : x))} />
+                    <input style={{ ...inp, width: 90 }} placeholder="비고" value={r.note || ""} onChange={e => setRows(buyRows.map((x, j) => j === i ? { ...x, note: e.target.value } : x))} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setRows(buyRows.filter((_, j) => j !== i))}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setRows([...buyRows, {}])}>＋ 내역 행</button>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spvendor") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🏭 {cur.forms.includes("s23") ? "위탁기관(서약자) 정보" : "거래(위탁)업체 정보"}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="업체명"><input style={inp} value={d.vdName || ""} onChange={e => setD({ vdName: e.target.value })} /></Field>
+                <Field label="대표자" w={110}><input style={inp} value={d.vdCeo || ""} onChange={e => setD({ vdCeo: e.target.value })} /></Field>
+                <Field label="사업자번호" w={140}><input style={inp} value={d.vdBizno || ""} onChange={e => setD({ vdBizno: e.target.value })} /></Field>
+                <Field label="연락처" w={140}><input style={inp} value={d.vdTel || ""} onChange={e => setD({ vdTel: e.target.value })} /></Field>
+                <Field label="팩스" w={130}><input style={inp} value={d.vdFax || ""} onChange={e => setD({ vdFax: e.target.value })} /></Field>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <Field label="주소"><input style={inp} value={d.vdAddr || ""} onChange={e => setD({ vdAddr: e.target.value })} /></Field>
+                <Field label="인력 현황" w={180}><input style={inp} value={d.vdStaff || ""} onChange={e => setD({ vdStaff: e.target.value })} /></Field>
+                <Field label="주요 실적" w={200}><input style={inp} value={d.vdRecord || ""} onChange={e => setD({ vdRecord: e.target.value })} /></Field>
+              </div>
+              {cur.forms.includes("s5") && (
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="제품 제작분야 (쉼표로: 디자인,설계,제작…)" w={240}><input style={inp} value={d.vdField || ""} onChange={e => setD({ vdField: e.target.value })} /></Field>
+                    <Field label="법인등록번호" w={160}><input style={inp} value={d.vdCorpNo || ""} onChange={e => setD({ vdCorpNo: e.target.value })} /></Field>
+                    <Field label="업종" w={130}><input style={inp} value={d.vdSector || ""} onChange={e => setD({ vdSector: e.target.value })} /></Field>
+                    <Field label="회사설립일" w={150}><input type="date" style={inp} value={d.vdFounded || ""} onChange={e => setD({ vdFounded: e.target.value })} /></Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="홈페이지" w={180}><input style={inp} value={d.vdWeb || ""} onChange={e => setD({ vdWeb: e.target.value })} /></Field>
+                    <Field label="전년도 매출액(백만원)" w={150}><input style={inp} value={d.vdSales || ""} onChange={e => setD({ vdSales: e.target.value })} /></Field>
+                    <Field label="종업원 수(명)" w={110}><input style={inp} value={d.vdHeads || ""} onChange={e => setD({ vdHeads: e.target.value })} /></Field>
+                    <Field label="공장 소재지"><input style={inp} value={d.vdPlant || ""} onChange={e => setD({ vdPlant: e.target.value })} /></Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="담당자 성명" w={110}><input style={inp} value={d.vdMgr || ""} onChange={e => setD({ vdMgr: e.target.value })} /></Field>
+                    <Field label="직위" w={90}><input style={inp} value={d.vdMgrTitle || ""} onChange={e => setD({ vdMgrTitle: e.target.value })} /></Field>
+                    <Field label="담당자 연락처" w={140}><input style={inp} value={d.vdMgrTel || ""} onChange={e => setD({ vdMgrTel: e.target.value })} /></Field>
+                    <Field label="담당자 이메일" w={180}><input style={inp} value={d.vdMgrEmail || ""} onChange={e => setD({ vdMgrEmail: e.target.value })} /></Field>
+                    <Field label="현장평가 면제" w={110}>
+                      <select style={inp} value={d.vdSiteSkip === true ? "해당" : d.vdSiteSkip === false ? "미해당" : ""} onChange={e => setD({ vdSiteSkip: e.target.value === "해당" ? true : e.target.value === "미해당" ? false : undefined })}>
+                        <option value="">-</option><option>해당</option><option>미해당</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="생산품목"><input style={inp} value={d.vdProducts || ""} onChange={e => setD({ vdProducts: e.target.value })} /></Field>
+                  </div>
+                  <div><Field label="회사소개 (5줄 이내)"><textarea style={{ ...inp, minHeight: 60 }} value={d.vdIntro || ""} onChange={e => setD({ vdIntro: e.target.value })} /></Field></div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, margin: "4px 0" }}>보유 장비 목록</div>
+                    {(Array.isArray(d.vdEquip) ? d.vdEquip : []).map((r: any, i: number) => (
+                      <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                        <input style={{ ...inp, flex: 1, minWidth: 140 }} placeholder="장비명" value={r.name || ""} onChange={e => setD({ vdEquip: (d.vdEquip as any[]).map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />
+                        <input style={{ ...inp, width: 140 }} placeholder="규격" value={r.spec || ""} onChange={e => setD({ vdEquip: (d.vdEquip as any[]).map((x, j) => j === i ? { ...x, spec: e.target.value } : x) })} />
+                        <input style={{ ...inp, width: 160 }} placeholder="용도" value={r.use || ""} onChange={e => setD({ vdEquip: (d.vdEquip as any[]).map((x, j) => j === i ? { ...x, use: e.target.value } : x) })} />
+                        <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ vdEquip: (d.vdEquip as any[]).filter((_, j) => j !== i) })}>×</button>
+                      </div>
+                    ))}
+                    <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ vdEquip: [...(Array.isArray(d.vdEquip) ? d.vdEquip : []), {}] })}>＋ 장비 행</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isSsp && sections.has("spoutsrc") && (() => {
+            const osItems: any[] = Array.isArray(d.osItems) ? d.osItems : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🧰 위탁개발(계약) 정보</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="계약(개발)명"><input style={inp} value={d.osName || ""} onChange={e => setD({ osName: e.target.value })} /></Field>
+                  <Field label="위탁분야 (쉼표로: 디자인,설계,금형…)" w={220}><input style={inp} value={d.osField || ""} onChange={e => setD({ osField: e.target.value })} /></Field>
+                  <Field label="사업비(원, VAT제외)" w={150}><input style={inp} value={d.osAmount || ""} onChange={e => setD({ osAmount: e.target.value })} /></Field>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <Field label="계약 시작" w={150}><input type="date" style={inp} value={d.osFrom || ""} onChange={e => setD({ osFrom: e.target.value })} /></Field>
+                  <Field label="계약 종료" w={150}><input type="date" style={inp} value={d.osTo || ""} onChange={e => setD({ osTo: e.target.value })} /></Field>
+                  <Field label="계약 체결일 (승계·해지용)" w={170}><input type="date" style={inp} value={d.osSignDate || ""} onChange={e => setD({ osSignDate: e.target.value })} /></Field>
+                  {cur.forms.includes("s6") && <Field label="위탁 책임자 직위" w={130}><input style={inp} value={d.vdCeoTitle || ""} onChange={e => setD({ vdCeoTitle: e.target.value })} /></Field>}
+                  {cur.forms.includes("s7") && (
+                    <Field label="보고서 구분" w={100}>
+                      <select style={inp} value={d.s7Kind || "완료"} onChange={e => setD({ s7Kind: e.target.value })}><option>중간</option><option>완료</option></select>
+                    </Field>
+                  )}
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                  <AiTextarea label="계약(개발) 목표" field="위탁개발 계약(개발) 목표" value={d.osGoal || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ osGoal: v })} />
+                  <AiTextarea label="계약(개발) 내용" field="위탁개발 계약(개발) 내용" value={d.osDetail || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ osDetail: v })} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="계약(개발) 계획 (개발계획·일정)"><textarea style={{ ...inp, minHeight: 50 }} value={d.osPlan || ""} onChange={e => setD({ osPlan: e.target.value })} /></Field>
+                    <Field label="예상 결과물"><textarea style={{ ...inp, minHeight: 50 }} value={d.osResult || ""} onChange={e => setD({ osResult: e.target.value })} /></Field>
+                  </div>
+                  <div><Field label="기타 (추가증빙자료 등 별첨)"><input style={inp} value={d.osEtc || ""} onChange={e => setD({ osEtc: e.target.value })} /></Field></div>
+                </div>
+                {cur.forms.includes("s7") && (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>위탁개발 항목(범위)·진척도</div>
+                    {osItems.map((r, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                        <input style={{ ...inp, flex: 1, minWidth: 160 }} placeholder="위탁개발 항목(범위)" value={r.item || ""} onChange={e => setD({ osItems: osItems.map((x, j) => j === i ? { ...x, item: e.target.value } : x) })} />
+                        <input style={{ ...inp, width: 100 }} placeholder="진척도(%)" value={r.progress || ""} onChange={e => setD({ osItems: osItems.map((x, j) => j === i ? { ...x, progress: e.target.value } : x) })} />
+                        <input style={{ ...inp, width: 120 }} placeholder="결과평가" value={r.grade || ""} onChange={e => setD({ osItems: osItems.map((x, j) => j === i ? { ...x, grade: e.target.value } : x) })} />
+                        <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ osItems: osItems.filter((_, j) => j !== i) })}>×</button>
+                      </div>
+                    ))}
+                    <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ osItems: [...osItems, {}] })}>＋ 항목 행</button>
+                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                      <AiTextarea label="추진일정별 작업내용 (별첨 보고서)" field="위탁개발 보고서 추진일정별 작업내용" value={d.osTimeline || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ osTimeline: v })} />
+                      <AiTextarea label="결과물 (output, spec 등)" field="위탁개발 보고서 결과물(output/spec 상세)" value={d.osOutput || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ osOutput: v })} />
+                      <div><Field label="증빙자료 (사진·도면·CD 등 목록)"><input style={inp} value={d.osEvidence || ""} onChange={e => setD({ osEvidence: e.target.value })} /></Field></div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spmold") && (() => {
+            const moldRows: any[] = Array.isArray(d.moldRows) ? d.moldRows : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🔩 금형 견적서</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="Model" w={150}><input style={inp} value={d.moldModel || ""} onChange={e => setD({ moldModel: e.target.value })} /></Field>
+                  <Field label="금형 / No" w={130}><input style={inp} value={d.moldNo || ""} onChange={e => setD({ moldNo: e.target.value })} /></Field>
+                  <Field label="금형명"><input style={inp} value={d.moldName || ""} onChange={e => setD({ moldName: e.target.value })} /></Field>
+                  <Field label="제작기일(일)" w={100}><input style={inp} value={d.moldDays || ""} onChange={e => setD({ moldDays: e.target.value })} /></Field>
+                  <Field label="유효기간(일)" w={100}><input style={inp} value={d.moldValid || ""} onChange={e => setD({ moldValid: e.target.value })} /></Field>
+                  <Field label="세부견적(부)" w={100}><input style={inp} value={d.moldAttach || ""} onChange={e => setD({ moldAttach: e.target.value })} /></Field>
+                </div>
+                <div style={{ marginTop: 8 }}><Field label="REMARK"><input style={inp} value={d.moldRemark || ""} onChange={e => setD({ moldRemark: e.target.value })} /></Field></div>
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>공정별 견적 (최대 11행)</div>
+                {moldRows.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 150 }} placeholder="공정명" value={r.proc || ""} onChange={e => setD({ moldRows: moldRows.map((x, j) => j === i ? { ...x, proc: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 70 }} placeholder="수량" value={r.qty || ""} onChange={e => setD({ moldRows: moldRows.map((x, j) => j === i ? { ...x, qty: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 120 }} placeholder="견적금액(원)" value={r.price || ""} onChange={e => setD({ moldRows: moldRows.map((x, j) => j === i ? { ...x, price: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 120 }} placeholder="결정가격(원)" value={r.fixed || ""} onChange={e => setD({ moldRows: moldRows.map((x, j) => j === i ? { ...x, fixed: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 90 }} placeholder="비고" value={r.note || ""} onChange={e => setD({ moldRows: moldRows.map((x, j) => j === i ? { ...x, note: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ moldRows: moldRows.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ moldRows: [...moldRows, {}] })}>＋ 공정 행</button>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("sppc") && (() => {
+            const pcRows: any[] = Array.isArray(d.pcRows) ? d.pcRows : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>💻 전산장비 구매 세부내역 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 한도: 1,000만원 + 채용승인 직원 1인당 250만원 (원본 수식)</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="기수 표기" w={150}><input style={inp} value={d.cohort || ""} placeholder={prog === "ysc" ? "딥테크 1기" : "글로벌 6기"} onChange={e => setD({ cohort: e.target.value })} /></Field>
+                  <Field label="채용승인 받은 직원수" w={150}><input style={inp} value={d.pcHired || ""} onChange={e => setD({ pcHired: e.target.value })} /></Field>
+                </div>
+                {pcRows.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "6px 0" }}>
+                    <input style={{ ...inp, width: 110 }} placeholder="구매일" value={r.date || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, date: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 90 }} placeholder="구분" value={r.kind || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, kind: e.target.value } : x) })} />
+                    <input style={{ ...inp, flex: 1, minWidth: 120 }} placeholder="모델명" value={r.model || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, model: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 90 }} placeholder="제조사" value={r.maker || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, maker: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 90 }} placeholder="구입처" value={r.shop || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, shop: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 60 }} placeholder="수량" value={r.qty || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, qty: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 110 }} placeholder="금액(VAT제외)" value={r.amount || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, amount: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 170 }} placeholder="사용자/장소/용도" value={r.use || ""} onChange={e => setD({ pcRows: pcRows.map((x, j) => j === i ? { ...x, use: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ pcRows: pcRows.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ pcRows: [...pcRows, {}] })}>＋ 장비 행</button>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spexpo") && (() => {
+            const st: Record<string, any> = d.expoStats || {};
+            const list: any[] = Array.isArray(d.expoList) ? d.expoList : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🎪 전시회 참가 결과 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 부스·상담 사진은 아래 증빙사진에 올리세요</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="전시회명"><input style={inp} value={d.expoName || ""} onChange={e => setD({ expoName: e.target.value })} /></Field>
+                  <Field label="개최기간 (예: 2026.7.1~7.3)" w={190}><input style={inp} value={d.expoPeriod || ""} onChange={e => setD({ expoPeriod: e.target.value })} /></Field>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {[["visit", "총방문자수(명)"], ["consult", "제품상담(건)"], ["buyer", "바이어 발굴(건)"], ["invest", "투자유치(건)"], ["interest", "관심(건)"], ["deal", "거래확정(건)"]].map(([k, l]) => (
+                    <Field key={k} label={l} w={115}><input style={inp} value={st[k] || ""} onChange={e => setD({ expoStats: { ...st, [k]: e.target.value } })} /></Field>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                  <AiTextarea label="주요 상담실적 (줄바꿈 = 항목)" field="전시회 참가 결과보고서 주요 상담실적" value={d.expoResults || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ expoResults: v })} />
+                  <AiTextarea label="참가성과 (줄바꿈 = 항목)" field="전시회 참가 결과보고서 참가성과" value={d.expoOutcome || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ expoOutcome: v })} />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>상담업체 리스트</div>
+                {list.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 130 }} placeholder="업체명" value={r.name || ""} onChange={e => setD({ expoList: list.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 100 }} placeholder="담당자" value={r.contact || ""} onChange={e => setD({ expoList: list.map((x, j) => j === i ? { ...x, contact: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="연락처" value={r.tel || ""} onChange={e => setD({ expoList: list.map((x, j) => j === i ? { ...x, tel: e.target.value } : x) })} />
+                    <input style={{ ...inp, flex: 2, minWidth: 160 }} placeholder="주요 상담내용" value={r.memo || ""} onChange={e => setD({ expoList: list.map((x, j) => j === i ? { ...x, memo: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ expoList: list.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ expoList: [...list, {}] })}>＋ 상담업체 행</button>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spir") && (() => {
+            const list: any[] = Array.isArray(d.irList) ? d.irList : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🌐 해외 IR대회 참가 결과</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="IR대회명"><input style={inp} value={d.irName || ""} onChange={e => setD({ irName: e.target.value })} /></Field>
+                  <Field label="개최국 / 도시" w={170}><input style={inp} value={d.irCity || ""} onChange={e => setD({ irCity: e.target.value })} /></Field>
+                  <Field label="참가기간" w={170}><input style={inp} value={d.irPeriod || ""} onChange={e => setD({ irPeriod: e.target.value })} /></Field>
+                  <Field label="피칭 여부 (O/X)" w={110}><input style={inp} value={d.irPitch || ""} onChange={e => setD({ irPitch: e.target.value })} /></Field>
+                  <Field label="부스설치 (O/X)" w={110}><input style={inp} value={d.irBooth || ""} onChange={e => setD({ irBooth: e.target.value })} /></Field>
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                  <AiTextarea label="주요 활동 내용 (줄바꿈 = 항목)" field="해외 IR대회 주요 활동 내용" value={d.irActivity || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ irActivity: v })} />
+                  <AiTextarea label="참가성과 (줄바꿈 = 항목)" field="해외 IR대회 참가성과" value={d.irOutcome || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ irOutcome: v })} />
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "10px 0 4px" }}>투자자 접촉·상담 내역</div>
+                {list.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                    <input style={{ ...inp, width: 130 }} placeholder="투자자명" value={r.name || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 100 }} placeholder="유형(VC/AC/CVC)" value={r.type || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, type: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 80 }} placeholder="국가" value={r.country || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, country: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 90 }} placeholder="담당자" value={r.contact || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, contact: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 120 }} placeholder="연락처" value={r.tel || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, tel: e.target.value } : x) })} />
+                    <input style={{ ...inp, flex: 1, minWidth: 160 }} placeholder="미팅내용·후속계획" value={r.memo || ""} onChange={e => setD({ irList: list.map((x, j) => j === i ? { ...x, memo: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ irList: list.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ irList: [...list, {}] })}>＋ 투자자 행</button>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spadvise") && (() => {
+            const advisors: any[] = Array.isArray(d.advisors) ? d.advisors : [];
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🧑‍🏫 자문 결과 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 개인계좌 입금 불가, 자문인 소속업체로 지급</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="자문주제"><input style={inp} value={d.advTopic || ""} onChange={e => setD({ advTopic: e.target.value })} /></Field>
+                  <Field label="자문일자" w={150}><input type="date" style={inp} value={d.advDate || ""} onChange={e => setD({ advDate: e.target.value })} /></Field>
+                  <Field label="입금정보 (은행/계좌/예금주)" w={230}><input style={inp} value={d.advBank || ""} onChange={e => setD({ advBank: e.target.value })} /></Field>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "8px 0 4px" }}>자문인</div>
+                {advisors.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 130 }} placeholder="소속" value={r.org || ""} onChange={e => setD({ advisors: advisors.map((x, j) => j === i ? { ...x, org: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 100 }} placeholder="직위" value={r.title || ""} onChange={e => setD({ advisors: advisors.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 100 }} placeholder="성명" value={r.name || ""} onChange={e => setD({ advisors: advisors.map((x, j) => j === i ? { ...x, name: e.target.value } : x) })} />
+                    <input style={{ ...inp, width: 140 }} placeholder="주민번호 앞자리" value={r.idFront || ""} onChange={e => setD({ advisors: advisors.map((x, j) => j === i ? { ...x, idFront: e.target.value } : x) })} />
+                    <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ advisors: advisors.filter((_, j) => j !== i) })}>×</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ advisors: [...advisors, {}] })}>＋ 자문인 행</button>
+                <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                  <AiTextarea label="자문 내용요약 (자문인 작성)" field="자문 결과보고서 자문 내용요약" value={d.advSummary || ""} minHeight={70} ctx={aiCtx} onChange={v => setD({ advSummary: v })} />
+                  <AiTextarea label="자문 성과 (입교생 작성)" field="자문 결과보고서 자문 성과" value={d.advOutcome || ""} minHeight={70} ctx={aiCtx} onChange={v => setD({ advOutcome: v })} />
+                </div>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("sptransfer") && (() => {
+            const tr: Record<string, any> = d.trRows || {};
+            const setTr = (k: string, patch: Record<string, string>) => setD({ trRows: { ...tr, [k]: { ...(tr[k] || {}), ...patch } } });
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🏢 권리의무 이전 (개인 → 법인)</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="법인명"><input style={inp} value={d.newCorp || ""} placeholder={prof.company || ""} onChange={e => setD({ newCorp: e.target.value })} /></Field>
+                  <Field label="대표이사" w={110}><input style={inp} value={d.newCeo || ""} placeholder={prof.ceo || ""} onChange={e => setD({ newCeo: e.target.value })} /></Field>
+                  <Field label="법인등록번호" w={160}><input style={inp} value={d.newCorpNo || ""} onChange={e => setD({ newCorpNo: e.target.value })} /></Field>
+                  <Field label="사업자등록번호" w={150}><input style={inp} value={d.newBizno || ""} onChange={e => setD({ newBizno: e.target.value })} /></Field>
+                  <Field label="법인설립일자" w={150}><input type="date" style={inp} value={d.newFounded || ""} onChange={e => setD({ newFounded: e.target.value })} /></Field>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <Field label="소재지"><input style={inp} value={d.newAddr || ""} onChange={e => setD({ newAddr: e.target.value })} /></Field>
+                  <Field label="업종" w={140}><input style={inp} value={d.newSector || ""} onChange={e => setD({ newSector: e.target.value })} /></Field>
+                  <Field label="업태" w={140}><input style={inp} value={d.newType || ""} onChange={e => setD({ newType: e.target.value })} /></Field>
+                </div>
+                {[["gov", "정부지원금"], ["own", "부담금"]].map(([k, label]) => (
+                  <div key={k} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, width: 80 }}>{label}</span>
+                    <input style={{ ...inp, width: 130 }} placeholder="사업비 현금(원)" value={tr[k]?.planCash || ""} onChange={e => setTr(k, { planCash: e.target.value })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="사업비 현물(원)" value={tr[k]?.planIn || ""} onChange={e => setTr(k, { planIn: e.target.value })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="집행 현금(원)" value={tr[k]?.useCash || ""} onChange={e => setTr(k, { useCash: e.target.value })} />
+                    <input style={{ ...inp, width: 130 }} placeholder="집행 현물(원)" value={tr[k]?.useIn || ""} onChange={e => setTr(k, { useIn: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spadvance") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>💰 선금(중도금) 지급 확약</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="계약금 전체(원, VAT제외)" w={170}><input style={inp} value={d.advTotal || ""} onChange={e => setD({ advTotal: e.target.value })} /></Field>
+                <Field label="선금 비율(%)" w={100}><input style={inp} value={d.advRate1 || ""} onChange={e => setD({ advRate1: e.target.value })} /></Field>
+                <Field label="선금(원)" w={140}><input style={inp} value={d.advAmt1 || ""} onChange={e => setD({ advAmt1: e.target.value })} /></Field>
+                <Field label="중도금 비율(%)" w={110}><input style={inp} value={d.advRate2 || ""} onChange={e => setD({ advRate2: e.target.value })} /></Field>
+                <Field label="중도금(원)" w={140}><input style={inp} value={d.advAmt2 || ""} onChange={e => setD({ advAmt2: e.target.value })} /></Field>
+              </div>
+            </div>
+          )}
+
+          {isSsp && sections.has("splabor") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>👷 인건비 지급 확약</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="근로자" w={120}><input style={inp} value={d.laborName || ""} onChange={e => setD({ laborName: e.target.value })} /></Field>
+                <Field label="근로 시작" w={150}><input type="date" style={inp} value={d.laborFrom || ""} onChange={e => setD({ laborFrom: e.target.value })} /></Field>
+                <Field label="근로 종료" w={150}><input type="date" style={inp} value={d.laborTo || ""} onChange={e => setD({ laborTo: e.target.value })} /></Field>
+                <Field label="인건비 선지급액(원)" w={150}><input style={inp} value={d.laborAmount || ""} onChange={e => setD({ laborAmount: e.target.value })} /></Field>
+                <Field label="지급기한" w={150}><input type="date" style={inp} value={d.laborDeadline || ""} onChange={e => setD({ laborDeadline: e.target.value })} /></Field>
+              </div>
+              {cur.forms.includes("s24") && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <Field label="양식1 — 23년 원천징수 비고"><input style={inp} value={d.wage23 || ""} onChange={e => setD({ wage23: e.target.value })} /></Field>
+                  <Field label="양식2 — 24년 원천징수 비고"><input style={inp} value={d.wage24 || ""} onChange={e => setD({ wage24: e.target.value })} /></Field>
+                  <Field label="양식3 — 25년 원천징수 비고"><input style={inp} value={d.wage25 || ""} onChange={e => setD({ wage25: e.target.value })} /></Field>
+                  <Field label="양식4 — 임금수준 진단결과 비고"><input style={inp} value={d.wageDiag || ""} onChange={e => setD({ wageDiag: e.target.value })} /></Field>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isSsp && sections.has("spchange") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🔁 변경/승계 정보</div>
+              {cur.forms.includes("s13") && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <Field label="계약 승계 사유"><input style={inp} value={d.sucReason || ""} placeholder="예: 입교자 OOOO의 법인 전환에 따른 계약당사자 변경" onChange={e => setD({ sucReason: e.target.value })} /></Field>
+                  <Field label="당초 계약자" w={160}><input style={inp} value={d.sucFrom || ""} onChange={e => setD({ sucFrom: e.target.value })} /></Field>
+                  <Field label="계약 승계자" w={160}><input style={inp} value={d.sucTo || ""} onChange={e => setD({ sucTo: e.target.value })} /></Field>
+                </div>
+              )}
+              {cur.forms.includes("s15") && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <Field label="변경 후 업체명"><input style={inp} value={d.chToName || ""} onChange={e => setD({ chToName: e.target.value })} /></Field>
+                  <Field label="변경 후 대표자" w={120}><input style={inp} value={d.chToCeo || ""} onChange={e => setD({ chToCeo: e.target.value })} /></Field>
+                  <Field label="변경 후 주소"><input style={inp} value={d.chToAddr || ""} onChange={e => setD({ chToAddr: e.target.value })} /></Field>
+                </div>
+              )}
+              {cur.forms.includes("s16") && (
+                <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="변경 후 과제명"><input style={inp} value={d.chToTask || ""} onChange={e => setD({ chToTask: e.target.value })} /></Field>
+                  </div>
+                  <Field label="변경 후 과제개요"><textarea style={{ ...inp, minHeight: 50 }} value={d.chToOutline || ""} onChange={e => setD({ chToOutline: e.target.value })} /></Field>
+                  <AiTextarea label="기대 효과" field="사업화 과제 변경 기대효과(매출·투자유치·고용 등 근거 포함)" value={d.chEffect || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ chEffect: v })} />
+                </div>
+              )}
+              {(cur.forms.includes("s15") || cur.forms.includes("s16")) && (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <AiTextarea label="변경요청 사유" field="변경 승인 신청서 변경요청 사유" value={d.chReason || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ chReason: v })} />
+                  <AiTextarea label="주요 변경내용" field="변경 승인 신청서 주요 변경내용" value={d.chDetail || ""} minHeight={60} ctx={aiCtx} onChange={v => setD({ chDetail: v })} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {isSsp && sections.has("spterm") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>✂️ 계약 해지</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="합의해지일" w={150}><input type="date" style={inp} value={d.tmDate || ""} onChange={e => setD({ tmDate: e.target.value })} /></Field>
+                <Field label="현재까지 산출물 (제3조)"><input style={inp} value={d.tmOutput || ""} placeholder="예: 시제품디자인 초안과 수정안" onChange={e => setD({ tmOutput: e.target.value })} /></Field>
+              </div>
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <AiTextarea label="계약 진행경과" field="위탁개발계약 해지사유서 계약 진행경과" value={d.tmProgress || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ tmProgress: v })} />
+                <AiTextarea label="계약 해지사유" field="위탁개발계약 해지사유" value={d.tmReason || ""} minHeight={50} ctx={aiCtx} onChange={v => setD({ tmReason: v })} />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="사업비 지급방법 (해지사유서)"><textarea style={{ ...inp, minHeight: 50 }} value={d.tmPay || ""} onChange={e => setD({ tmPay: e.target.value })} /></Field>
+                  <Field label="정산 (확약서 제4조)"><textarea style={{ ...inp, minHeight: 50 }} value={d.tmSettle || ""} onChange={e => setD({ tmSettle: e.target.value })} /></Field>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isSsp && sections.has("sptrip") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🚗 {prog === "gsa" ? "국내 출장 여비 신청" : "출장 결과"}</div>
+              {prog === "gsa" ? (() => {
+                const rows: any[] = Array.isArray(d.tripRows) ? d.tripRows : [];
+                return (
+                  <>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <Field label="해당 월 (예: 7)" w={110}><input style={inp} value={d.tripMonth || ""} onChange={e => setD({ tripMonth: e.target.value })} /></Field>
+                      <Field label="팀명" w={180}><input style={inp} value={d.teamName || ""} placeholder={prof.company || ""} onChange={e => setD({ teamName: e.target.value })} /></Field>
+                    </div>
+                    {rows.map((r, i) => (
+                      <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "6px 0" }}>
+                        <input style={{ ...inp, width: 120 }} placeholder="날짜" value={r.date || ""} onChange={e => setD({ tripRows: rows.map((x, j) => j === i ? { ...x, date: e.target.value } : x) })} />
+                        <input style={{ ...inp, flex: 1, minWidth: 160 }} placeholder="프로그램명" value={r.program || ""} onChange={e => setD({ tripRows: rows.map((x, j) => j === i ? { ...x, program: e.target.value } : x) })} />
+                        <input style={{ ...inp, width: 180 }} placeholder="프로그램 주관 기관" value={r.host || ""} onChange={e => setD({ tripRows: rows.map((x, j) => j === i ? { ...x, host: e.target.value } : x) })} />
+                        <button className="btn danger" style={{ padding: "2px 8px" }} onClick={() => setD({ tripRows: rows.filter((_, j) => j !== i) })}>×</button>
+                      </div>
+                    ))}
+                    <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setD({ tripRows: [...rows, {}] })}>＋ 출장 행</button>
+                  </>
+                );
+              })() : (
+                <>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="출장일시 (예: 2026.7.10, 10:00~15:00)" w={230}><input style={inp} value={d.tripWhen || ""} onChange={e => setD({ tripWhen: e.target.value })} /></Field>
+                    <Field label="출장지" w={180}><input style={inp} value={d.tripPlace || ""} onChange={e => setD({ tripPlace: e.target.value })} /></Field>
+                    <Field label="출장거리(km, 사관학교 기준)" w={170}><input style={inp} value={d.tripKm || ""} onChange={e => setD({ tripKm: e.target.value })} /></Field>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                    <Field label="출장목적"><input style={inp} value={d.tripGoal || ""} onChange={e => setD({ tripGoal: e.target.value })} /></Field>
+                    <Field label="출장대상 (미팅 회사·참석자)"><input style={inp} value={d.tripTarget || ""} onChange={e => setD({ tripTarget: e.target.value })} /></Field>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <AiTextarea label="출장결과" field="출장 결과보고서 출장결과" value={d.tripResult || ""} minHeight={70} ctx={aiCtx} onChange={v => setD({ tripResult: v })} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {isSsp && sections.has("spmonthly") && (() => {
+            const acts: Record<string, string> = d.mmActs || {};
+            const perf: Record<string, any> = d.mmPerf || {};
+            const setPerf = (patch: Record<string, string>) => setD({ mmPerf: { ...perf, ...patch } });
+            return (
+              <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>📅 월간 활동보고서 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 당월·누적 집행액은 등록된 건에서 자동 집계, 예산은 정산 현황에서 입력</span></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Field label="보고 대상 월" w={160}><input type="month" style={inp} value={d.month || ""} onChange={e => setD({ month: e.target.value })} /></Field>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "8px 0 4px" }}>비목별 활동 내용</div>
+                {SSP_ITEMS.map(it => (
+                  <div key={it} style={{ display: "flex", gap: 6, marginBottom: 4, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, width: 80 }}>{it}</span>
+                    <input style={{ ...inp, flex: 1 }} value={acts[it] || ""} onChange={e => setD({ mmActs: { ...acts, [it]: e.target.value } })} />
+                  </div>
+                ))}
+                <div style={{ fontSize: 12, fontWeight: 700, margin: "8px 0 4px" }}>경영성과 (목표/당월/누계)</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, width: 90 }}>매출액(천원)</span>
+                  <input style={{ ...inp, width: 110 }} placeholder="목표(졸업시점)" value={perf.salesGoal || ""} onChange={e => setPerf({ salesGoal: e.target.value })} />
+                  <input style={{ ...inp, width: 100 }} placeholder="당월 실적" value={perf.salesMon || ""} onChange={e => setPerf({ salesMon: e.target.value })} />
+                  <input style={{ ...inp, width: 100 }} placeholder="누계" value={perf.salesCum || ""} onChange={e => setPerf({ salesCum: e.target.value })} />
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, width: 90 }}>인력채용(명)</span>
+                  <input style={{ ...inp, width: 110 }} placeholder="목표" value={perf.hireGoal || ""} onChange={e => setPerf({ hireGoal: e.target.value })} />
+                  <input style={{ ...inp, width: 100 }} placeholder="당월" value={perf.hireMon || ""} onChange={e => setPerf({ hireMon: e.target.value })} />
+                  <input style={{ ...inp, width: 100 }} placeholder="누계" value={perf.hireCum || ""} onChange={e => setPerf({ hireCum: e.target.value })} />
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                  <textarea style={{ ...inp, flex: 1, minWidth: 150, minHeight: 60 }} placeholder="지재권 목표 (특허출원 0건…)" value={perf.ipGoal || ""} onChange={e => setPerf({ ipGoal: e.target.value })} />
+                  <textarea style={{ ...inp, flex: 1, minWidth: 150, minHeight: 60 }} placeholder="지재권 당월" value={perf.ipMon || ""} onChange={e => setPerf({ ipMon: e.target.value })} />
+                  <textarea style={{ ...inp, flex: 1, minWidth: 150, minHeight: 60 }} placeholder="지재권 누계" value={perf.ipCum || ""} onChange={e => setPerf({ ipCum: e.target.value })} />
+                  <textarea style={{ ...inp, flex: 1, minWidth: 150, minHeight: 60 }} placeholder="달성율(%)" value={perf.ipRate || ""} onChange={e => setPerf({ ipRate: e.target.value })} />
+                </div>
+                <div style={{ marginBottom: 8 }}><Field label="기타 경영성과 (투자유치·수상·언론홍보 등)"><input style={inp} value={d.mmEtc || ""} onChange={e => setD({ mmEtc: e.target.value })} /></Field></div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <AiTextarea label="사업과제 추진현황 (세부내용)" field="월간 활동보고서 사업과제 추진현황" value={d.mmProgress || ""} minHeight={70} ctx={aiCtx} onChange={v => setD({ mmProgress: v })} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Field label="코칭사항"><textarea style={{ ...inp, minHeight: 50 }} value={d.mmCoach || ""} onChange={e => setD({ mmCoach: e.target.value })} /></Field>
+                    <Field label="교육사항"><textarea style={{ ...inp, minHeight: 50 }} value={d.mmEdu || ""} onChange={e => setD({ mmEdu: e.target.value })} /></Field>
+                    <Field label="기타사항"><textarea style={{ ...inp, minHeight: 50 }} value={d.mmMisc || ""} onChange={e => setD({ mmMisc: e.target.value })} /></Field>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {isSsp && sections.has("spsettle") && (
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🧾 사용실적보고서(회계감사용) <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 비목별 집행은 등록된 건에서 자동 집계, 계획(현금)은 정산 현황의 예산 입력을 사용</span></div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="현물 계획(원)" w={150}><input style={inp} value={d.inkindPlan || ""} placeholder={sspP.ownInkind || ""} onChange={e => setD({ inkindPlan: e.target.value })} /></Field>
+                <Field label="현물 집행(원)" w={150}><input style={inp} value={d.inkindUsed || ""} onChange={e => setD({ inkindUsed: e.target.value })} /></Field>
+              </div>
             </div>
           )}
 
@@ -956,12 +1618,20 @@ export default function GrantDocs() {
         </div>
 
         {/* ===== 미리보기 (인쇄 대상) ===== */}
-        {(prog === "td" ? selFormsTD.length : selForms.length) > 0 && (
+        {selCount > 0 && (
           <div>
             <div className="grant-side" style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 2px 10px" }}>
-              <h4 style={{ margin: 0 }}>🖨 서류 미리보기 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>({prog === "td" ? selFormsTD.length : selForms.length}종 — 인쇄하면 이 서류들만 A4로 출력됩니다)</span></h4>
+              <h4 style={{ margin: 0 }}>🖨 서류 미리보기 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>({selCount}종 — 인쇄하면 이 서류들만 A4로 출력됩니다)</span></h4>
             </div>
-            {prog === "td"
+            {isSsp
+              ? selFormsSSP.map(f => (
+                <div key={f.key} className="gdoc">
+                  <GrantFormSSP form={f.key as SspFormKey} v={sspProg} p={prof} sign={signUrl || undefined}
+                    d={{ ...d, expenseItem: cur.expense_item, itemName: d.itemName || cur.title, osName: d.osName || (cur.expense_item === "외주용역비" ? cur.title : d.osName) }}
+                    photos={cur.photos} img={img} settleDocs={allDocs} />
+                </div>
+              ))
+              : prog === "td"
               ? selFormsTD.map(f => (
                 <div key={f.key} className="gdoc">
                   <GrantFormTD form={f.key as TdFormKey} p={prof} sign={signUrl || undefined}

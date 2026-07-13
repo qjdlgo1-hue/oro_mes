@@ -539,7 +539,8 @@ export type GrantDoc = {
 export type GrantProfile = {
   company?: string; ceo?: string; bizno?: string; project?: string; projectNo?: string;
   bank?: string; holder?: string; account?: string; manager?: string; address?: string; corpNo?: string;
-  budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용
+  budgets?: Record<string, string>; // 지출항목별 예산(원) — 정산 현황의 집행률/잔액 계산용 (cud·td)
+  budgetsBy?: Record<string, Record<string, string>>; // 공고별 비목 예산 — cud·td와 비목명이 겹치는 ysc/gsa용 ({ysc:{재료비:..}, gsa:{..}})
   signPath?: string; // 서명(도장) PNG — storage 경로 또는 data: URL(로컬 모드). 모든 서식의 (인) 위에 표시
   // 기술닥터사업 상용화지원 전용 정보 (과제·협약 사업비 — 서식 공통 반영)
   td?: {
@@ -547,6 +548,14 @@ export type GrantProfile = {
     doctorOrg?: string; doctorTitle?: string; // 기술닥터 소속·직위 (결과보고서)
     mgrName?: string; mgrEmail?: string; mgrDept?: string; mgrTitle?: string; mgrTel?: string; mgrPhone?: string; // 실무담당자
   };
+  // 창업성공패키지(창업사관학교) 공고별 과제 정보 — key: 'ysc' | 'gsa'
+  ssp?: Record<string, {
+    trainee?: string;      // 입교자명 (보통 대표자와 동일)
+    taskName?: string;     // 사업화 과제명
+    taskOutline?: string;  // 과제개요 (월간 활동보고서)
+    periodFrom?: string; periodTo?: string; // 협약(사업) 기간
+    govFund?: string; ownCash?: string; ownInkind?: string; // 정부지원금 / 부담금(현금) / 현물
+  }>;
 };
 const LS_GRANT = "oro_grant_docs", LS_GPROF = "oro_grant_profile";
 export async function listGrantDocs(program = "cud"): Promise<GrantDoc[]> {
