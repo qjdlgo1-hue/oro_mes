@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: "5 * * * *" # 매시 5분 (UTC 기준이지만 매시간이라 무관)
   workflow_dispatch:
+  push: # 수집기 코드가 바뀌면 즉시 한 번 실행 (테스트 겸)
+    branches: [main]
+    paths:
+      - "crm/collector/**"
+      - ".github/workflows/crm-mail-collect.yml"
 
 jobs:
   collect:
