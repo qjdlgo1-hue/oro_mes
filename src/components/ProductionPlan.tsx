@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans, upsertPlan, updateOrder, logAudit } from "../lib/db";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
+import { nextBusinessDay } from "../lib/holidays";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
 import { toast } from "../lib/toast";
@@ -65,8 +66,16 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   function planOf(o: Order): PlanEntry { return plans[o.id] || { order_id: o.id, start_date: o.order_date, span: 1, done: false }; }
   async function commit(p: PlanEntry) {
     const prev = plans;
-    setPlans(cur => ({ ...cur, [p.order_id]: p })); setTick(t => t + 1);
-    try { await upsertPlan(p); }
+    // 수동 배송일이 새 생산완료일보다 앞서면(배송이 생산 전) 자동으로 해제해 배송스케줄이 계획을 따라가게 함
+    const comp = completionDate(p) || p.start_date;
+    const stale = !!p.deliver_date && p.deliver_date < comp;
+    const np = stale ? { ...p, deliver_date: null } : p;
+    setPlans(cur => ({ ...cur, [np.order_id]: np })); setTick(t => t + 1);
+    try {
+      await upsertPlan(np);
+      const del = np.deliver_date || nextBusinessDay(comp);
+      toast.success(`저장됨 — 배송예정일 ${del}${np.deliver_date ? " ◆수동지정 유지" : ""}${stale ? " (지난 수동 배송일 자동 해제)" : ""}`);
+    }
     catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일정 저장 실패(권한/네트워크 확인): " + errMsg(e)); }
   }
   function prevM() { setSelDay(null); setCur(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); }
