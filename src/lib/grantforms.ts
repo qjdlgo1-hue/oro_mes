@@ -178,36 +178,45 @@ export const sspFormTitle = (f: { title: string; titleGsa?: string }, prog: SspP
 // 비목 5종 — 사업비 집행계획서(xlsx) 순서 그대로
 export const SSP_ITEMS = ["재료비", "외주용역비", "기계장치", "인건비", "지급수수료"] as const;
 
-// 비목 → 세목(+한도 문구) — 사업비 집행계획서(xlsx) 산출내역 비고 그대로
-export const SSP_SUBITEMS: Record<string, { name: string; note?: string }[]> = {
+// 비목 → 세목(+한도 문구·전용 서식) — 사업비 집행계획서(xlsx) 산출내역 비고 그대로.
+// forms: 그 세목에 ZIP 원본 전용 서식이 있는 경우만 지정 — 없으면 일반 증빙(영수증류)으로 처리하는 세목.
+export const SSP_SUBITEMS: Record<string, { name: string; note?: string; forms?: SspFormKey[] }[]> = {
   "재료비": [{ name: "재료비" }],
   "외주용역비": [
-    { name: "개발기획비" }, { name: "제품제작비" }, { name: "시험설비제작비" }, { name: "금형 생산비" },
+    { name: "개발기획비" }, { name: "제품제작비" }, { name: "시험설비제작비" },
+    { name: "금형 생산비", forms: ["s2", "s3", "s6", "s7", "s8"] },
   ],
   "기계장치": [
     { name: "기자재구입비" },
     { name: "벤치마킹 제품 구매비", note: "최대 500만원 한도" },
-    { name: "전산장비/통신장비 구매비", note: "최대 600만원 한도 — 신규고용 1명당 200만원 추가(최대 3인), 총 구매 1,200만원 한도" },
+    { name: "전산장비/통신장비 구매비", note: "최대 600만원 한도 — 신규고용 1명당 200만원 추가(최대 3인), 총 구매 1,200만원 한도", forms: ["s2", "s4", "s9"] },
   ],
   "인건비": [
     { name: "과제참여인력 인건비", note: "인건비 산정 시 공고문 참고(현물계상기준 준용), 타 인건비 지원사업 참여자 지급 불가" },
   ],
   "지급수수료": [
     { name: "기자재 사용료" }, { name: "전문기관 시험/인증비" }, { name: "지재권 출원비" },
-    { name: "기술 및 경영자문비", note: "자문비용 30만원/1일" },
+    { name: "기술 및 경영자문비", note: "자문비용 30만원/1일", forms: ["s11"] },
     { name: "교육비" },
     { name: "기술서적 구입비", note: "단행본 구입만 허용(300만원 한도)" },
-    { name: "세미나 및 학회 참가비" },
-    { name: "개별전시회 참가비", note: "정부/타 공공기관/지자체 등 비용지원 시 사업비 신청 불가" },
+    { name: "세미나 및 학회 참가비", forms: ["s10"] },
+    { name: "개별전시회 참가비", note: "정부/타 공공기관/지자체 등 비용지원 시 사업비 신청 불가", forms: ["s10"] },
     { name: "카탈로그 및 포장디자인 제작비" }, { name: "영상제작비" },
     { name: "홈페이지/온라인 쇼핑몰 제작비" }, { name: "온라인 쇼핑몰 입점비" },
     { name: "광고비" }, { name: "소비자반응조사비" },
     { name: "회계처리비", note: "졸업 시 사업비 회계감사 위해 최소 30만원 의무배정" },
-    { name: "국내출장여비", note: "대표·직원 국내출장 시 지급 — 열차, 고속(시외)버스, 항공, 국내 숙박비 실비(한도)" },
-    { name: "해외출장여비", note: "대표·직원의 해외전시회 참가를 위한 왕복항공료 실비지급" },
+    { name: "국내출장여비", note: "대표·직원 국내출장 시 지급 — 열차, 고속(시외)버스, 항공, 국내 숙박비 실비(한도)", forms: ["s21"] },
+    { name: "해외출장여비", note: "대표·직원의 해외전시회 참가를 위한 왕복항공료 실비지급", forms: ["s21", "s10b"] },
     { name: "경영활동비", note: "출석일수 기준 1일 2만원 활동비(1일 3시간 이상 출석)" },
   ],
 };
+
+// 세목의 전용 서식 — 해당 공고에 없는 서식(only 불일치)은 제외. 전용 서식이 없는 세목은 빈 배열.
+export function sspSubForms(item: string, sub: string, prog: SspProgramKey): SspFormKey[] {
+  const forms = (SSP_SUBITEMS[item] || []).find(s => s.name === sub)?.forms || [];
+  const avail = new Set(sspFormsFor(prog).map(f => f.key));
+  return forms.filter(k => avail.has(k));
+}
 
 // 비목 → 기본 추천 서식
 export const SSP_PRESETS: Record<string, SspFormKey[]> = {

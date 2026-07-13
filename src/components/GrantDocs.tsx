@@ -14,7 +14,7 @@ import {
   FORMS, FormKey, EXPENSE_ITEMS, FORM_PRESETS, calcTotal, money, docAmount, settleSummary,
   PROGRAMS, ProgramKey, TD_FORMS, TdFormKey, TD_ITEMS, TD_PRESETS, TD_EVIDENCE, TD_SETTLE_DOCS,
   SSP_FORMS, SspFormKey, SspProgramKey, SSP_ITEMS, SSP_SUBITEMS, SSP_PRESETS, SSP_EVIDENCE,
-  sspFormsFor, sspFormNo, sspFormTitle,
+  sspFormsFor, sspFormNo, sspFormTitle, sspSubForms,
 } from "../lib/grantforms";
 import GrantForm from "./GrantForms";
 import GrantFormTD from "./GrantFormsTD";
@@ -644,7 +644,16 @@ export default function GrantDocs() {
             </Field>
             {isSsp && (
               <Field label="세목 (집행계획서 기준)" w={230}>
-                <select style={inp} value={d.subItem || ""} onChange={e => setD({ subItem: e.target.value })}>
+                <select style={inp} value={d.subItem || ""} onChange={e => {
+                  const sub = e.target.value;
+                  // 세목에 전용 서식이 있으면 비목 프리셋 ∪ 세목 서식으로 자동 체크 (비목 변경과 같은 UX)
+                  const extra = sub ? sspSubForms(cur.expense_item || "", sub, sspProg) : [];
+                  setCur(c => c ? {
+                    ...c,
+                    forms: extra.length ? [...new Set([...(SSP_PRESETS[c.expense_item || ""] || []), ...extra])] : c.forms,
+                    data: { ...c.data, subItem: sub },
+                  } : c);
+                }}>
                   <option value="">세목 선택 (선택사항)</option>
                   {(SSP_SUBITEMS[cur.expense_item || ""] || []).map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                 </select>
@@ -724,6 +733,12 @@ export default function GrantDocs() {
                   {d.subItem && (SSP_SUBITEMS[cur.expense_item || ""] || []).find(s => s.name === d.subItem)?.note && (
                     <div style={{ color: "#b45309" }}>⚠ [{d.subItem}] {(SSP_SUBITEMS[cur.expense_item || ""] || []).find(s => s.name === d.subItem)?.note}</div>
                   )}
+                  {d.subItem && (() => {
+                    const subForms = sspSubForms(cur.expense_item || "", d.subItem, sspProg);
+                    return subForms.length
+                      ? <div style={{ color: "#1d5ca8", fontWeight: 600 }}>📄 [{d.subItem}] 전용 서식: {subForms.map(k => { const f = SSP_FORMS.find(x => x.key === k)!; return `${sspFormNo(f, sspProg)}. ${sspFormTitle(f, sspProg)}`; }).join(" · ")} — 위 서식 목록에 자동 체크됨</div>
+                      : <div style={{ color: "#1d5ca8" }}>📄 [{d.subItem}] 전용 서식 없음 — 견적서·세금계산서·이체확인증 등 일반 증빙과 결과물(사진·산출물)로 처리하면 됩니다.</div>;
+                  })()}
                 </div>
               </div>
             );
