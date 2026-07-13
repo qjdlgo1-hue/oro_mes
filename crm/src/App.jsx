@@ -498,7 +498,6 @@ export default function OroCrmApp() {
             moveDeal={moveDeal}
             onEditDeal={(d) => setModal({ type: "deal", companyId: d.companyId, initial: d })}
           />
-<<<<<<< HEAD
         )}
         {screen === "quotes" && (
           <QuoteScreen
@@ -510,8 +509,6 @@ export default function OroCrmApp() {
               addActivity({ companyId, channel: "memo", direction: "sent", person: "견적 담당", title, body, dealId: "", date });
             }}
           />
-=======
->>>>>>> origin/main
         )}
         {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
@@ -1316,10 +1313,7 @@ function MobileTabBar({ screen, setScreen }) {
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "파이프라인", icon: "▤" },
-<<<<<<< HEAD
     { key: "quotes", label: "견적", icon: "₩" },
-=======
->>>>>>> origin/main
     { key: "settings", label: "설정", icon: "⚙" },
   ];
   return (
