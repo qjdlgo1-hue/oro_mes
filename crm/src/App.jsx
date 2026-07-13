@@ -177,6 +177,18 @@ const SEED = {
 // 고유 id 만들기 (새 거래처/딜/기록 추가할 때 사용)
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+// 모바일 화면인지 감지 (768px 이하) — 창 크기가 바뀌면 자동 갱신
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 768px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const onChange = (e) => setMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return mobile;
+}
+
 // ---------------------------------------------------------------------------
 // [5] 메인 컴포넌트
 // ---------------------------------------------------------------------------
@@ -200,6 +212,8 @@ export default function OroCrmApp() {
 
   // ----- 팝업(모달) 상태 -----
   const [modal, setModal] = useState(null); // null이면 팝업 없음. {type, ...}이면 팝업 열림
+
+  const isMobile = useIsMobile(); // 모바일이면 사이드바 대신 상단바+하단 탭
 
   // ----- 로그인 상태 감시 (앱 켜질 때 1번 확인 + 이후 변화 감지) -----
   useEffect(() => {
@@ -366,6 +380,7 @@ export default function OroCrmApp() {
     <div
       style={{
         display: "flex",
+        flexDirection: isMobile ? "column" : "row",
         height: "100vh",
         fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif",
         background: T.bg,
@@ -373,19 +388,23 @@ export default function OroCrmApp() {
         fontSize: 14,
       }}
     >
-      {/* 왼쪽 메뉴 */}
-      <Sidebar
-        screen={screen}
-        setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }}
-        unreplied={countUnreplied(activities)}
-        mode={mode}
-        email={session?.user?.email}
-        onLogout={logout}
-        onSwitchToCloud={switchToCloud}
-      />
+      {/* PC: 왼쪽 메뉴 / 모바일: 상단 슬림 바 */}
+      {isMobile ? (
+        <MobileTopBar mode={mode} email={session?.user?.email} onLogout={logout} onSwitchToCloud={switchToCloud} />
+      ) : (
+        <Sidebar
+          screen={screen}
+          setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }}
+          unreplied={countUnreplied(activities)}
+          mode={mode}
+          email={session?.user?.email}
+          onLogout={logout}
+          onSwitchToCloud={switchToCloud}
+        />
+      )}
 
-      {/* 오른쪽 메인 */}
-      <div style={{ flex: 1, overflow: "auto" }}>
+      {/* 메인 */}
+      <div style={{ flex: 1, overflow: "auto", paddingBottom: isMobile ? 64 : 0 }}>
         {screen === "dashboard" && (
           <Dashboard
             companies={companies}
@@ -436,6 +455,11 @@ export default function OroCrmApp() {
         )}
         {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
+
+      {/* 모바일: 하단 탭바 */}
+      {isMobile && (
+        <MobileTabBar screen={screen} setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }} />
+      )}
 
       {/* 팝업(모달) - 필요할 때만 나타남. initial이 있으면 수정 모드 */}
       {modal?.type === "company" && (
@@ -582,6 +606,7 @@ const MAIL_PRESETS = [
 ];
 
 function SettingsScreen({ mode }) {
+  const isMobile = useIsMobile();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -633,7 +658,7 @@ function SettingsScreen({ mode }) {
         sub="메일 자동 수집 계정 관리"
         right={<button onClick={() => setEditing({})} style={btnStyle("primary")}>+ 메일 계정 추가</button>}
       />
-      <div style={{ padding: 28, maxWidth: 860 }}>
+      <div style={{ padding: isMobile ? 14 : 28, maxWidth: 860 }}>
         <Panel title="메일 자동 수집 계정">
           {loading && <Empty small>불러오는 중...</Empty>}
           {!loading && error && <Empty small><span style={{ color: T.danger }}>{error}</span></Empty>}
@@ -869,14 +894,66 @@ function CenterMessage({ children }) {
 }
 
 // ===========================================================================
+// 모바일 상단 바 + 하단 탭바
+// ===========================================================================
+function MobileTopBar({ mode, email, onLogout, onSwitchToCloud }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: T.card, borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+      <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.5, color: T.navy }}>
+        ORO <span style={{ color: T.teal }}>CRM</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {mode === "cloud" ? (
+          <>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: T.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 11 }}>
+              {(email || "?")[0].toUpperCase()}
+            </div>
+            <button onClick={onLogout} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>로그아웃</button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 11, color: T.sub }}>💾 로컬</span>
+            <button onClick={onSwitchToCloud} style={{ ...btnStyle("primary"), fontSize: 11, padding: "5px 10px" }}>☁ 로그인</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobileTabBar({ screen, setScreen }) {
+  const tabs = [
+    { key: "dashboard", label: "대시보드", icon: "▦" },
+    { key: "companies", label: "거래처", icon: "🏢" },
+    { key: "pipeline", label: "파이프라인", icon: "▤" },
+    { key: "settings", label: "설정", icon: "⚙" },
+  ];
+  return (
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", background: T.card, borderTop: `1px solid ${T.border}`, zIndex: 50 }}>
+      {tabs.map((t) => {
+        const active = screen === t.key || (t.key === "companies" && screen === "company");
+        return (
+          <button key={t.key} onClick={() => setScreen(t.key)}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 0 10px", border: "none", background: "transparent", cursor: "pointer", color: active ? T.teal : T.sub, fontWeight: active ? 700 : 500, fontSize: 11 }}>
+            <span style={{ fontSize: 16 }}>{t.icon}</span>
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ===========================================================================
 // 공통 헤더
 // ===========================================================================
 function Header({ title, sub, right }) {
+  const isMobile = useIsMobile();
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "22px 28px", background: T.card, borderBottom: `1px solid ${T.border}` }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, padding: isMobile ? "14px 14px" : "22px 28px", background: T.card, borderBottom: `1px solid ${T.border}` }}>
       <div>
-        <div style={{ fontSize: 20, fontWeight: 800 }}>{title}</div>
-        {sub && <div style={{ fontSize: 13, color: T.sub, marginTop: 3 }}>{sub}</div>}
+        <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800 }}>{title}</div>
+        {sub && <div style={{ fontSize: isMobile ? 12 : 13, color: T.sub, marginTop: 3 }}>{sub}</div>}
       </div>
       {right}
     </div>
@@ -887,6 +964,7 @@ function Header({ title, sub, right }) {
 // 화면 1: 대시보드
 // ===========================================================================
 function Dashboard({ companies, deals, activities, openCompany }) {
+  const isMobile = useIsMobile();
   // 답장 필요한 메일 찾기 (회사별 최근 활동이 "받음"인 경우)
   const byCompany = {};
   activities.forEach((a) => {
@@ -903,15 +981,15 @@ function Dashboard({ companies, deals, activities, openCompany }) {
   return (
     <div>
       <Header title="대시보드" sub="오늘 챙겨야 할 것들" />
-      <div style={{ padding: 28 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ padding: isMobile ? 14 : 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 24 }}>
           <StatCard label="답장 필요" value={needReply.length} unit="건" color={T.danger} hint="받고 아직 회신 안 함" />
           <StatCard label="진행 중인 딜" value={openDeals.length} unit="건" color={T.teal} hint="양산 전 단계" />
           <StatCard label="전체 거래처" value={companies.length} unit="개사" color={T.navy} hint="등록됨" />
           <StatCard label="이번 달 대화" value={thisMonth} unit="건" color={T.warn} hint="모든 채널" />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
           {/* 답장 필요한 메일 */}
           <Panel title="답장이 필요한 대화">
             {needReply.length === 0 && <Empty>답장 필요한 대화가 없습니다 👍</Empty>}
@@ -972,6 +1050,7 @@ function StatCard({ label, value, unit, color, hint }) {
 // 화면 2: 거래처 목록
 // ===========================================================================
 function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
+  const isMobile = useIsMobile();
   return (
     <div>
       <Header
@@ -979,7 +1058,7 @@ function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
         sub={`${companies.length}개사 등록됨`}
         right={<button onClick={onAdd} style={btnStyle("primary")}>+ 거래처 추가</button>}
       />
-      <div style={{ padding: 28 }}>
+      <div style={{ padding: isMobile ? 14 : 28 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
           {companies.map((c) => {
             const dealCount = deals.filter((d) => d.companyId === c.id && d.stage !== "mass").length;
@@ -1022,6 +1101,7 @@ function CompanyDetail({
   onEditDeal, onDeleteDeal, onEditActivity, onDeleteActivity,
 }) {
   const [filter, setFilter] = useState("all"); // 타임라인 채널 필터
+  const isMobile = useIsMobile();
 
   if (!company) return null;
 
@@ -1043,9 +1123,9 @@ function CompanyDetail({
           </div>
         }
       />
-      <div style={{ display: "flex", gap: 20, padding: 28 }}>
-        {/* 왼쪽 정보 */}
-        <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, padding: isMobile ? 14 : 28 }}>
+        {/* 왼쪽 정보 (모바일에선 위쪽) */}
+        <div style={{ width: isMobile ? "auto" : 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: isMobile ? 14 : 20 }}>
           {/* 회사 정보 */}
           <div style={{ background: T.card, borderRadius: 12, padding: 20, border: `1px solid ${T.border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -1201,12 +1281,13 @@ function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
 // 화면 4: 파이프라인 (칸반)
 // ===========================================================================
 function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
+  const isMobile = useIsMobile();
   const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
 
   return (
     <div>
       <Header title="영업 파이프라인" sub="◀ ▶ 버튼으로 딜의 단계를 옮기세요" />
-      <div style={{ padding: 28, overflowX: "auto" }}>
+      <div style={{ padding: isMobile ? 14 : 28, overflowX: "auto" }}>
         <div style={{ display: "flex", gap: 14, minWidth: "max-content" }}>
           {STAGES.map((stage) => {
             const cards = deals.filter((d) => d.stage === stage.key);
@@ -1275,17 +1356,18 @@ function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
 
 // 모달 껍데기 (배경 어둡게 + 가운데 흰 박스)
 function Modal({ title, onClose, children }) {
+  const isMobile = useIsMobile();
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(15,42,67,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,42,67,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 10 : 20 }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? 12 : 16, width: "100%", maxWidth: 480, maxHeight: "92vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ padding: isMobile ? "14px 16px" : "20px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: T.sub, lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ padding: 24 }}>{children}</div>
+        <div style={{ padding: isMobile ? 16 : 24 }}>{children}</div>
       </div>
     </div>
   );
