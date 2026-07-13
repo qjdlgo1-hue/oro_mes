@@ -834,7 +834,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
 
           {company && items.length > 0 && (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1250 }}>
                 <thead>
                   <tr>
                     <th style={thStyle}>구분</th>
@@ -842,6 +842,10 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
                     <th style={{ ...thStyle, textAlign: "left" }}>사양</th>
                     <th style={thStyle}>PGC(g)</th>
                     <th style={thStyle}>AgCN(g)</th>
+                    <th style={{ ...thStyle, background: T.navyLight }}>재료비(Ni)</th>
+                    <th style={{ ...thStyle, background: T.navyLight }}>재료비(PGC)</th>
+                    <th style={{ ...thStyle, background: T.navyLight }}>재료비(기타)</th>
+                    <th style={{ ...thStyle, background: T.navyLight }}>재료비 합계</th>
                     <th style={thStyle}>수율(g)</th>
                     <th style={thStyle}>공정비용(원/g)</th>
                     <th style={thStyle}>마진</th>
@@ -859,6 +863,12 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
                         <td style={{ ...tdStyle, color: T.sub, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{it.spec}</td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>{it.pgc_grams || "-"}</td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>{it.agcn_grams || "-"}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: calc.isSagup ? T.sub : undefined }}>
+                          {calc.isSagup ? "사급 미적용" : won(calc.niCost)}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{won(Math.round(calc.pgcCost))}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{won(calc.etcCost)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{won(Math.round(calc.total))}</td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>{it.yield_grams}</td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{won(Math.round(calc.cost))}</td>
                         <td style={{ ...tdStyle, textAlign: "right", color: T.teal, fontWeight: 700 }}>{((it.margin_rate || 0) * 100).toFixed(1)}%</td>
@@ -891,7 +901,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
           )}
           {company && items.length > 0 && (
             <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
-              단가 = 공정비용 ÷ (1−마진율), 100원 단위 올림 · 수량 구간(0.5→5KG)마다 마진 1.1%p씩 낮아짐 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 (아래 %는 해당 단가의 실제 마진율)
+              재료비 = Ni자재(사급은 미적용) + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(입력값) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율), 100원 단위 올림, 수량 구간(0.5→5KG)마다 마진 1.1%p씩 낮아짐 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 (아래 %는 실제 마진율)
             </div>
           )}
         </div>
@@ -971,7 +981,12 @@ function QuoteItemModal({ companyId, item, onClose, onSaved }) {
         <div style={{ flex: 1 }}><Field label="수율(g)"><input type="number" style={inputStyle} value={f.yield_grams} onChange={(e) => set("yield_grams", e.target.value)} /></Field></div>
       </div>
       <div style={{ display: "flex", gap: 12 }}>
-        <div style={{ flex: 1 }}><Field label="재료비 Ni자재(원)"><input type="number" style={inputStyle} value={f.material_ni} onChange={(e) => set("material_ni", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}>
+          <Field label={f.gubun === "사급" ? "재료비 Ni자재 — 사급은 미적용" : "재료비 Ni자재(원)"}>
+            <input type="number" style={{ ...inputStyle, opacity: f.gubun === "사급" ? 0.4 : 1 }} value={f.material_ni}
+              onChange={(e) => set("material_ni", e.target.value)} disabled={f.gubun === "사급"} />
+          </Field>
+        </div>
         <div style={{ flex: 1 }}><Field label="재료비 기타(원)"><input type="number" style={inputStyle} value={f.material_etc} onChange={(e) => set("material_etc", e.target.value)} /></Field></div>
         <div style={{ flex: 1 }}><Field label="목표 마진율(%)"><input type="number" style={inputStyle} value={f.marginPct} onChange={(e) => set("marginPct", e.target.value)} /></Field></div>
       </div>
