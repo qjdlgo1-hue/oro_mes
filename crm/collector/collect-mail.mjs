@@ -17,7 +17,8 @@ import crypto from "node:crypto";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://fzoombsxvscndzrhzmwb.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const LOOKBACK_DAYS = 3; // 매시간 돌므로 3일이면 충분 (중복은 걸러짐)
+// 최근 30일치를 훑되, 이미 기록된 메일은 원문을 내려받지 않고 건너뛰므로 부담 없음
+const LOOKBACK_DAYS = parseInt(process.env.LOOKBACK_DAYS, 10) || 30;
 
 if (!SERVICE_KEY) {
   console.log("SUPABASE_SERVICE_ROLE_KEY 미설정 — 수집을 건너뜁니다 (Secrets 등록 후 자동 활성화).");
@@ -81,6 +82,9 @@ if (companies.length === 0) {
 }
 console.log(`거래처 ${companies.length}곳의 도메인을 대상으로 수집:`, companies.map((c) => c.domain).join(", "));
 
+// 이미 기록된 메일 id — 봉투 단계에서 걸러 원문 다운로드를 생략
+const existing = new Set((await sb("/rest/v1/crm_activities?select=id&id=like.nm*")).map((r) => r.id));
+
 const rows = new Map(); // id -> row (계정/편지함 간 중복 제거)
 
 for (const account of ACCOUNTS) {
@@ -122,7 +126,7 @@ for (const account of ACCOUNTS) {
     try {
       // 1단계: 봉투(보낸이/받는이/제목)만 훑어서 거래처 메일을 고른다
       //        (fetch 반복 중에는 다른 IMAP 명령을 보내면 안 되므로 다운로드는 2단계에서)
-      let scanned = 0;
+      let scanned = 0, skipped = 0;
       const matchedMsgs = [];
       for await (const msg of client.fetch({ since }, { envelope: true, uid: true })) {
         scanned++;
@@ -131,11 +135,17 @@ for (const account of ACCOUNTS) {
         const company = companies.find((c) =>
           all.some((a) => addressDomain(a.address) === c.domain.toLowerCase())
         );
-        if (company) matchedMsgs.push({ uid: msg.uid, env, company });
+        if (!company) continue;
+        // 이미 기록된 메일이면 건너뜀 (id는 메시지 ID에서 결정되므로 봉투만으로 계산 가능)
+        const from = (env.from || [])[0] || {};
+        const mid = env.messageId || `${env.date}|${env.subject}|${from.address}`;
+        const id = "nm" + crypto.createHash("sha1").update(mid).digest("hex").slice(0, 24);
+        if (existing.has(id) || rows.has(id)) { skipped++; continue; }
+        matchedMsgs.push({ uid: msg.uid, env, company, id });
       }
 
-      // 2단계: 매칭된 메일만 원문을 내려받아 본문 앞부분을 저장
-      for (const { uid, env, company } of matchedMsgs) {
+      // 2단계: 새로 매칭된 메일만 원문을 내려받아 본문 앞부분을 저장
+      for (const { uid, env, company, id } of matchedMsgs) {
         const from = (env.from || [])[0] || {};
         const direction = addressDomain(from.address) === company.domain.toLowerCase() ? "received" : "sent";
 
@@ -148,8 +158,6 @@ for (const account of ACCOUNTS) {
           bodyText = "";
         }
 
-        const mid = env.messageId || `${env.date}|${env.subject}|${from.address}`;
-        const id = "nm" + crypto.createHash("sha1").update(mid).digest("hex").slice(0, 24);
         rows.set(id, {
           id,
           company_id: company.id,
@@ -162,7 +170,7 @@ for (const account of ACCOUNTS) {
           date: kstString(new Date(env.date || Date.now())),
         });
       }
-      console.log(`[${account.label}] ${box}: ${scanned}통 확인, ${matchedMsgs.length}통 거래처 매칭`);
+      console.log(`[${account.label}] ${box}: ${scanned}통 확인, 신규 ${matchedMsgs.length}통 매칭, 기록됨 ${skipped}통 건너뜀`);
     } finally {
       lock.release();
     }
