@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "./lib/supabase";
+import {
+  cloudLoadAll, cloudInsert, cloudUpdate,
+  localLoad, localSave, getSavedMode, saveMode,
+} from "./lib/db";
 
 // ============================================================================
-// ORO CRM - 실제 동작 버전 (1단계)
+// ORO CRM - 실제 동작 버전 (2단계: Supabase 연동)
 // ----------------------------------------------------------------------------
-// 이전 목업과 가장 큰 차이점:
-//   목업 = 새로고침하면 사라지는 가짜 데이터
-//   이번 = 입력한 데이터가 "진짜로 저장"되어 새로고침해도 유지됨
-//
-// [저장 방식]
-//   브라우저의 localStorage 라는 저장 공간을 사용합니다.
-//   쉽게 말해 "브라우저 안에 있는 작은 창고"에 데이터를 넣고 빼는 겁니다.
-//   (특수 환경에서 window.storage 가 제공되면 그것을 우선 사용합니다)
+// [저장 방식 - 두 가지 모드]
+//   클라우드 모드(기본): MES와 같은 Supabase 서버 DB에 저장.
+//     → MES 계정으로 로그인하면 팀원 모두가 같은 데이터를 봅니다.
+//   로컬 모드: 브라우저 localStorage에 저장. 로그인 없이 바로 사용.
+//     → 이 브라우저에서만 보이는 개인 연습장 같은 것.
 //
 // [지금 되는 것]
-//   거래처/담당자/딜/대화기록을 직접 입력 → 저장됨 → 새로고침해도 남아있음
+//   거래처/담당자/딜/대화기록 입력 → 서버에 저장 → 어느 기기에서든 로그인하면 보임
 //   이메일/LINE/WeChat 대화를 수동으로 기록 → 타임라인에 채널별로 쌓임
 //
 // [아직 안 되는 것]
-//   메일 자동 수집 (서버가 준비되면 나중에 연결)
-//   여러 사람이 동시에 같은 데이터 보기 (서버로 옮겨야 가능)
+//   메일 자동 수집 (다음 단계)
+//   다른 사람이 수정한 내용의 실시간 반영 (새로고침하면 보임)
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -161,43 +163,9 @@ const SEED = {
 };
 
 // ---------------------------------------------------------------------------
-// [4] 저장/불러오기 도우미 함수
-//     기본은 브라우저 localStorage 사용. (Claude 아티팩트처럼 window.storage 를
-//     제공하는 환경에서는 그것을 우선 사용해 어디서든 동작하도록 함)
+// [4] 저장/불러오기는 src/lib/db.js 가 담당합니다.
+//     (클라우드=Supabase / 로컬=localStorage 를 그 파일이 알아서 처리)
 // ---------------------------------------------------------------------------
-
-// 창고에서 데이터 불러오기. 없으면 기본값(fallback)을 돌려줌.
-async function loadData(key, fallback) {
-  try {
-    if (typeof window !== "undefined" && window.storage?.get) {
-      const result = await window.storage.get(key);
-      if (result && result.value) return JSON.parse(result.value);
-      return fallback;
-    }
-    const raw = localStorage.getItem(key); // 창고에서 꺼내기 시도
-    if (raw) {
-      return JSON.parse(raw); // 저장은 글자로 되어있으니 원래 형태로 되돌림
-    }
-    return fallback; // 창고에 없으면 기본값 사용
-  } catch (e) {
-    // 창고에 해당 키가 아예 없거나 읽기 오류 → 기본값 사용
-    return fallback;
-  }
-}
-
-// 창고에 데이터 저장하기.
-async function saveData(key, value) {
-  try {
-    // 데이터는 글자 형태로 바꿔서 저장 (JSON.stringify)
-    if (typeof window !== "undefined" && window.storage?.set) {
-      await window.storage.set(key, JSON.stringify(value));
-    } else {
-      localStorage.setItem(key, JSON.stringify(value));
-    }
-  } catch (e) {
-    console.error("저장 실패:", e);
-  }
-}
 
 // 고유 id 만들기 (새 거래처/딜/기록 추가할 때 사용)
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -210,8 +178,14 @@ export default function OroCrmApp() {
   const [screen, setScreen] = useState("dashboard"); // 지금 보는 화면
   const [selectedCompanyId, setSelectedCompanyId] = useState(null); // 거래처 상세에서 어느 회사?
   const [loading, setLoading] = useState(true); // 데이터 불러오는 중?
+  const [loadError, setLoadError] = useState(""); // 서버에서 불러오다 실패하면 메시지 표시
 
-  // ----- 데이터 상태 (창고에서 불러온 실제 데이터) -----
+  // ----- 저장 모드 & 로그인 상태 -----
+  const [mode, setMode] = useState(getSavedMode()); // "cloud"(서버 공유) | "local"(이 브라우저만)
+  const [session, setSession] = useState(null); // 로그인 정보 (없으면 로그인 화면)
+  const [authChecked, setAuthChecked] = useState(false); // 로그인 여부 확인이 끝났는지
+
+  // ----- 데이터 상태 -----
   const [companies, setCompanies] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [deals, setDeals] = useState([]);
@@ -220,57 +194,129 @@ export default function OroCrmApp() {
   // ----- 팝업(모달) 상태 -----
   const [modal, setModal] = useState(null); // null이면 팝업 없음. {type, ...}이면 팝업 열림
 
-  // ----- 앱이 처음 켜질 때: 창고에서 데이터 불러오기 -----
+  // ----- 로그인 상태 감시 (앱 켜질 때 1번 확인 + 이후 변화 감지) -----
   useEffect(() => {
-    (async () => {
-      setCompanies(await loadData("oro_companies", SEED.companies));
-      setContacts(await loadData("oro_contacts", SEED.contacts));
-      setDeals(await loadData("oro_deals", SEED.deals));
-      setActivities(await loadData("oro_activities", SEED.activities));
-      setLoading(false); // 다 불러왔으면 로딩 끝
-    })();
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthChecked(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  // ----- 데이터가 바뀔 때마다 자동으로 창고에 저장 -----
-  // (아래 4개 useEffect가 각 데이터를 지켜보다가, 바뀌면 즉시 저장합니다)
-  useEffect(() => { if (!loading) saveData("oro_companies", companies); }, [companies, loading]);
-  useEffect(() => { if (!loading) saveData("oro_contacts", contacts); }, [contacts, loading]);
-  useEffect(() => { if (!loading) saveData("oro_deals", deals); }, [deals, loading]);
-  useEffect(() => { if (!loading) saveData("oro_activities", activities); }, [activities, loading]);
+  // ----- 데이터 불러오기 (모드와 로그인 상태가 정해지면 실행) -----
+  useEffect(() => {
+    (async () => {
+      if (mode === "cloud") {
+        if (!authChecked) return; // 아직 로그인 확인 중
+        if (!session) { setLoading(false); return; } // 로그인 화면이 뜰 차례
+        setLoading(true);
+        try {
+          const all = await cloudLoadAll(); // 서버에서 전부 가져오기
+          setCompanies(all.companies);
+          setContacts(all.contacts);
+          setDeals(all.deals);
+          setActivities(all.activities);
+          setLoadError("");
+        } catch (e) {
+          setLoadError(e.message);
+        }
+        setLoading(false);
+      } else {
+        // 로컬 모드: 브라우저 창고에서 (비어있으면 예시 데이터로 시작)
+        setCompanies(localLoad("companies", SEED.companies));
+        setContacts(localLoad("contacts", SEED.contacts));
+        setDeals(localLoad("deals", SEED.deals));
+        setActivities(localLoad("activities", SEED.activities));
+        setLoadError("");
+        setLoading(false);
+      }
+    })();
+  }, [mode, session, authChecked]);
+
+  // ----- 로컬 모드에서만: 데이터가 바뀔 때마다 자동으로 브라우저에 저장 -----
+  // (클라우드 모드는 아래 조작 함수들이 서버에 바로 저장하므로 여기선 할 일 없음)
+  useEffect(() => { if (!loading && mode === "local") localSave("companies", companies); }, [companies, loading, mode]);
+  useEffect(() => { if (!loading && mode === "local") localSave("contacts", contacts); }, [contacts, loading, mode]);
+  useEffect(() => { if (!loading && mode === "local") localSave("deals", deals); }, [deals, loading, mode]);
+  useEffect(() => { if (!loading && mode === "local") localSave("activities", activities); }, [activities, loading, mode]);
 
   // ----- 데이터 조작 함수들 -----
+  // 클라우드 모드: 서버에 먼저 저장하고, 성공하면 화면 반영 (실패 시 알림)
+  // 로컬 모드: 화면만 바꾸면 위 useEffect가 알아서 저장
 
   // 새 거래처 추가
-  const addCompany = (data) => {
-    setCompanies([...companies, { id: newId(), ...data }]);
+  const addCompany = async (data) => {
+    const item = { id: newId(), ...data };
+    if (mode === "cloud") {
+      try { await cloudInsert("companies", item); } catch (e) { alert(e.message); return; }
+    }
+    setCompanies([...companies, item]);
   };
 
   // 새 담당자 추가
-  const addContact = (data) => {
-    setContacts([...contacts, { id: newId(), ...data }]);
+  const addContact = async (data) => {
+    const item = { id: newId(), ...data };
+    if (mode === "cloud") {
+      try { await cloudInsert("contacts", item); } catch (e) { alert(e.message); return; }
+    }
+    setContacts([...contacts, item]);
   };
 
   // 새 딜 추가
-  const addDeal = (data) => {
-    setDeals([...deals, { id: newId(), ...data }]);
+  const addDeal = async (data) => {
+    const item = { id: newId(), ...data };
+    if (mode === "cloud") {
+      try { await cloudInsert("deals", item); } catch (e) { alert(e.message); return; }
+    }
+    setDeals([...deals, item]);
   };
 
   // 딜 단계 변경 (파이프라인에서 앞/뒤 이동)
-  const moveDeal = (dealId, newStage) => {
+  const moveDeal = async (dealId, newStage) => {
+    if (mode === "cloud") {
+      try { await cloudUpdate("deals", dealId, { stage: newStage }); } catch (e) { alert(e.message); return; }
+    }
     setDeals(deals.map((d) => (d.id === dealId ? { ...d, stage: newStage } : d)));
   };
 
   // 새 대화 기록 추가 (이메일/LINE/WeChat 수동 기록의 핵심)
-  const addActivity = (data) => {
-    setActivities([{ id: newId(), ...data }, ...activities]); // 최신 것이 맨 위로
+  const addActivity = async (data) => {
+    const item = { id: newId(), ...data };
+    if (mode === "cloud") {
+      try { await cloudInsert("activities", item); } catch (e) { alert(e.message); return; }
+    }
+    setActivities([item, ...activities]); // 최신 것이 맨 위로
   };
+
+  // 모드 전환
+  const switchToLocal = () => { saveMode("local"); setMode("local"); };
+  const switchToCloud = () => { saveMode("cloud"); setMode("cloud"); };
+  const logout = async () => { await supabase.auth.signOut(); };
+
+  // 클라우드 모드인데 아직 로그인 확인 중이면 잠시 대기 화면
+  if (mode === "cloud" && !authChecked) {
+    return <CenterMessage>로그인 확인 중...</CenterMessage>;
+  }
+
+  // 클라우드 모드인데 로그인이 안 되어 있으면 로그인 화면
+  if (mode === "cloud" && !session) {
+    return <LoginScreen onLocalMode={switchToLocal} />;
+  }
 
   // 로딩 중이면 로딩 화면 표시
   if (loading) {
+    return <CenterMessage>데이터 불러오는 중...</CenterMessage>;
+  }
+
+  // 서버에서 불러오기 실패 (인터넷 문제 등)
+  if (loadError) {
     return (
-      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.bg, fontFamily: "sans-serif", color: T.sub }}>
-        데이터 불러오는 중...
-      </div>
+      <CenterMessage>
+        <div style={{ color: T.danger, fontWeight: 700, marginBottom: 8 }}>서버 연결에 실패했습니다</div>
+        <div style={{ fontSize: 13, marginBottom: 16 }}>{loadError}</div>
+        <button onClick={() => window.location.reload()} style={btnStyle("primary")}>다시 시도</button>
+      </CenterMessage>
     );
   }
 
@@ -290,6 +336,10 @@ export default function OroCrmApp() {
         screen={screen}
         setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }}
         unreplied={countUnreplied(activities)}
+        mode={mode}
+        email={session?.user?.email}
+        onLogout={logout}
+        onSwitchToCloud={switchToCloud}
       />
 
       {/* 오른쪽 메인 */}
@@ -370,7 +420,7 @@ function countUnreplied(activities) {
 // ===========================================================================
 // 사이드바
 // ===========================================================================
-function Sidebar({ screen, setScreen, unreplied }) {
+function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitchToCloud }) {
   const menus = [
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
@@ -418,14 +468,93 @@ function Sidebar({ screen, setScreen, unreplied }) {
       </div>
 
       <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.1)", fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.teal, color: T.navy, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>이</div>
+        {mode === "cloud" ? (
           <div>
-            <div style={{ color: "#fff", fontWeight: 600 }}>이동욱</div>
-            <div style={{ fontSize: 10 }}>데이터 저장됨</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.teal, color: T.navy, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>
+                {(email || "?")[0].toUpperCase()}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: "#fff", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 130 }}>{email}</div>
+                <div style={{ fontSize: 10, color: T.teal }}>☁️ 서버 저장 (팀 공유)</div>
+              </div>
+            </div>
+            <button onClick={onLogout} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: "transparent", color: "rgba(255,255,255,0.7)", fontSize: 11, cursor: "pointer" }}>
+              로그아웃
+            </button>
           </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 11, marginBottom: 8 }}>💾 로컬 모드<br /><span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>이 브라우저에만 저장됨</span></div>
+            <button onClick={onSwitchToCloud} style={{ width: "100%", padding: "6px", borderRadius: 6, border: "none", background: T.teal, color: T.navy, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+              ☁️ 서버 모드로 전환 (로그인)
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 로그인 화면 (클라우드 모드 — MES와 같은 계정 사용)
+// ===========================================================================
+function LoginScreen({ onLocalMode }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const login = async () => {
+    if (!email.trim() || !pw) return;
+    setBusy(true);
+    setErr("");
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
+    if (error) setErr(error.message === "Invalid login credentials" ? "이메일 또는 비밀번호가 올바르지 않습니다." : error.message);
+    setBusy(false);
+    // 성공하면 onAuthStateChange가 session을 채워서 자동으로 앱 화면으로 넘어감
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: T.navy, fontFamily: "'Pretendard', -apple-system, 'Malgun Gothic', sans-serif" }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 36, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: 1, marginBottom: 4, color: T.navy }}>
+          ORO <span style={{ color: T.teal }}>CRM</span>
+        </div>
+        <div style={{ fontSize: 13, color: T.sub, marginBottom: 24 }}>MES와 같은 계정으로 로그인하세요</div>
+
+        <Field label="이메일">
+          <input style={inputStyle} type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@orocorp.kr" onKeyDown={(e) => e.key === "Enter" && login()} />
+        </Field>
+        <Field label="비밀번호">
+          <input style={inputStyle} type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && login()} />
+        </Field>
+
+        {err && <div style={{ color: T.danger, fontSize: 12, marginBottom: 12 }}>{err}</div>}
+
+        <button onClick={login} disabled={busy || !email.trim() || !pw}
+          style={{ ...btnStyle("primary"), width: "100%", padding: "12px", fontSize: 14, opacity: busy || !email.trim() || !pw ? 0.5 : 1 }}>
+          {busy ? "로그인 중..." : "로그인"}
+        </button>
+
+        <div style={{ borderTop: `1px solid ${T.border}`, marginTop: 20, paddingTop: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: T.sub, marginBottom: 8 }}>계정 없이 이 브라우저에서만 써보고 싶다면</div>
+          <button onClick={onLocalMode} style={{ ...btnStyle("ghost"), fontSize: 12 }}>
+            💾 로컬 모드로 사용 (로그인 없이)
+          </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 가운데 안내 문구 (로딩/오류 등)
+function CenterMessage({ children }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", alignItems: "center", justifyContent: "center", background: T.bg, fontFamily: "sans-serif", color: T.sub, textAlign: "center", padding: 20 }}>
+      <div>{children}</div>
     </div>
   );
 }
