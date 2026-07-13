@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   FORMS, FORM_PRESETS, EXPENSE_ITEMS, calcTotal, money, shortDate, korShortDate, dateParts, docAmount, settleSummary,
   PROGRAMS, TD_FORMS, TD_ITEMS, TD_PRESETS, TD_EVIDENCE, TD_ITEM_GROUP,
-  SSP_FORMS, SSP_ITEMS, SSP_SUBITEMS, SSP_PRESETS, SSP_EVIDENCE, sspFormsFor, sspFormNo, sspFormTitle,
+  SSP_FORMS, SSP_ITEMS, SSP_SUBITEMS, SSP_PRESETS, SSP_EVIDENCE, sspFormsFor, sspFormNo, sspFormTitle, sspSubForms,
 } from "../grantforms";
 
 describe("grantforms", () => {
@@ -94,6 +94,20 @@ describe("grantforms", () => {
       expect(SSP_EVIDENCE[it]?.limits.length).toBeGreaterThan(0);
     });
     Object.values(SSP_PRESETS).flat().forEach(k => expect(keys.has(k)).toBe(true));
+  });
+  it("창업성공패키지: 세목 전용 서식 매핑 — 키 유효 + 공고별 필터 + 없는 세목은 빈 배열", () => {
+    const keys = new Set(SSP_FORMS.map(f => f.key));
+    Object.values(SSP_SUBITEMS).flat().flatMap(s => s.forms || []).forEach(k => expect(keys.has(k)).toBe(true));
+    expect(sspSubForms("지급수수료", "기술 및 경영자문비", "ysc")).toEqual(["s11"]);
+    expect(sspSubForms("지급수수료", "개별전시회 참가비", "gsa")).toEqual(["s10"]);
+    // 해외 IR(s10b)은 딥테크 전용 — 글창사에서는 자동 제외
+    expect(sspSubForms("지급수수료", "해외출장여비", "ysc")).toContain("s10b");
+    expect(sspSubForms("지급수수료", "해외출장여비", "gsa")).not.toContain("s10b");
+    expect(sspSubForms("지급수수료", "해외출장여비", "gsa")).toContain("s21");
+    // 전용 서식이 없는 세목
+    expect(sspSubForms("지급수수료", "광고비", "ysc")).toEqual([]);
+    expect(sspSubForms("외주용역비", "금형 생산비", "ysc")).toContain("s8");
+    expect(sspSubForms("기계장치", "전산장비/통신장비 구매비", "ysc")).toContain("s9");
   });
   it("창업성공패키지: 내역표(buyRows/pcRows) 합계로 집행액 산정 + 비목 순 집계", () => {
     expect(docAmount({ buyRows: [{ sum: "1,000,000" }, { unit: "0", qty: "0", sum: "500000" }] })).toBe(1500000);
