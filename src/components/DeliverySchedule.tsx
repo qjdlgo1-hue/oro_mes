@@ -28,8 +28,19 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     if (l) return { y: +l.slice(0, 4), m: +l.slice(5, 7) };
     const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() + 1 };
   });
+  const [calAuto, setCalAuto] = useState(true); // 사용자가 월을 직접 옮기기 전까지 배송일 기준 자동 선택
   const [loaded, setLoaded] = useState(false);
-  useEffect(() => { listPlans().then(setPlans).finally(() => setLoaded(true)); }, []);
+  const [asOf, setAsOf] = useState<Date | null>(null); // 계획 데이터 기준 시각
+  const refetch = () => listPlans().then(p => { setPlans(p); setAsOf(new Date()); }).finally(() => setLoaded(true));
+  useEffect(() => { refetch(); }, []);
+  // 다른 창/기기에서 생산계획을 바꿔도 이 화면으로 돌아오면 즉시 최신 계획으로 갱신
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "visible") refetch(); };
+    window.addEventListener("focus", onVis);
+    document.addEventListener("visibilitychange", onVis);
+    return () => { window.removeEventListener("focus", onVis); document.removeEventListener("visibilitychange", onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const months = useMemo(() => [...new Set(orders.map(o => o.ym))].sort(), [orders]);
   const customers = useMemo(() => [...new Set(orders.map(o => o.customer || "(미상)"))].sort(), [orders]);
@@ -50,6 +61,20 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     return Object.entries(g).sort((a, b) => a[0] < b[0] ? -1 : 1);
   }, [listRows]);
 
+  // 캘린더 기본 월: 주문 월이 아니라 '배송일' 기준 — 오늘 이후 가장 가까운 배송일의 월(없으면 최신 배송월).
+  // 계획을 다음 달로 밀면 캘린더가 그 달을 바로 보여준다. 사용자가 ◀▶로 옮기면 자동 선택 중단.
+  useEffect(() => {
+    if (!calAuto || !loaded || !allRows.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const dels = allRows.map(r => r.del).sort();
+    const target = dels.find(d => d >= today) || dels[dels.length - 1];
+    if (target) {
+      const y = +target.slice(0, 4), m = +target.slice(5, 7);
+      setCal(c => (c.y === y && c.m === m) ? c : { y, m });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, allRows, calAuto]);
+
   const calYm = `${cal.y}-${p2(cal.m)}`;
   const byDay = useMemo(() => {
     const m: Record<string, Row[]> = {};
@@ -60,8 +85,8 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
   const days = Array.from({ length: nDays }, (_, i) => i + 1);
   const calRowsList = useMemo(() => allRows.filter(r => r.del.slice(0, 7) === calYm)
     .sort((a, b) => (a.o.customer || "") < (b.o.customer || "") ? -1 : (a.o.customer || "") > (b.o.customer || "") ? 1 : (a.del < b.del ? -1 : 1)), [allRows, calYm]);
-  const prevM = () => { setSelDay(null); setCal(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); };
-  const nextM = () => { setSelDay(null); setCal(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); };
+  const prevM = () => { setSelDay(null); setCalAuto(false); setCal(c => c.m === 1 ? { y: c.y - 1, m: 12 } : { y: c.y, m: c.m - 1 }); };
+  const nextM = () => { setSelDay(null); setCalAuto(false); setCal(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); };
 
   async function setDeliver(o: Order, iso: string | null) {
     if (!canEdit) { toast.error("배송일 변경 권한이 없습니다."); return; }
@@ -118,9 +143,11 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
               <button className="btn ghost" onClick={prevM} aria-label="이전 달">◀</button>
               <b>{cal.y}년 {cal.m}월</b>
               <button className="btn ghost" onClick={nextM} aria-label="다음 달">▶</button>
-              <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => { const d = new Date(); setSelDay(null); setCal({ y: d.getFullYear(), m: d.getMonth() + 1 }); }}>오늘</button>
+              <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => { const d = new Date(); setSelDay(null); setCalAuto(false); setCal({ y: d.getFullYear(), m: d.getMonth() + 1 }); }}>오늘</button>
             </div>}
-          <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀</button>
+          <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={refetch} title="생산계획 다시 불러오기">🔄</button>
+          {asOf && <span className="muted" style={{ fontSize: 11 }}>계획 기준 {asOf.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>}
+          <button className="btn ghost" onClick={exportXlsx}>📊 엑셀</button>
           <button className="btn ghost" onClick={() => window.print()}>🖨 인쇄</button>
         </div>
         <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>배송예정일 = 생산완료일의 다음 영업일(주말·공휴일 이월). {view === "cal" ? "날짜 칸을 클릭하면 배송일을 옮길 수 있어요(●파랑=자동, ◆주황=수동지정). 수동 칸 다시 클릭=자동복귀." : "고객사별로 묶여 표시. 배송예정일 칸에서 날짜를 직접 바꿀 수 있어요(◆주황=수동, 자동=되돌리기)."}</p>
@@ -140,7 +167,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                     <div className="mcard" key={r.o.id}>
                       <div className="mrow"><span className="k">품목</span><span className="v">{r.o.name}</span></div>
                       <div className="mrow"><span className="k">규격 / 수량</span><span className="v" style={{ fontWeight: 400 }}>{r.o.spec} · {r.o.qty.toLocaleString()}g</span></div>
-                      <div className="mrow"><span className="k">생산완료일</span><span className="v" style={{ fontWeight: 400 }}>{r.base}</span></div>
+                      <div className="mrow"><span className="k">주문일 / 생산완료일</span><span className="v" style={{ fontWeight: 400 }}>{r.o.order_date} / {r.base}</span></div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                         <span style={{ fontSize: 12, color: "var(--muted)" }}>배송예정일{r.manual ? " ◆수동" : ""}</span>
                         {canEdit
@@ -154,7 +181,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
               ) : (
               <div style={{ overflow: "auto" }}>
                 <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                  <thead><tr><th style={th}>배송예정일</th><th style={th}>품목</th><th style={th}>규격</th><th style={{ ...th, textAlign: "right" }}>수량(g)</th><th style={th}>생산완료일</th></tr></thead>
+                  <thead><tr><th style={th}>배송예정일</th><th style={th}>품목</th><th style={th}>규격</th><th style={{ ...th, textAlign: "right" }}>수량(g)</th><th style={th}>주문일</th><th style={th}>생산완료일</th></tr></thead>
                   <tbody>
                     {list.map(r => (
                       <tr key={r.o.id}>
@@ -170,6 +197,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
                         <td style={td}>{r.o.name}</td>
                         <td style={td}>{r.o.spec}</td>
                         <td style={tdR}>{r.o.qty.toLocaleString()}</td>
+                        <td style={{ ...td, color: "var(--muted)" }}>{r.o.order_date}</td>
                         <td style={td}>{r.base}</td>
                       </tr>
                     ))}
