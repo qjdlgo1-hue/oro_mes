@@ -61,6 +61,12 @@ create policy "crm_contacts_all" on crm_contacts for all to authenticated using 
 create policy "crm_deals_all" on crm_deals for all to authenticated using (true) with check (true);
 create policy "crm_activities_all" on crm_activities for all to authenticated using (true) with check (true);
 
+-- 소프트 삭제 (마이그레이션 "add_crm_soft_delete") — 삭제해도 DB에 남아 복구 가능
+alter table crm_companies add column if not exists deleted_at timestamptz;
+alter table crm_contacts add column if not exists deleted_at timestamptz;
+alter table crm_deals add column if not exists deleted_at timestamptz;
+alter table crm_activities add column if not exists deleted_at timestamptz;
+
 -- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
 -- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
 create table if not exists crm_mail_accounts (

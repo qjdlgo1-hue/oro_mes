@@ -72,7 +72,7 @@ if (ACCOUNTS.length === 0) {
 }
 console.log(`메일 계정 ${ACCOUNTS.length}개:`, ACCOUNTS.map((a) => `${a.label}(${a.host})`).join(", "));
 
-const companies = (await sb("/rest/v1/crm_companies?select=id,name,domain&domain=not.is.null")).filter(
+const companies = (await sb("/rest/v1/crm_companies?select=id,name,domain&domain=not.is.null&deleted_at=is.null")).filter(
   (c) => (c.domain || "").trim() !== ""
 );
 if (companies.length === 0) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import {
-  cloudLoadAll, cloudInsert, cloudUpdate,
+  cloudLoadAll, cloudLoadOne, cloudInsert, cloudUpdate, cloudDelete, cloudDeleteCompanyCascade,
   localLoad, localSave, getSavedMode, saveMode,
   mailAccountsList, mailAccountSave, mailAccountDelete,
 } from "./lib/db";
@@ -177,6 +177,18 @@ const SEED = {
 // 고유 id 만들기 (새 거래처/딜/기록 추가할 때 사용)
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
+// 모바일 화면인지 감지 (768px 이하) — 창 크기가 바뀌면 자동 갱신
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 768px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const onChange = (e) => setMobile(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return mobile;
+}
+
 // ---------------------------------------------------------------------------
 // [5] 메인 컴포넌트
 // ---------------------------------------------------------------------------
@@ -200,6 +212,9 @@ export default function OroCrmApp() {
 
   // ----- 팝업(모달) 상태 -----
   const [modal, setModal] = useState(null); // null이면 팝업 없음. {type, ...}이면 팝업 열림
+
+  const isMobile = useIsMobile(); // 모바일이면 사이드바 대신 상단바+하단 탭
+  const [searchOpen, setSearchOpen] = useState(false); // 통합 검색창
 
   // ----- 로그인 상태 감시 (앱 켜질 때 1번 확인 + 이후 변화 감지) -----
   useEffect(() => {
@@ -240,6 +255,48 @@ export default function OroCrmApp() {
       }
     })();
   }, [mode, session, authChecked]);
+
+  // ----- 실시간 동기화 (클라우드 모드 + 로그인 상태에서만) -----
+  // 다른 팀원의 변경이나 자동 수집된 메일이 저장되면 서버가 알려주고,
+  // 해당 종류만 다시 불러와 화면에 반영합니다 (0.5초 디바운스로 묶음 처리).
+  useEffect(() => {
+    if (mode !== "cloud" || !session) return;
+
+    const timers = {};
+    const refreshKind = (kind) => {
+      clearTimeout(timers[kind]);
+      timers[kind] = setTimeout(async () => {
+        try {
+          const rows = await cloudLoadOne(kind);
+          const setters = { companies: setCompanies, contacts: setContacts, deals: setDeals, activities: setActivities };
+          setters[kind](rows);
+        } catch (e) { /* 일시적 네트워크 오류는 무시 (다음 이벤트/포커스 때 재시도됨) */ }
+      }, 500);
+    };
+
+    const tableToKind = {
+      crm_companies: "companies", crm_contacts: "contacts",
+      crm_deals: "deals", crm_activities: "activities",
+    };
+    const channel = supabase.channel("crm-sync");
+    Object.keys(tableToKind).forEach((table) => {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, () => refreshKind(tableToKind[table]));
+    });
+    channel.subscribe();
+
+    // 보조: 창에 다시 돌아왔을 때 전체 새로 불러오기 (실시간 연결이 끊겼을 때 대비)
+    const refreshAll = () => Object.values(tableToKind).forEach(refreshKind);
+    const onVisible = () => { if (!document.hidden) refreshAll(); };
+    window.addEventListener("focus", refreshAll);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", refreshAll);
+      document.removeEventListener("visibilitychange", onVisible);
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, [mode, session]);
 
   // ----- 로컬 모드에서만: 데이터가 바뀔 때마다 자동으로 브라우저에 저장 -----
   // (클라우드 모드는 아래 조작 함수들이 서버에 바로 저장하므로 여기선 할 일 없음)
@@ -296,6 +353,41 @@ export default function OroCrmApp() {
     setActivities([item, ...activities]); // 최신 것이 맨 위로
   };
 
+  // ----- 수정 함수들 (모달에서 저장 시 호출) -----
+  const kindSetters = { companies: setCompanies, contacts: setContacts, deals: setDeals, activities: setActivities };
+  const kindGetters = { companies, contacts, deals, activities };
+
+  const updateItem = async (kind, id, data) => {
+    if (mode === "cloud") {
+      try { await cloudUpdate(kind, id, data); } catch (e) { alert(e.message); return false; }
+    }
+    kindSetters[kind](kindGetters[kind].map((x) => (x.id === id ? { ...x, ...data } : x)));
+    return true;
+  };
+
+  // ----- 삭제 함수들 (휴지통 방식 — 서버 DB에는 남아 있어 복구 가능) -----
+  const deleteItem = async (kind, id) => {
+    if (mode === "cloud") {
+      try { await cloudDelete(kind, id); } catch (e) { alert(e.message); return false; }
+    }
+    kindSetters[kind](kindGetters[kind].filter((x) => x.id !== id));
+    return true;
+  };
+
+  // 거래처 삭제: 담당자/딜/대화기록도 함께 삭제
+  const deleteCompany = async (companyId) => {
+    if (mode === "cloud") {
+      try { await cloudDeleteCompanyCascade(companyId); } catch (e) { alert(e.message); return false; }
+    }
+    setContacts(contacts.filter((x) => x.companyId !== companyId));
+    setDeals(deals.filter((x) => x.companyId !== companyId));
+    setActivities(activities.filter((x) => x.companyId !== companyId));
+    setCompanies(companies.filter((x) => x.id !== companyId));
+    setSelectedCompanyId(null);
+    setScreen("companies");
+    return true;
+  };
+
   // 모드 전환
   const switchToLocal = () => { saveMode("local"); setMode("local"); };
   const switchToCloud = () => { saveMode("cloud"); setMode("cloud"); };
@@ -331,6 +423,7 @@ export default function OroCrmApp() {
     <div
       style={{
         display: "flex",
+        flexDirection: isMobile ? "column" : "row",
         height: "100vh",
         fontFamily: "-apple-system, 'Segoe UI', 'Malgun Gothic', '맑은 고딕', sans-serif",
         background: T.bg,
@@ -338,19 +431,24 @@ export default function OroCrmApp() {
         fontSize: 14,
       }}
     >
-      {/* 왼쪽 메뉴 */}
-      <Sidebar
-        screen={screen}
-        setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }}
-        unreplied={countUnreplied(activities)}
-        mode={mode}
-        email={session?.user?.email}
-        onLogout={logout}
-        onSwitchToCloud={switchToCloud}
-      />
+      {/* PC: 왼쪽 메뉴 / 모바일: 상단 슬림 바 */}
+      {isMobile ? (
+        <MobileTopBar mode={mode} email={session?.user?.email} onLogout={logout} onSwitchToCloud={switchToCloud} onSearch={() => setSearchOpen(true)} />
+      ) : (
+        <Sidebar
+          screen={screen}
+          setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }}
+          unreplied={countUnreplied(activities)}
+          mode={mode}
+          email={session?.user?.email}
+          onLogout={logout}
+          onSwitchToCloud={switchToCloud}
+          onSearch={() => setSearchOpen(true)}
+        />
+      )}
 
-      {/* 오른쪽 메인 */}
-      <div style={{ flex: 1, overflow: "auto" }}>
+      {/* 메인 */}
+      <div style={{ flex: 1, overflow: "auto", paddingBottom: isMobile ? 64 : 0 }}>
         {screen === "dashboard" && (
           <Dashboard
             companies={companies}
@@ -379,30 +477,77 @@ export default function OroCrmApp() {
             onAddActivity={() => setModal({ type: "activity", companyId: selectedCompanyId })}
             onAddContact={() => setModal({ type: "contact", companyId: selectedCompanyId })}
             onAddDeal={() => setModal({ type: "deal", companyId: selectedCompanyId })}
+            onEditCompany={(c) => setModal({ type: "company", initial: c })}
+            onDeleteCompany={(c) => {
+              if (window.confirm(`'${c.name}' 거래처를 삭제할까요?\n담당자·딜·대화기록도 함께 삭제됩니다.`)) deleteCompany(c.id);
+            }}
+            onEditContact={(p) => setModal({ type: "contact", companyId: selectedCompanyId, initial: p })}
+            onDeleteContact={(p) => { if (window.confirm(`담당자 '${p.name}'을(를) 삭제할까요?`)) deleteItem("contacts", p.id); }}
+            onEditDeal={(d) => setModal({ type: "deal", companyId: selectedCompanyId, initial: d })}
+            onDeleteDeal={(d) => { if (window.confirm(`딜 '${d.title}'을(를) 삭제할까요?`)) deleteItem("deals", d.id); }}
+            onEditActivity={(a) => setModal({ type: "activity", companyId: selectedCompanyId, initial: a })}
+            onDeleteActivity={(a) => { if (window.confirm(`대화 기록 '${a.title}'을(를) 삭제할까요?`)) deleteItem("activities", a.id); }}
           />
         )}
         {screen === "pipeline" && (
-          <Pipeline deals={deals} companies={companies} moveDeal={moveDeal} />
+          <Pipeline
+            deals={deals}
+            companies={companies}
+            moveDeal={moveDeal}
+            onEditDeal={(d) => setModal({ type: "deal", companyId: d.companyId, initial: d })}
+          />
         )}
         {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
 
-      {/* 팝업(모달) - 필요할 때만 나타남 */}
+      {/* 모바일: 하단 탭바 */}
+      {isMobile && (
+        <MobileTabBar screen={screen} setScreen={(s) => { setScreen(s); setSelectedCompanyId(null); }} />
+      )}
+
+      {/* 통합 검색 오버레이 */}
+      {searchOpen && (
+        <SearchOverlay
+          companies={companies}
+          contacts={contacts}
+          deals={deals}
+          activities={activities}
+          onOpenCompany={(id) => { setSelectedCompanyId(id); setScreen("company"); setSearchOpen(false); }}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {/* 팝업(모달) - 필요할 때만 나타남. initial이 있으면 수정 모드 */}
       {modal?.type === "company" && (
-        <CompanyModal onClose={() => setModal(null)} onSave={(d) => { addCompany(d); setModal(null); }} />
+        <CompanyModal
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("companies", modal.initial.id, d) : addCompany(d); setModal(null); }}
+        />
       )}
       {modal?.type === "contact" && (
-        <ContactModal companyId={modal.companyId} onClose={() => setModal(null)} onSave={(d) => { addContact(d); setModal(null); }} />
+        <ContactModal
+          companyId={modal.companyId}
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("contacts", modal.initial.id, d) : addContact(d); setModal(null); }}
+        />
       )}
       {modal?.type === "deal" && (
-        <DealModal companyId={modal.companyId} onClose={() => setModal(null)} onSave={(d) => { addDeal(d); setModal(null); }} />
+        <DealModal
+          companyId={modal.companyId}
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("deals", modal.initial.id, d) : addDeal(d); setModal(null); }}
+        />
       )}
       {modal?.type === "activity" && (
         <ActivityModal
           companyId={modal.companyId}
+          initial={modal.initial}
           deals={deals.filter((d) => d.companyId === modal.companyId)}
           onClose={() => setModal(null)}
-          onSave={(d) => { addActivity(d); setModal(null); }}
+          onSave={(d) => { modal.initial ? updateItem("activities", modal.initial.id, d) : addActivity(d); setModal(null); }}
         />
       )}
     </div>
@@ -428,7 +573,7 @@ function countUnreplied(activities) {
 // ===========================================================================
 // 사이드바
 // ===========================================================================
-function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitchToCloud }) {
+function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitchToCloud, onSearch }) {
   const menus = [
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
@@ -443,6 +588,13 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
           ORO <span style={{ color: T.teal }}>CRM</span>
         </div>
         <div style={{ fontSize: 11, color: T.sub, marginTop: 4 }}>오알오 주식회사</div>
+      </div>
+
+      <div style={{ padding: "12px 10px 0" }}>
+        <button onClick={onSearch}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, border: `1px solid ${T.border}`, background: T.tint, color: T.sub, cursor: "pointer", fontSize: 13, textAlign: "left" }}>
+          🔍 검색...
+        </button>
       </div>
 
       <div style={{ padding: "12px 10px", flex: 1 }}>
@@ -517,6 +669,7 @@ const MAIL_PRESETS = [
 ];
 
 function SettingsScreen({ mode }) {
+  const isMobile = useIsMobile();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -568,7 +721,7 @@ function SettingsScreen({ mode }) {
         sub="메일 자동 수집 계정 관리"
         right={<button onClick={() => setEditing({})} style={btnStyle("primary")}>+ 메일 계정 추가</button>}
       />
-      <div style={{ padding: 28, maxWidth: 860 }}>
+      <div style={{ padding: isMobile ? 14 : 28, maxWidth: 860 }}>
         <Panel title="메일 자동 수집 계정">
           {loading && <Empty small>불러오는 중...</Empty>}
           {!loading && error && <Empty small><span style={{ color: T.danger }}>{error}</span></Empty>}
@@ -804,14 +957,67 @@ function CenterMessage({ children }) {
 }
 
 // ===========================================================================
+// 모바일 상단 바 + 하단 탭바
+// ===========================================================================
+function MobileTopBar({ mode, email, onLogout, onSwitchToCloud, onSearch }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: T.card, borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+      <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.5, color: T.navy }}>
+        ORO <span style={{ color: T.teal }}>CRM</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button onClick={onSearch} style={{ border: "none", background: "transparent", fontSize: 17, cursor: "pointer", padding: "2px 4px" }}>🔍</button>
+        {mode === "cloud" ? (
+          <>
+            <div style={{ width: 24, height: 24, borderRadius: "50%", background: T.teal, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 11 }}>
+              {(email || "?")[0].toUpperCase()}
+            </div>
+            <button onClick={onLogout} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>로그아웃</button>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: 11, color: T.sub }}>💾 로컬</span>
+            <button onClick={onSwitchToCloud} style={{ ...btnStyle("primary"), fontSize: 11, padding: "5px 10px" }}>☁ 로그인</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobileTabBar({ screen, setScreen }) {
+  const tabs = [
+    { key: "dashboard", label: "대시보드", icon: "▦" },
+    { key: "companies", label: "거래처", icon: "🏢" },
+    { key: "pipeline", label: "파이프라인", icon: "▤" },
+    { key: "settings", label: "설정", icon: "⚙" },
+  ];
+  return (
+    <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", background: T.card, borderTop: `1px solid ${T.border}`, zIndex: 50 }}>
+      {tabs.map((t) => {
+        const active = screen === t.key || (t.key === "companies" && screen === "company");
+        return (
+          <button key={t.key} onClick={() => setScreen(t.key)}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 0 10px", border: "none", background: "transparent", cursor: "pointer", color: active ? T.teal : T.sub, fontWeight: active ? 700 : 500, fontSize: 11 }}>
+            <span style={{ fontSize: 16 }}>{t.icon}</span>
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ===========================================================================
 // 공통 헤더
 // ===========================================================================
 function Header({ title, sub, right }) {
+  const isMobile = useIsMobile();
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "22px 28px", background: T.card, borderBottom: `1px solid ${T.border}` }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, padding: isMobile ? "14px 14px" : "22px 28px", background: T.card, borderBottom: `1px solid ${T.border}` }}>
       <div>
-        <div style={{ fontSize: 20, fontWeight: 800 }}>{title}</div>
-        {sub && <div style={{ fontSize: 13, color: T.sub, marginTop: 3 }}>{sub}</div>}
+        <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800 }}>{title}</div>
+        {sub && <div style={{ fontSize: isMobile ? 12 : 13, color: T.sub, marginTop: 3 }}>{sub}</div>}
       </div>
       {right}
     </div>
@@ -822,6 +1028,7 @@ function Header({ title, sub, right }) {
 // 화면 1: 대시보드
 // ===========================================================================
 function Dashboard({ companies, deals, activities, openCompany }) {
+  const isMobile = useIsMobile();
   // 답장 필요한 메일 찾기 (회사별 최근 활동이 "받음"인 경우)
   const byCompany = {};
   activities.forEach((a) => {
@@ -838,15 +1045,15 @@ function Dashboard({ companies, deals, activities, openCompany }) {
   return (
     <div>
       <Header title="대시보드" sub="오늘 챙겨야 할 것들" />
-      <div style={{ padding: 28 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ padding: isMobile ? 14 : 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 24 }}>
           <StatCard label="답장 필요" value={needReply.length} unit="건" color={T.danger} hint="받고 아직 회신 안 함" />
           <StatCard label="진행 중인 딜" value={openDeals.length} unit="건" color={T.teal} hint="양산 전 단계" />
           <StatCard label="전체 거래처" value={companies.length} unit="개사" color={T.navy} hint="등록됨" />
           <StatCard label="이번 달 대화" value={thisMonth} unit="건" color={T.warn} hint="모든 채널" />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
           {/* 답장 필요한 메일 */}
           <Panel title="답장이 필요한 대화">
             {needReply.length === 0 && <Empty>답장 필요한 대화가 없습니다 👍</Empty>}
@@ -907,6 +1114,7 @@ function StatCard({ label, value, unit, color, hint }) {
 // 화면 2: 거래처 목록
 // ===========================================================================
 function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
+  const isMobile = useIsMobile();
   return (
     <div>
       <Header
@@ -914,7 +1122,7 @@ function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
         sub={`${companies.length}개사 등록됨`}
         right={<button onClick={onAdd} style={btnStyle("primary")}>+ 거래처 추가</button>}
       />
-      <div style={{ padding: 28 }}>
+      <div style={{ padding: isMobile ? 14 : 28 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
           {companies.map((c) => {
             const dealCount = deals.filter((d) => d.companyId === c.id && d.stage !== "mass").length;
@@ -951,8 +1159,13 @@ function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
 // ===========================================================================
 // 화면 3: 거래처 상세 (CRM의 심장)
 // ===========================================================================
-function CompanyDetail({ company, contacts, deals, activities, back, onAddActivity, onAddContact, onAddDeal }) {
+function CompanyDetail({
+  company, contacts, deals, activities, back, onAddActivity, onAddContact, onAddDeal,
+  onEditCompany, onDeleteCompany, onEditContact, onDeleteContact,
+  onEditDeal, onDeleteDeal, onEditActivity, onDeleteActivity,
+}) {
   const [filter, setFilter] = useState("all"); // 타임라인 채널 필터
+  const isMobile = useIsMobile();
 
   if (!company) return null;
 
@@ -966,11 +1179,17 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
       <Header
         title={company.name}
         sub={`${company.country} · ${company.domain} · ${company.tier} 거래처`}
-        right={<button onClick={back} style={btnStyle("ghost")}>← 목록으로</button>}
+        right={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => onEditCompany(company)} style={btnStyle("ghost")}>✎ 수정</button>
+            <button onClick={() => onDeleteCompany(company)} style={{ ...btnStyle("ghost"), color: T.danger }}>🗑 삭제</button>
+            <button onClick={back} style={btnStyle("ghost")}>← 목록으로</button>
+          </div>
+        }
       />
-      <div style={{ display: "flex", gap: 20, padding: 28 }}>
-        {/* 왼쪽 정보 */}
-        <div style={{ width: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, padding: isMobile ? 14 : 28 }}>
+        {/* 왼쪽 정보 (모바일에선 위쪽) */}
+        <div style={{ width: isMobile ? "auto" : 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: isMobile ? 14 : 20 }}>
           {/* 회사 정보 */}
           <div style={{ background: T.card, borderRadius: 12, padding: 20, border: `1px solid ${T.border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -1008,6 +1227,8 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
                     {c.role} · {c.contact}
                   </div>
                 </div>
+                <IconBtn onClick={() => onEditContact(c)}>✎</IconBtn>
+                <IconBtn danger onClick={() => onDeleteContact(c)}>🗑</IconBtn>
               </div>
             ))}
           </div>
@@ -1020,7 +1241,11 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
               const s = stageInfo(d.stage);
               return (
                 <div key={d.id} style={{ padding: "10px 12px", background: T.bg, borderRadius: 8, marginTop: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{d.title}</div>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0 }}>{d.title}</div>
+                    <IconBtn onClick={() => onEditDeal(d)}>✎</IconBtn>
+                    <IconBtn danger onClick={() => onDeleteDeal(d)}>🗑</IconBtn>
+                  </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: T.sub }}>{d.spec}</span>
                     <span style={{ fontSize: 11, color: s.color, fontWeight: 700 }}>{s.label}</span>
@@ -1059,7 +1284,14 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
                 </Empty>
               )}
               {filtered.map((a, i) => (
-                <ActivityItem key={a.id} activity={a} deal={deals.find((d) => d.id === a.dealId)} last={i === filtered.length - 1} />
+                <ActivityItem
+                  key={a.id}
+                  activity={a}
+                  deal={deals.find((d) => d.id === a.dealId)}
+                  last={i === filtered.length - 1}
+                  onEdit={() => onEditActivity(a)}
+                  onDelete={() => onDeleteActivity(a)}
+                />
               ))}
             </div>
           </div>
@@ -1070,7 +1302,7 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
 }
 
 // 타임라인 개별 항목
-function ActivityItem({ activity, deal, last }) {
+function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
   const ch = CHANNELS[activity.channel];
   const isSent = activity.direction === "sent";
   return (
@@ -1091,7 +1323,11 @@ function ActivityItem({ activity, deal, last }) {
               {isSent ? "보냄 ↑" : "받음 ↓"}
             </span>
           </div>
-          <span style={{ fontSize: 11, color: T.sub }}>{activity.date}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 11, color: T.sub }}>{activity.date}</span>
+            {onEdit && <IconBtn onClick={onEdit}>✎</IconBtn>}
+            {onDelete && <IconBtn danger onClick={onDelete}>🗑</IconBtn>}
+          </div>
         </div>
         <div style={{ fontWeight: 600, fontSize: 14, margin: "5px 0" }}>{activity.title}</div>
         <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{activity.body}</div>
@@ -1108,13 +1344,14 @@ function ActivityItem({ activity, deal, last }) {
 // ===========================================================================
 // 화면 4: 파이프라인 (칸반)
 // ===========================================================================
-function Pipeline({ deals, companies, moveDeal }) {
+function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
+  const isMobile = useIsMobile();
   const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
 
   return (
     <div>
       <Header title="영업 파이프라인" sub="◀ ▶ 버튼으로 딜의 단계를 옮기세요" />
-      <div style={{ padding: 28, overflowX: "auto" }}>
+      <div style={{ padding: isMobile ? 14 : 28, overflowX: "auto" }}>
         <div style={{ display: "flex", gap: 14, minWidth: "max-content" }}>
           {STAGES.map((stage) => {
             const cards = deals.filter((d) => d.stage === stage.key);
@@ -1134,7 +1371,8 @@ function Pipeline({ deals, companies, moveDeal }) {
                           <div style={{ width: 22, height: 22, borderRadius: 6, background: T.navy, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 9 }}>
                             {companyName(card.companyId).slice(0, 2)}
                           </div>
-                          <span style={{ fontWeight: 700, fontSize: 12 }}>{companyName(card.companyId)}</span>
+                          <span style={{ fontWeight: 700, fontSize: 12, flex: 1 }}>{companyName(card.companyId)}</span>
+                          <IconBtn onClick={() => onEditDeal(card)}>✎</IconBtn>
                         </div>
                         <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{card.title}</div>
                         <div style={{ fontSize: 11, color: T.sub, marginBottom: 8 }}>{card.spec}</div>
@@ -1177,22 +1415,121 @@ function Pipeline({ deals, companies, moveDeal }) {
 }
 
 // ===========================================================================
+// 통합 검색 오버레이 — 거래처/담당자/딜/대화를 한 번에 검색
+// ===========================================================================
+function SearchOverlay({ companies, contacts, deals, activities, onOpenCompany, onClose }) {
+  const [q, setQ] = useState("");
+  const isMobile = useIsMobile();
+
+  // ESC 키로 닫기
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const query = q.trim().toLowerCase();
+  const has = (s) => (s || "").toLowerCase().includes(query);
+  const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
+
+  const results = query
+    ? {
+        companies: companies.filter((c) => has(c.name) || has(c.domain) || has(c.product) || has(c.memo)).slice(0, 5),
+        contacts: contacts.filter((p) => has(p.name) || has(p.contact) || has(p.role)).slice(0, 5),
+        deals: deals.filter((d) => has(d.title) || has(d.spec)).slice(0, 5),
+        activities: activities.filter((a) => has(a.title) || has(a.body) || has(a.person)).slice(0, 8),
+      }
+    : null;
+  const total = results ? results.companies.length + results.contacts.length + results.deals.length + results.activities.length : 0;
+
+  const Row = ({ icon, title, sub, companyId }) => (
+    <div onClick={() => onOpenCompany(companyId)}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, cursor: "pointer" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = T.tint)}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      <span style={{ fontSize: 15, width: 20 }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ fontSize: 11, color: T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
+      </div>
+    </div>
+  );
+
+  const Section = ({ label, children }) =>
+    children.length > 0 && (
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, padding: "6px 12px 2px", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+        {children}
+      </div>
+    );
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(10,31,61,0.5)", zIndex: 120, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: isMobile ? "16px 10px" : "80px 20px" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 560, maxHeight: isMobile ? "85vh" : "70vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.3)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: `1px solid ${T.border}` }}>
+          <span style={{ fontSize: 15 }}>🔍</span>
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="거래처, 담당자, 딜, 대화 내용 검색..."
+            style={{ flex: 1, border: "none", outline: "none", fontSize: 15, fontFamily: "inherit", background: "transparent" }}
+          />
+          <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: T.sub, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ overflow: "auto", padding: "8px 6px" }}>
+          {!query && <Empty small>검색어를 입력하세요</Empty>}
+          {query && total === 0 && <Empty small>'{q}' 검색 결과가 없습니다</Empty>}
+          {results && (
+            <>
+              <Section label={`거래처 (${results.companies.length})`}>
+                {results.companies.map((c) => (
+                  <Row key={c.id} icon="🏢" title={c.name} sub={`${c.country || ""} · ${c.domain || ""} · ${c.product || ""}`} companyId={c.id} />
+                ))}
+              </Section>
+              <Section label={`담당자 (${results.contacts.length})`}>
+                {results.contacts.map((p) => (
+                  <Row key={p.id} icon="👤" title={p.name} sub={`${companyName(p.companyId)} · ${p.role || ""} · ${p.contact || ""}`} companyId={p.companyId} />
+                ))}
+              </Section>
+              <Section label={`딜 (${results.deals.length})`}>
+                {results.deals.map((d) => (
+                  <Row key={d.id} icon="▤" title={d.title} sub={`${companyName(d.companyId)} · ${stageInfo(d.stage).label} · ${d.spec || ""}`} companyId={d.companyId} />
+                ))}
+              </Section>
+              <Section label={`대화 기록 (${results.activities.length})`}>
+                {results.activities.map((a) => (
+                  <Row key={a.id} icon={CHANNELS[a.channel]?.icon || "📝"} title={a.title} sub={`${companyName(a.companyId)} · ${a.person || ""} · ${a.date}`} companyId={a.companyId} />
+                ))}
+              </Section>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
 // 팝업(모달)들
 // ===========================================================================
 
 // 모달 껍데기 (배경 어둡게 + 가운데 흰 박스)
 function Modal({ title, onClose, children }) {
+  const isMobile = useIsMobile();
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(15,42,67,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,42,67,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: isMobile ? 10 : 20 }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 480, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: isMobile ? 12 : 16, width: "100%", maxWidth: 480, maxHeight: "92vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ padding: isMobile ? "14px 16px" : "20px 24px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 800, fontSize: 17 }}>{title}</div>
           <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: T.sub, lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ padding: 24 }}>{children}</div>
+        <div style={{ padding: isMobile ? 16 : 24 }}>{children}</div>
       </div>
     </div>
   );
@@ -1214,12 +1551,12 @@ const inputStyle = {
   fontFamily: "inherit",
 };
 
-// 거래처 추가 모달
-function CompanyModal({ onClose, onSave }) {
-  const [f, setF] = useState({ name: "", domain: "", country: "한국", tier: "일반", product: "", memo: "" });
+// 거래처 추가/수정 모달 (initial이 있으면 수정 모드)
+function CompanyModal({ initial, onClose, onSave }) {
+  const [f, setF] = useState({ name: "", domain: "", country: "한국", tier: "일반", product: "", memo: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="거래처 추가" onClose={onClose}>
+    <Modal title={initial ? "거래처 수정" : "거래처 추가"} onClose={onClose}>
       <Field label="회사명 *"><input style={inputStyle} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: ISC" /></Field>
       <Field label="이메일 도메인 (@뒤)"><input style={inputStyle} value={f.domain} onChange={(e) => set("domain", e.target.value)} placeholder="예: isc.co.kr" /></Field>
       <div style={{ display: "flex", gap: 12 }}>
@@ -1245,12 +1582,12 @@ function CompanyModal({ onClose, onSave }) {
   );
 }
 
-// 담당자 추가 모달
-function ContactModal({ companyId, onClose, onSave }) {
-  const [f, setF] = useState({ companyId, name: "", role: "구매", contact: "" });
+// 담당자 추가/수정 모달
+function ContactModal({ companyId, initial, onClose, onSave }) {
+  const [f, setF] = useState({ companyId, name: "", role: "구매", contact: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="담당자 추가" onClose={onClose}>
+    <Modal title={initial ? "담당자 수정" : "담당자 추가"} onClose={onClose}>
       <Field label="이름 *"><input style={inputStyle} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: 김구매 과장" /></Field>
       <Field label="역할">
         <select style={inputStyle} value={f.role} onChange={(e) => set("role", e.target.value)}>
@@ -1263,12 +1600,12 @@ function ContactModal({ companyId, onClose, onSave }) {
   );
 }
 
-// 딜 추가 모달
-function DealModal({ companyId, onClose, onSave }) {
-  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "" });
+// 딜 추가/수정 모달
+function DealModal({ companyId, initial, onClose, onSave }) {
+  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="딜(영업기회) 추가" onClose={onClose}>
+    <Modal title={initial ? "딜(영업기회) 수정" : "딜(영업기회) 추가"} onClose={onClose}>
       <Field label="제목 *"><input style={inputStyle} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="예: Au도금 양산 견적" /></Field>
       <Field label="사양"><input style={inputStyle} value={f.spec} onChange={(e) => set("spec", e.target.value)} placeholder="예: Au 0.3μm · 월5kg" /></Field>
       <div style={{ display: "flex", gap: 12 }}>
@@ -1288,8 +1625,8 @@ function DealModal({ companyId, onClose, onSave }) {
   );
 }
 
-// 대화 기록 추가 모달 (핵심!)
-function ActivityModal({ companyId, deals, onClose, onSave }) {
+// 대화 기록 추가/수정 모달 (핵심!)
+function ActivityModal({ companyId, initial, deals, onClose, onSave }) {
   // 오늘 날짜를 기본값으로 (YYYY-MM-DD HH:MM 형태)
   const now = new Date();
   const defaultDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1297,11 +1634,12 @@ function ActivityModal({ companyId, deals, onClose, onSave }) {
   const [f, setF] = useState({
     companyId, channel: "email", direction: "received",
     person: "", title: "", body: "", dealId: "", date: defaultDate,
+    ...initial,
   });
   const set = (k, v) => setF({ ...f, [k]: v });
 
   return (
-    <Modal title="대화 기록 추가" onClose={onClose}>
+    <Modal title={initial ? "대화 기록 수정" : "대화 기록 추가"} onClose={onClose}>
       {/* 채널 선택 - 버튼으로 */}
       <Field label="채널 *">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1419,6 +1757,18 @@ function FilterChip({ children, active, onClick }) {
     <span onClick={onClick} style={{ fontSize: 11, fontWeight: 600, padding: "5px 10px", borderRadius: 20, cursor: "pointer", background: active ? T.navy : T.bg, color: active ? "#fff" : T.sub, border: `1px solid ${active ? T.navy : T.border}`, whiteSpace: "nowrap" }}>
       {children}
     </span>
+  );
+}
+
+// 수정/삭제용 작은 아이콘 버튼
+function IconBtn({ onClick, danger, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 13, color: danger ? T.danger : T.sub, padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}
+    >
+      {children}
+    </button>
   );
 }
 
