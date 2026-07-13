@@ -32,13 +32,22 @@ const TABLES = {
 
 // ----- cloud 모드: Supabase -----
 
+// 서버에서 한 종류만 불러오기 (삭제된 것 제외)
+export async function cloudLoadOne(kind) {
+  const def = TABLES[kind];
+  const { data, error } = await supabase
+    .from(def.table).select("*")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`${def.table} 불러오기 실패: ${error.message}`);
+  return (data || []).map(def.toApp);
+}
+
 // 서버에서 전체 데이터 불러오기
 export async function cloudLoadAll() {
   const out = {};
-  for (const [kind, def] of Object.entries(TABLES)) {
-    const { data, error } = await supabase.from(def.table).select("*").order("created_at", { ascending: true });
-    if (error) throw new Error(`${def.table} 불러오기 실패: ${error.message}`);
-    out[kind] = (data || []).map(def.toApp);
+  for (const kind of Object.keys(TABLES)) {
+    out[kind] = await cloudLoadOne(kind);
   }
   return out;
 }
@@ -60,6 +69,24 @@ export async function cloudUpdate(kind, id, patchApp) {
   delete patch.id;
   const { error } = await supabase.from(def.table).update(patch).eq("id", id);
   if (error) throw new Error(`수정 실패: ${error.message}`);
+}
+
+// 서버의 한 건 삭제 — 실제로 지우지 않고 deleted_at만 찍음 (실수해도 복구 가능)
+export async function cloudDelete(kind, id) {
+  const def = TABLES[kind];
+  const { error } = await supabase.from(def.table).update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(`삭제 실패: ${error.message}`);
+}
+
+// 거래처 삭제: 소속 담당자/딜/대화기록도 함께 삭제 표시
+export async function cloudDeleteCompanyCascade(companyId) {
+  const now = new Date().toISOString();
+  for (const table of ["crm_contacts", "crm_deals", "crm_activities"]) {
+    const { error } = await supabase.from(table).update({ deleted_at: now }).eq("company_id", companyId);
+    if (error) throw new Error(`삭제 실패(${table}): ${error.message}`);
+  }
+  const { error } = await supabase.from("crm_companies").update({ deleted_at: now }).eq("id", companyId);
+  if (error) throw new Error(`삭제 실패: ${error.message}`);
 }
 
 // ----- 메일 자동 수집 계정 (설정 화면 전용, 클라우드 모드에서만 사용) -----

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import {
-  cloudLoadAll, cloudInsert, cloudUpdate,
+  cloudLoadAll, cloudLoadOne, cloudInsert, cloudUpdate, cloudDelete, cloudDeleteCompanyCascade,
   localLoad, localSave, getSavedMode, saveMode,
   mailAccountsList, mailAccountSave, mailAccountDelete,
 } from "./lib/db";
@@ -296,6 +296,41 @@ export default function OroCrmApp() {
     setActivities([item, ...activities]); // 최신 것이 맨 위로
   };
 
+  // ----- 수정 함수들 (모달에서 저장 시 호출) -----
+  const kindSetters = { companies: setCompanies, contacts: setContacts, deals: setDeals, activities: setActivities };
+  const kindGetters = { companies, contacts, deals, activities };
+
+  const updateItem = async (kind, id, data) => {
+    if (mode === "cloud") {
+      try { await cloudUpdate(kind, id, data); } catch (e) { alert(e.message); return false; }
+    }
+    kindSetters[kind](kindGetters[kind].map((x) => (x.id === id ? { ...x, ...data } : x)));
+    return true;
+  };
+
+  // ----- 삭제 함수들 (휴지통 방식 — 서버 DB에는 남아 있어 복구 가능) -----
+  const deleteItem = async (kind, id) => {
+    if (mode === "cloud") {
+      try { await cloudDelete(kind, id); } catch (e) { alert(e.message); return false; }
+    }
+    kindSetters[kind](kindGetters[kind].filter((x) => x.id !== id));
+    return true;
+  };
+
+  // 거래처 삭제: 담당자/딜/대화기록도 함께 삭제
+  const deleteCompany = async (companyId) => {
+    if (mode === "cloud") {
+      try { await cloudDeleteCompanyCascade(companyId); } catch (e) { alert(e.message); return false; }
+    }
+    setContacts(contacts.filter((x) => x.companyId !== companyId));
+    setDeals(deals.filter((x) => x.companyId !== companyId));
+    setActivities(activities.filter((x) => x.companyId !== companyId));
+    setCompanies(companies.filter((x) => x.id !== companyId));
+    setSelectedCompanyId(null);
+    setScreen("companies");
+    return true;
+  };
+
   // 모드 전환
   const switchToLocal = () => { saveMode("local"); setMode("local"); };
   const switchToCloud = () => { saveMode("cloud"); setMode("cloud"); };
@@ -379,30 +414,60 @@ export default function OroCrmApp() {
             onAddActivity={() => setModal({ type: "activity", companyId: selectedCompanyId })}
             onAddContact={() => setModal({ type: "contact", companyId: selectedCompanyId })}
             onAddDeal={() => setModal({ type: "deal", companyId: selectedCompanyId })}
+            onEditCompany={(c) => setModal({ type: "company", initial: c })}
+            onDeleteCompany={(c) => {
+              if (window.confirm(`'${c.name}' 거래처를 삭제할까요?\n담당자·딜·대화기록도 함께 삭제됩니다.`)) deleteCompany(c.id);
+            }}
+            onEditContact={(p) => setModal({ type: "contact", companyId: selectedCompanyId, initial: p })}
+            onDeleteContact={(p) => { if (window.confirm(`담당자 '${p.name}'을(를) 삭제할까요?`)) deleteItem("contacts", p.id); }}
+            onEditDeal={(d) => setModal({ type: "deal", companyId: selectedCompanyId, initial: d })}
+            onDeleteDeal={(d) => { if (window.confirm(`딜 '${d.title}'을(를) 삭제할까요?`)) deleteItem("deals", d.id); }}
+            onEditActivity={(a) => setModal({ type: "activity", companyId: selectedCompanyId, initial: a })}
+            onDeleteActivity={(a) => { if (window.confirm(`대화 기록 '${a.title}'을(를) 삭제할까요?`)) deleteItem("activities", a.id); }}
           />
         )}
         {screen === "pipeline" && (
-          <Pipeline deals={deals} companies={companies} moveDeal={moveDeal} />
+          <Pipeline
+            deals={deals}
+            companies={companies}
+            moveDeal={moveDeal}
+            onEditDeal={(d) => setModal({ type: "deal", companyId: d.companyId, initial: d })}
+          />
         )}
         {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
 
-      {/* 팝업(모달) - 필요할 때만 나타남 */}
+      {/* 팝업(모달) - 필요할 때만 나타남. initial이 있으면 수정 모드 */}
       {modal?.type === "company" && (
-        <CompanyModal onClose={() => setModal(null)} onSave={(d) => { addCompany(d); setModal(null); }} />
+        <CompanyModal
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("companies", modal.initial.id, d) : addCompany(d); setModal(null); }}
+        />
       )}
       {modal?.type === "contact" && (
-        <ContactModal companyId={modal.companyId} onClose={() => setModal(null)} onSave={(d) => { addContact(d); setModal(null); }} />
+        <ContactModal
+          companyId={modal.companyId}
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("contacts", modal.initial.id, d) : addContact(d); setModal(null); }}
+        />
       )}
       {modal?.type === "deal" && (
-        <DealModal companyId={modal.companyId} onClose={() => setModal(null)} onSave={(d) => { addDeal(d); setModal(null); }} />
+        <DealModal
+          companyId={modal.companyId}
+          initial={modal.initial}
+          onClose={() => setModal(null)}
+          onSave={(d) => { modal.initial ? updateItem("deals", modal.initial.id, d) : addDeal(d); setModal(null); }}
+        />
       )}
       {modal?.type === "activity" && (
         <ActivityModal
           companyId={modal.companyId}
+          initial={modal.initial}
           deals={deals.filter((d) => d.companyId === modal.companyId)}
           onClose={() => setModal(null)}
-          onSave={(d) => { addActivity(d); setModal(null); }}
+          onSave={(d) => { modal.initial ? updateItem("activities", modal.initial.id, d) : addActivity(d); setModal(null); }}
         />
       )}
     </div>
@@ -951,7 +1016,11 @@ function CompanyList({ companies, deals, activities, openCompany, onAdd }) {
 // ===========================================================================
 // 화면 3: 거래처 상세 (CRM의 심장)
 // ===========================================================================
-function CompanyDetail({ company, contacts, deals, activities, back, onAddActivity, onAddContact, onAddDeal }) {
+function CompanyDetail({
+  company, contacts, deals, activities, back, onAddActivity, onAddContact, onAddDeal,
+  onEditCompany, onDeleteCompany, onEditContact, onDeleteContact,
+  onEditDeal, onDeleteDeal, onEditActivity, onDeleteActivity,
+}) {
   const [filter, setFilter] = useState("all"); // 타임라인 채널 필터
 
   if (!company) return null;
@@ -966,7 +1035,13 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
       <Header
         title={company.name}
         sub={`${company.country} · ${company.domain} · ${company.tier} 거래처`}
-        right={<button onClick={back} style={btnStyle("ghost")}>← 목록으로</button>}
+        right={
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={() => onEditCompany(company)} style={btnStyle("ghost")}>✎ 수정</button>
+            <button onClick={() => onDeleteCompany(company)} style={{ ...btnStyle("ghost"), color: T.danger }}>🗑 삭제</button>
+            <button onClick={back} style={btnStyle("ghost")}>← 목록으로</button>
+          </div>
+        }
       />
       <div style={{ display: "flex", gap: 20, padding: 28 }}>
         {/* 왼쪽 정보 */}
@@ -1008,6 +1083,8 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
                     {c.role} · {c.contact}
                   </div>
                 </div>
+                <IconBtn onClick={() => onEditContact(c)}>✎</IconBtn>
+                <IconBtn danger onClick={() => onDeleteContact(c)}>🗑</IconBtn>
               </div>
             ))}
           </div>
@@ -1020,7 +1097,11 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
               const s = stageInfo(d.stage);
               return (
                 <div key={d.id} style={{ padding: "10px 12px", background: T.bg, borderRadius: 8, marginTop: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{d.title}</div>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0 }}>{d.title}</div>
+                    <IconBtn onClick={() => onEditDeal(d)}>✎</IconBtn>
+                    <IconBtn danger onClick={() => onDeleteDeal(d)}>🗑</IconBtn>
+                  </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: T.sub }}>{d.spec}</span>
                     <span style={{ fontSize: 11, color: s.color, fontWeight: 700 }}>{s.label}</span>
@@ -1059,7 +1140,14 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
                 </Empty>
               )}
               {filtered.map((a, i) => (
-                <ActivityItem key={a.id} activity={a} deal={deals.find((d) => d.id === a.dealId)} last={i === filtered.length - 1} />
+                <ActivityItem
+                  key={a.id}
+                  activity={a}
+                  deal={deals.find((d) => d.id === a.dealId)}
+                  last={i === filtered.length - 1}
+                  onEdit={() => onEditActivity(a)}
+                  onDelete={() => onDeleteActivity(a)}
+                />
               ))}
             </div>
           </div>
@@ -1070,7 +1158,7 @@ function CompanyDetail({ company, contacts, deals, activities, back, onAddActivi
 }
 
 // 타임라인 개별 항목
-function ActivityItem({ activity, deal, last }) {
+function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
   const ch = CHANNELS[activity.channel];
   const isSent = activity.direction === "sent";
   return (
@@ -1091,7 +1179,11 @@ function ActivityItem({ activity, deal, last }) {
               {isSent ? "보냄 ↑" : "받음 ↓"}
             </span>
           </div>
-          <span style={{ fontSize: 11, color: T.sub }}>{activity.date}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 11, color: T.sub }}>{activity.date}</span>
+            {onEdit && <IconBtn onClick={onEdit}>✎</IconBtn>}
+            {onDelete && <IconBtn danger onClick={onDelete}>🗑</IconBtn>}
+          </div>
         </div>
         <div style={{ fontWeight: 600, fontSize: 14, margin: "5px 0" }}>{activity.title}</div>
         <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{activity.body}</div>
@@ -1108,7 +1200,7 @@ function ActivityItem({ activity, deal, last }) {
 // ===========================================================================
 // 화면 4: 파이프라인 (칸반)
 // ===========================================================================
-function Pipeline({ deals, companies, moveDeal }) {
+function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
   const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
 
   return (
@@ -1134,7 +1226,8 @@ function Pipeline({ deals, companies, moveDeal }) {
                           <div style={{ width: 22, height: 22, borderRadius: 6, background: T.navy, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 9 }}>
                             {companyName(card.companyId).slice(0, 2)}
                           </div>
-                          <span style={{ fontWeight: 700, fontSize: 12 }}>{companyName(card.companyId)}</span>
+                          <span style={{ fontWeight: 700, fontSize: 12, flex: 1 }}>{companyName(card.companyId)}</span>
+                          <IconBtn onClick={() => onEditDeal(card)}>✎</IconBtn>
                         </div>
                         <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{card.title}</div>
                         <div style={{ fontSize: 11, color: T.sub, marginBottom: 8 }}>{card.spec}</div>
@@ -1214,12 +1307,12 @@ const inputStyle = {
   fontFamily: "inherit",
 };
 
-// 거래처 추가 모달
-function CompanyModal({ onClose, onSave }) {
-  const [f, setF] = useState({ name: "", domain: "", country: "한국", tier: "일반", product: "", memo: "" });
+// 거래처 추가/수정 모달 (initial이 있으면 수정 모드)
+function CompanyModal({ initial, onClose, onSave }) {
+  const [f, setF] = useState({ name: "", domain: "", country: "한국", tier: "일반", product: "", memo: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="거래처 추가" onClose={onClose}>
+    <Modal title={initial ? "거래처 수정" : "거래처 추가"} onClose={onClose}>
       <Field label="회사명 *"><input style={inputStyle} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: ISC" /></Field>
       <Field label="이메일 도메인 (@뒤)"><input style={inputStyle} value={f.domain} onChange={(e) => set("domain", e.target.value)} placeholder="예: isc.co.kr" /></Field>
       <div style={{ display: "flex", gap: 12 }}>
@@ -1245,12 +1338,12 @@ function CompanyModal({ onClose, onSave }) {
   );
 }
 
-// 담당자 추가 모달
-function ContactModal({ companyId, onClose, onSave }) {
-  const [f, setF] = useState({ companyId, name: "", role: "구매", contact: "" });
+// 담당자 추가/수정 모달
+function ContactModal({ companyId, initial, onClose, onSave }) {
+  const [f, setF] = useState({ companyId, name: "", role: "구매", contact: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="담당자 추가" onClose={onClose}>
+    <Modal title={initial ? "담당자 수정" : "담당자 추가"} onClose={onClose}>
       <Field label="이름 *"><input style={inputStyle} value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="예: 김구매 과장" /></Field>
       <Field label="역할">
         <select style={inputStyle} value={f.role} onChange={(e) => set("role", e.target.value)}>
@@ -1263,12 +1356,12 @@ function ContactModal({ companyId, onClose, onSave }) {
   );
 }
 
-// 딜 추가 모달
-function DealModal({ companyId, onClose, onSave }) {
-  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "" });
+// 딜 추가/수정 모달
+function DealModal({ companyId, initial, onClose, onSave }) {
+  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "", ...initial });
   const set = (k, v) => setF({ ...f, [k]: v });
   return (
-    <Modal title="딜(영업기회) 추가" onClose={onClose}>
+    <Modal title={initial ? "딜(영업기회) 수정" : "딜(영업기회) 추가"} onClose={onClose}>
       <Field label="제목 *"><input style={inputStyle} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="예: Au도금 양산 견적" /></Field>
       <Field label="사양"><input style={inputStyle} value={f.spec} onChange={(e) => set("spec", e.target.value)} placeholder="예: Au 0.3μm · 월5kg" /></Field>
       <div style={{ display: "flex", gap: 12 }}>
@@ -1288,8 +1381,8 @@ function DealModal({ companyId, onClose, onSave }) {
   );
 }
 
-// 대화 기록 추가 모달 (핵심!)
-function ActivityModal({ companyId, deals, onClose, onSave }) {
+// 대화 기록 추가/수정 모달 (핵심!)
+function ActivityModal({ companyId, initial, deals, onClose, onSave }) {
   // 오늘 날짜를 기본값으로 (YYYY-MM-DD HH:MM 형태)
   const now = new Date();
   const defaultDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1297,11 +1390,12 @@ function ActivityModal({ companyId, deals, onClose, onSave }) {
   const [f, setF] = useState({
     companyId, channel: "email", direction: "received",
     person: "", title: "", body: "", dealId: "", date: defaultDate,
+    ...initial,
   });
   const set = (k, v) => setF({ ...f, [k]: v });
 
   return (
-    <Modal title="대화 기록 추가" onClose={onClose}>
+    <Modal title={initial ? "대화 기록 수정" : "대화 기록 추가"} onClose={onClose}>
       {/* 채널 선택 - 버튼으로 */}
       <Field label="채널 *">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1419,6 +1513,18 @@ function FilterChip({ children, active, onClick }) {
     <span onClick={onClick} style={{ fontSize: 11, fontWeight: 600, padding: "5px 10px", borderRadius: 20, cursor: "pointer", background: active ? T.navy : T.bg, color: active ? "#fff" : T.sub, border: `1px solid ${active ? T.navy : T.border}`, whiteSpace: "nowrap" }}>
       {children}
     </span>
+  );
+}
+
+// 수정/삭제용 작은 아이콘 버튼
+function IconBtn({ onClick, danger, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 13, color: danger ? T.danger : T.sub, padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}
+    >
+      {children}
+    </button>
   );
 }
 
