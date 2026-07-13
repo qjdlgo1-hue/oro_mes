@@ -684,6 +684,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
   const [prices, setPrices] = useState([]); // 월별 가격 이력
   const [pgcPrice, setPgcPrice] = useState("");
   const [agcnPrice, setAgcnPrice] = useState("");
+  const [etcCost, setEtcCost] = useState("1800"); // 재료비(기타) — 모든 품목에 동일 적용
   const [companyId, setCompanyId] = useState("");
   const [items, setItems] = useState([]);
   const [overrides, setOverrides] = useState({}); // {itemId: {tierIdx: 수정판가}}
@@ -695,10 +696,12 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
     try {
       const list = await pgcPricesList();
       setPrices(list);
-      const row = list.find((p) => p.ym === ym) || list[0];
+      const cur = list.find((p) => p.ym === ym);
+      const row = cur || list[0];
       if (row) {
-        setPgcPrice(String(list.find((p) => p.ym === ym)?.price ?? row.price ?? ""));
-        setAgcnPrice(String(list.find((p) => p.ym === ym)?.agcn_price ?? row.agcn_price ?? ""));
+        setPgcPrice(String(cur?.price ?? row.price ?? ""));
+        setAgcnPrice(String(cur?.agcn_price ?? list.find((p) => p.agcn_price != null)?.agcn_price ?? ""));
+        setEtcCost(String(cur?.etc_cost ?? list.find((p) => p.etc_cost != null)?.etc_cost ?? 1800));
       }
     } catch (e) { alert(e.message); }
   };
@@ -710,6 +713,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
     if (row) {
       setPgcPrice(String(row.price ?? ""));
       setAgcnPrice(String(row.agcn_price ?? ""));
+      if (row.etc_cost != null) setEtcCost(String(row.etc_cost));
     }
   }, [ym]);
 
@@ -734,15 +738,16 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
   const company = companies.find((c) => c.id === companyId);
   const pgcN = Number(pgcPrice) || 0;
   const agcnN = Number(agcnPrice) || 0;
+  const etcN = Number(etcCost) || 0;
   const prevRow = prices.find((p) => p.ym < ym); // 직전 저장 월 (참고 표시용)
   const won = (n) => (Number(n) || 0).toLocaleString("ko-KR");
 
   const savePrices = async () => {
     if (!pgcN) { alert("PGC 평균가를 입력하세요."); return; }
     try {
-      await pgcPriceSave({ ym, price: pgcN, agcn_price: agcnN || null });
+      await pgcPriceSave({ ym, price: pgcN, agcn_price: agcnN || null, etc_cost: etcN || null });
       await loadPrices();
-      alert(`${ym} 가격이 저장되었습니다.`);
+      alert(`${ym} 기준 정보가 저장되었습니다.`);
     } catch (e) { alert(e.message); }
   };
 
@@ -757,7 +762,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
     setBusy(true);
     try {
       const rows = items.map((it) => {
-        const calc = calcItem(it, pgcN, agcnN);
+        const calc = calcItem(it, pgcN, agcnN, etcN);
         return { gubun: it.gubun, model: it.model, spec: it.spec, note: it.note || "", prices: TIER_LABELS.map((_, ti) => tierPrice(it, calc, ti)) };
       });
       await downloadQuoteXlsx({ companyName: company.name, ym, pgcPrice: pgcN, agcnPrice: agcnN, rows });
@@ -769,6 +774,14 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
   const removeItem = async (it) => {
     if (!window.confirm(`'${it.model}' 품목을 삭제할까요?`)) return;
     try { await quoteItemDelete(it.id); loadItems(companyId); } catch (e) { alert(e.message); }
+  };
+
+  // 표에서 구분(사급/도급)을 바로 바꾸면 저장 + 즉시 재계산
+  const changeGubun = async (it, gubun) => {
+    try {
+      await quoteItemSave({ ...it, gubun });
+      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, gubun } : x)));
+    } catch (e) { alert(e.message); }
   };
 
   const thStyle = { padding: "8px 8px", fontSize: 11, fontWeight: 700, color: "#fff", background: T.navy, whiteSpace: "nowrap", textAlign: "center" };
@@ -801,7 +814,11 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
               <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>AgCN(청화은) 평균가 (원/g)</div>
               <input type="number" style={{ ...inputStyle, width: 130 }} value={agcnPrice} onChange={(e) => setAgcnPrice(e.target.value)} />
             </div>
-            <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>가격 저장</button>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>재료비(기타) (원, 전 품목 공통)</div>
+              <input type="number" style={{ ...inputStyle, width: 130 }} value={etcCost} onChange={(e) => setEtcCost(e.target.value)} />
+            </div>
+            <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>기준 정보 저장</button>
             <div style={{ flex: 1 }} />
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>거래처</div>
@@ -855,10 +872,21 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
                 </thead>
                 <tbody>
                   {items.map((it) => {
-                    const calc = calcItem(it, pgcN, agcnN);
+                    const calc = calcItem(it, pgcN, agcnN, etcN);
+                    const knownGubun = it.gubun === "사급" || it.gubun === "도급";
                     return (
                       <tr key={it.id}>
-                        <td style={{ ...tdStyle, textAlign: "center", color: T.sub }}>{it.gubun}</td>
+                        <td style={{ ...tdStyle, textAlign: "center" }}>
+                          <select
+                            value={it.gubun || ""}
+                            onChange={(e) => changeGubun(it, e.target.value)}
+                            style={{ border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 4px", fontSize: 11, fontFamily: "inherit", background: "#fff", color: T.text, cursor: "pointer" }}
+                          >
+                            {!knownGubun && <option value={it.gubun || ""}>{it.gubun || "선택"}</option>}
+                            <option value="사급">사급</option>
+                            <option value="도급">도급</option>
+                          </select>
+                        </td>
                         <td style={{ ...tdStyle, fontWeight: 700 }}>{it.model}</td>
                         <td style={{ ...tdStyle, color: T.sub, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{it.spec}</td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>{it.pgc_grams || "-"}</td>
@@ -901,7 +929,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
           )}
           {company && items.length > 0 && (
             <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
-              재료비 = Ni자재(사급은 미적용) + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(입력값) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율), 100원 단위 올림, 수량 구간(0.5→5KG)마다 마진 1.1%p씩 낮아짐 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 (아래 %는 실제 마진율)
+              구분을 표에서 바꾸면 바로 저장·재계산됩니다 (사급 = Ni 재료비 미적용) · 재료비 = Ni자재 + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(기준 정보 입력값, 전 품목 공통) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율) 100원 올림, 수량 구간마다 마진 1.1%p 감소 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다
             </div>
           )}
         </div>
@@ -987,8 +1015,10 @@ function QuoteItemModal({ companyId, item, onClose, onSaved }) {
               onChange={(e) => set("material_ni", e.target.value)} disabled={f.gubun === "사급"} />
           </Field>
         </div>
-        <div style={{ flex: 1 }}><Field label="재료비 기타(원)"><input type="number" style={inputStyle} value={f.material_etc} onChange={(e) => set("material_etc", e.target.value)} /></Field></div>
         <div style={{ flex: 1 }}><Field label="목표 마진율(%)"><input type="number" style={inputStyle} value={f.marginPct} onChange={(e) => set("marginPct", e.target.value)} /></Field></div>
+      </div>
+      <div style={{ fontSize: 11, color: T.sub, marginTop: -6, marginBottom: 12 }}>
+        ※ 재료비(기타)는 견적 화면의 "기준 정보"에서 입력한 값이 전 품목에 공통 적용됩니다.
       </div>
       <Field label="비고 (견적서에 표시)"><input style={inputStyle} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
       <ModalActions onClose={onClose} onSave={save} disabled={!f.model.trim() || busy} saveLabel={busy ? "저장 중..." : "저장"} />

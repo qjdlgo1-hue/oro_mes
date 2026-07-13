@@ -73,6 +73,7 @@ create table if not exists crm_pgc_prices (
   ym text primary key,
   price numeric not null,       -- PGC 원/g
   agcn_price numeric,           -- 청화은 원/g
+  etc_cost numeric,             -- 재료비(기타) — 전 품목 공통 적용 (마이그레이션 "add_etc_cost_to_pgc_prices")
   created_at timestamptz default now()
 );
 create table if not exists crm_quote_items (
