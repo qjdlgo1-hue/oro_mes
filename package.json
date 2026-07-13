@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && npm run build:crm",
+    "build:crm": "cd crm && npm ci && npm run build -- --outDir ../dist/crm --emptyOutDir",
     "preview": "vite preview",
     "test": "vitest run"
   },
