@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   FORMS, FORM_PRESETS, EXPENSE_ITEMS, calcTotal, money, shortDate, korShortDate, dateParts, docAmount, settleSummary,
   PROGRAMS, TD_FORMS, TD_ITEMS, TD_PRESETS, TD_EVIDENCE, TD_ITEM_GROUP,
+  SSP_FORMS, SSP_ITEMS, SSP_SUBITEMS, SSP_PRESETS, SSP_EVIDENCE, sspFormsFor, sspFormNo, sspFormTitle,
 } from "../grantforms";
 
 describe("grantforms", () => {
@@ -49,7 +50,7 @@ describe("grantforms", () => {
     expect(s2.lines.map(l => l.item)).toContain("재료비");
   });
   it("기술닥터: 세목 8종 모두 프리셋·증빙·비목그룹 보유, 프리셋 서식 키 유효", () => {
-    expect(PROGRAMS.map(p => p.key)).toEqual(["cud", "td"]);
+    expect(PROGRAMS.map(p => p.key)).toEqual(["cud", "td", "ysc", "gsa"]);
     const keys = new Set(TD_FORMS.map(f => f.key));
     expect(keys.size).toBe(TD_FORMS.length); // 서식 키 중복 없음
     expect(keys.has("t4")).toBe(true); // 결과보고서(제4호) 등록
@@ -66,5 +67,44 @@ describe("grantforms", () => {
     const s = settleSummary([{ expense_item: "(실험)재료비", data }], {}, TD_ITEMS);
     expect(s.totalAmount).toBe(3030000);
     expect(s.lines[0].item).toBe("(실험)재료비");
+  });
+  it("창업성공패키지: 서식 키 중복 없음 + 공고별 필터·번호·제목", () => {
+    const keys = new Set(SSP_FORMS.map(f => f.key));
+    expect(keys.size).toBe(SSP_FORMS.length);
+    const ysc = sspFormsFor("ysc"), gsa = sspFormsFor("gsa");
+    expect(ysc.map(f => f.key)).toContain("s10b"); // 해외 IR — 딥테크 전용
+    expect(ysc.map(f => f.key)).toContain("s23");
+    expect(ysc.map(f => f.key)).toContain("s24");
+    expect(gsa.map(f => f.key)).not.toContain("s10b");
+    expect(gsa.map(f => f.key)).not.toContain("s23");
+    // 사용실적보고서 번호: 딥테크 20 / 글창사 21, 출장 서식은 제목이 다름
+    const s20 = SSP_FORMS.find(f => f.key === "s20")!;
+    expect(sspFormNo(s20, "ysc")).toBe("20");
+    expect(sspFormNo(s20, "gsa")).toBe("21");
+    const s21 = SSP_FORMS.find(f => f.key === "s21")!;
+    expect(sspFormTitle(s21, "ysc")).toBe("출장 결과보고서");
+    expect(sspFormTitle(s21, "gsa")).toBe("국내 출장 여비 신청서");
+  });
+  it("창업성공패키지: 비목 5종 모두 세목·프리셋·증빙 보유, 프리셋 서식 키 유효", () => {
+    const keys = new Set(SSP_FORMS.map(f => f.key));
+    SSP_ITEMS.forEach(it => {
+      expect(SSP_SUBITEMS[it]?.length).toBeGreaterThan(0);
+      expect(SSP_PRESETS[it]?.length).toBeGreaterThan(0);
+      expect(SSP_EVIDENCE[it]?.docs.length).toBeGreaterThan(0);
+      expect(SSP_EVIDENCE[it]?.limits.length).toBeGreaterThan(0);
+    });
+    Object.values(SSP_PRESETS).flat().forEach(k => expect(keys.has(k)).toBe(true));
+  });
+  it("창업성공패키지: 내역표(buyRows/pcRows) 합계로 집행액 산정 + 비목 순 집계", () => {
+    expect(docAmount({ buyRows: [{ sum: "1,000,000" }, { unit: "0", qty: "0", sum: "500000" }] })).toBe(1500000);
+    expect(docAmount({ pcRows: [{ amount: "700,000" }] })).toBe(700000);
+    expect(docAmount({ useAmount: "3,000,000" })).toBe(3000000);
+    const s = settleSummary(
+      [{ expense_item: "재료비", data: { buyRows: [{ sum: "1000000" }] } }, { expense_item: "기계장치", data: { pcRows: [{ amount: "2000000" }] } }],
+      { "재료비": "5,000,000" }, SSP_ITEMS,
+    );
+    expect(s.totalAmount).toBe(3000000);
+    expect(s.lines[0].item).toBe("재료비");
+    expect(s.lines.find(l => l.item === "기계장치")?.amount).toBe(2000000);
   });
 });

@@ -15,9 +15,9 @@ type P = {
 const B = ({ on }: { on: boolean }) => <span style={{ fontFamily: "sans-serif" }}>{on ? "■" : "□"}</span>;
 
 // (인) 자리 — 서명 PNG가 등록되어 있으면 글자 위에 겹쳐 표시 (검수조서와 같은 패턴)
-export const Stamp = ({ sign }: { sign?: string }) => (
+export const Stamp = ({ sign, label = "(인)" }: { sign?: string; label?: string }) => (
   <span style={{ position: "relative", display: "inline-block", minWidth: 34, textAlign: "center" }}>
-    {sign && <img src={sign} alt="" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", height: 48, pointerEvents: "none" }} />}(인)
+    {sign && <img src={sign} alt="" style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", height: 48, pointerEvents: "none" }} />}{label}
   </span>
 );
 
