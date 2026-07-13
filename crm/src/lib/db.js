@@ -62,6 +62,24 @@ export async function cloudUpdate(kind, id, patchApp) {
   if (error) throw new Error(`수정 실패: ${error.message}`);
 }
 
+// ----- 메일 자동 수집 계정 (설정 화면 전용, 클라우드 모드에서만 사용) -----
+
+export async function mailAccountsList() {
+  const { data, error } = await supabase.from("crm_mail_accounts").select("*").order("created_at", { ascending: true });
+  if (error) throw new Error(`메일 계정 불러오기 실패: ${error.message}`);
+  return data || [];
+}
+
+export async function mailAccountSave(acc) {
+  const { error } = await supabase.from("crm_mail_accounts").upsert(acc);
+  if (error) throw new Error(`메일 계정 저장 실패: ${error.message}`);
+}
+
+export async function mailAccountDelete(id) {
+  const { error } = await supabase.from("crm_mail_accounts").delete().eq("id", id);
+  if (error) throw new Error(`메일 계정 삭제 실패: ${error.message}`);
+}
+
 // ----- local 모드: 브라우저 localStorage -----
 
 const LOCAL_KEYS = {

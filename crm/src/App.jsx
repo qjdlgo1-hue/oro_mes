@@ -3,6 +3,7 @@ import { supabase } from "./lib/supabase";
 import {
   cloudLoadAll, cloudInsert, cloudUpdate,
   localLoad, localSave, getSavedMode, saveMode,
+  mailAccountsList, mailAccountSave, mailAccountDelete,
 } from "./lib/db";
 
 // ============================================================================
@@ -383,6 +384,7 @@ export default function OroCrmApp() {
         {screen === "pipeline" && (
           <Pipeline deals={deals} companies={companies} moveDeal={moveDeal} />
         )}
+        {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
 
       {/* 팝업(모달) - 필요할 때만 나타남 */}
@@ -431,6 +433,7 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "영업 파이프라인", icon: "▤" },
+    { key: "settings", label: "설정", icon: "⚙" },
   ];
 
   return (
@@ -500,6 +503,240 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
         )}
       </div>
     </div>
+  );
+}
+
+// ===========================================================================
+// 화면 5: 설정 — 메일 자동 수집 계정 관리
+// (여기 등록한 계정을 수집기가 1시간마다 읽어 IMAP으로 메일을 가져옴)
+// ===========================================================================
+const MAIL_PRESETS = [
+  { key: "naver", label: "네이버 메일", imap_host: "imap.naver.com", imap_port: 993, smtp_host: "smtp.naver.com", smtp_port: 465, hint: "아이디는 @naver.com 앞부분" },
+  { key: "works", label: "네이버 웍스", imap_host: "imap.worksmobile.com", imap_port: 993, smtp_host: "smtp.worksmobile.com", smtp_port: 465, hint: "아이디는 이메일 전체 주소" },
+  { key: "custom", label: "직접 입력", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, hint: "" },
+];
+
+function SettingsScreen({ mode }) {
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState(null); // null=닫힘, {}=새 계정, 계정객체=수정
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      setAccounts(await mailAccountsList());
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (mode === "cloud") reload();
+    else setLoading(false);
+  }, [mode]);
+
+  const remove = async (acc) => {
+    if (!window.confirm(`'${acc.label}' 계정을 삭제할까요?\n이후 이 계정의 메일은 수집되지 않습니다.`)) return;
+    try { await mailAccountDelete(acc.id); reload(); } catch (e) { alert(e.message); }
+  };
+
+  const toggleEnabled = async (acc) => {
+    try { await mailAccountSave({ ...acc, enabled: !acc.enabled }); reload(); } catch (e) { alert(e.message); }
+  };
+
+  if (mode !== "cloud") {
+    return (
+      <div>
+        <Header title="설정" sub="메일 자동 수집 계정" />
+        <div style={{ padding: 28 }}>
+          <Empty>
+            메일 자동 수집은 서버(클라우드) 모드에서만 사용할 수 있습니다.
+            <div style={{ marginTop: 8, fontSize: 12 }}>사이드바 하단에서 "서버 모드로 전환"을 눌러주세요.</div>
+          </Empty>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <Header
+        title="설정"
+        sub="메일 자동 수집 계정 관리"
+        right={<button onClick={() => setEditing({})} style={btnStyle("primary")}>+ 메일 계정 추가</button>}
+      />
+      <div style={{ padding: 28, maxWidth: 860 }}>
+        <Panel title="메일 자동 수집 계정">
+          {loading && <Empty small>불러오는 중...</Empty>}
+          {!loading && error && <Empty small><span style={{ color: T.danger }}>{error}</span></Empty>}
+          {!loading && !error && accounts.length === 0 && (
+            <Empty>
+              등록된 메일 계정이 없습니다
+              <div style={{ marginTop: 8, fontSize: 12 }}>"+ 메일 계정 추가"로 네이버 메일이나 네이버 웍스 계정을 등록하세요</div>
+            </Empty>
+          )}
+          {accounts.map((a, i) => (
+            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: i < accounts.length - 1 ? `1px solid ${T.border}` : "none" }}>
+              <span style={{ fontSize: 18 }}>📮</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>
+                  {a.label}
+                  <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 4, background: a.enabled ? T.tint2 : T.tint, color: a.enabled ? T.tealDark : T.sub }}>
+                    {a.enabled ? "수집 중" : "중지됨"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: T.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.username} · IMAP {a.imap_host}:{a.imap_port}{a.smtp_host ? ` · SMTP ${a.smtp_host}:${a.smtp_port}` : ""}
+                </div>
+              </div>
+              <button onClick={() => toggleEnabled(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>
+                {a.enabled ? "중지" : "재개"}
+              </button>
+              <button onClick={() => setEditing(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>수정</button>
+              <button onClick={() => remove(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px", color: T.danger }}>삭제</button>
+            </div>
+          ))}
+        </Panel>
+
+        <div style={{ height: 20 }} />
+        <Panel title="동작 방식 · 주의사항">
+          <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.8 }}>
+            · 등록한 계정의 받은편지함·보낸편지함을 <b style={{ color: T.navy }}>1시간마다</b> 확인해, 거래처의 "이메일 도메인"과 주고받은 메일을 타임라인에 자동 기록합니다.<br />
+            · 네이버 쪽 설정에서 <b style={{ color: T.navy }}>IMAP 사용</b>이 켜져 있어야 합니다 (네이버 메일: 환경설정 → POP3/IMAP 설정).<br />
+            · 2단계 인증을 쓰는 계정은 실제 비밀번호 대신 <b style={{ color: T.navy }}>애플리케이션 비밀번호</b>를 발급해 입력하세요.<br />
+            · <span style={{ color: T.danger }}>비밀번호는 서버 DB에 저장되며 CRM에 로그인한 팀원이 볼 수 있습니다.</span> 가능하면 전용 앱 비밀번호를 사용하세요.<br />
+            · SMTP 정보는 지금은 저장만 해두며, 나중에 CRM에서 메일을 보내는 기능이 생기면 사용됩니다.
+          </div>
+        </Panel>
+      </div>
+
+      {editing !== null && (
+        <MailAccountModal
+          account={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); reload(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// 메일 계정 추가/수정 모달
+function MailAccountModal({ account, onClose, onSaved }) {
+  const isNew = !account.id;
+  const [f, setF] = useState({
+    label: account.label || "",
+    username: account.username || "",
+    password: account.password || "",
+    imap_host: account.imap_host || "",
+    imap_port: account.imap_port || 993,
+    smtp_host: account.smtp_host || "",
+    smtp_port: account.smtp_port || 465,
+    enabled: account.enabled !== false,
+  });
+  const [preset, setPreset] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+
+  const applyPreset = (p) => {
+    setPreset(p.key);
+    setF((prev) => ({
+      ...prev,
+      label: prev.label || (p.key !== "custom" ? p.label : ""),
+      imap_host: p.imap_host, imap_port: p.imap_port,
+      smtp_host: p.smtp_host, smtp_port: p.smtp_port,
+    }));
+  };
+
+  const canSave = f.label.trim() && f.username.trim() && f.password && f.imap_host.trim();
+
+  const save = async () => {
+    if (!canSave || busy) return;
+    setBusy(true);
+    try {
+      await mailAccountSave({
+        id: account.id || newId(),
+        label: f.label.trim(),
+        username: f.username.trim(),
+        password: f.password,
+        imap_host: f.imap_host.trim(),
+        imap_port: parseInt(f.imap_port, 10) || 993,
+        smtp_host: f.smtp_host.trim() || null,
+        smtp_port: parseInt(f.smtp_port, 10) || 465,
+        enabled: f.enabled,
+      });
+      onSaved();
+    } catch (e) {
+      alert(e.message);
+      setBusy(false);
+    }
+  };
+
+  const hint = MAIL_PRESETS.find((p) => p.key === preset)?.hint;
+
+  return (
+    <Modal title={isNew ? "메일 계정 추가" : "메일 계정 수정"} onClose={onClose}>
+      {isNew && (
+        <Field label="어떤 메일인가요?">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {MAIL_PRESETS.map((p) => (
+              <button key={p.key} onClick={() => applyPreset(p)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600,
+                  border: `1px solid ${preset === p.key ? T.teal : T.border}`,
+                  background: preset === p.key ? T.tint2 : "#fff",
+                  color: preset === p.key ? T.tealDark : T.sub,
+                }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      <Field label="이름(라벨) *"><input style={inputStyle} value={f.label} onChange={(e) => set("label", e.target.value)} placeholder="예: 대표 네이버웍스" /></Field>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <Field label={`아이디 *${hint ? ` (${hint})` : ""}`}>
+            <input style={inputStyle} value={f.username} onChange={(e) => set("username", e.target.value)} placeholder="예: dwlee@orocorp.kr" autoComplete="off" />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="비밀번호 * (앱 비밀번호 권장)">
+            <input style={inputStyle} type="password" value={f.password} onChange={(e) => set("password", e.target.value)} autoComplete="new-password" />
+          </Field>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 2 }}>
+          <Field label="IMAP 서버 * (메일 읽기)"><input style={inputStyle} value={f.imap_host} onChange={(e) => set("imap_host", e.target.value)} placeholder="imap.naver.com" /></Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="IMAP 포트"><input style={inputStyle} type="number" value={f.imap_port} onChange={(e) => set("imap_port", e.target.value)} /></Field>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 2 }}>
+          <Field label="SMTP 서버 (메일 발송 — 선택)"><input style={inputStyle} value={f.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.naver.com" /></Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="SMTP 포트"><input style={inputStyle} type="number" value={f.smtp_port} onChange={(e) => set("smtp_port", e.target.value)} /></Field>
+        </div>
+      </div>
+
+      <Field label="수집 사용">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+          이 계정에서 메일을 수집합니다
+        </label>
+      </Field>
+
+      <ModalActions onClose={onClose} onSave={save} disabled={!canSave || busy} saveLabel={busy ? "저장 중..." : "저장"} />
+    </Modal>
   );
 }
 

@@ -60,3 +60,20 @@ create policy "crm_companies_all" on crm_companies for all to authenticated usin
 create policy "crm_contacts_all" on crm_contacts for all to authenticated using (true) with check (true);
 create policy "crm_deals_all" on crm_deals for all to authenticated using (true) with check (true);
 create policy "crm_activities_all" on crm_activities for all to authenticated using (true) with check (true);
+
+-- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
+-- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
+create table if not exists crm_mail_accounts (
+  id text primary key,
+  label text not null,
+  username text not null,
+  password text not null,
+  imap_host text not null,
+  imap_port int not null default 993,
+  smtp_host text,
+  smtp_port int default 465,
+  enabled boolean not null default true,
+  created_at timestamptz default now()
+);
+alter table crm_mail_accounts enable row level security;
+create policy "crm_mail_accounts_all" on crm_mail_accounts for all to authenticated using (true) with check (true);

@@ -7,11 +7,9 @@
 //      거래처 도메인과 주고받은 메일을 찾아
 //   3) CRM 타임라인(crm_activities)에 기록합니다 (중복은 자동 무시).
 //
-// 필요한 환경변수(GitHub Secrets):
-//   SUPABASE_SERVICE_ROLE_KEY  : Supabase 대시보드 > Settings > API 의 service_role 키
-//   NAVER_MAIL_USER / NAVER_MAIL_PASSWORD : 네이버 메일 아이디(@naver.com 앞부분) / 비밀번호(2단계 인증 시 애플리케이션 비밀번호)
-//   WORKS_MAIL_USER / WORKS_MAIL_PASSWORD : 네이버 웍스 이메일 전체 주소 / 비밀번호(또는 앱 비밀번호)
-// 계정 두 개 중 설정된 것만 수집합니다. 하나도 없으면 아무것도 하지 않고 종료.
+// 메일 계정은 CRM의 "설정" 화면에서 등록합니다 (crm_mail_accounts 테이블).
+// GitHub Secrets에는 SUPABASE_SERVICE_ROLE_KEY 하나만 있으면 됩니다.
+// (예전 방식인 NAVER_MAIL_* / WORKS_MAIL_* Secrets도 계속 동작 — 보조 수단)
 // ---------------------------------------------------------------------------
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -21,17 +19,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://fzoombsxvscndzrhzmwb.s
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const LOOKBACK_DAYS = 3; // 매시간 돌므로 3일이면 충분 (중복은 걸러짐)
 
-const ACCOUNTS = [
-  { label: "네이버 메일", host: "imap.naver.com", user: process.env.NAVER_MAIL_USER, pass: process.env.NAVER_MAIL_PASSWORD },
-  { label: "네이버 웍스", host: "imap.worksmobile.com", user: process.env.WORKS_MAIL_USER, pass: process.env.WORKS_MAIL_PASSWORD },
-].filter((a) => a.user && a.pass);
-
 if (!SERVICE_KEY) {
   console.log("SUPABASE_SERVICE_ROLE_KEY 미설정 — 수집을 건너뜁니다 (Secrets 등록 후 자동 활성화).");
-  process.exit(0);
-}
-if (ACCOUNTS.length === 0) {
-  console.log("메일 계정 Secrets 미설정 — 수집을 건너뜁니다 (NAVER_MAIL_* / WORKS_MAIL_* 등록 후 자동 활성화).");
   process.exit(0);
 }
 
@@ -60,6 +49,29 @@ function addressDomain(addr) {
   return i < 0 ? "" : addr.slice(i + 1).toLowerCase();
 }
 
+// 수집 계정: 1순위 = CRM 설정 화면에서 등록한 계정, 보조 = 예전 방식 GitHub Secrets
+const dbAccounts = (await sb("/rest/v1/crm_mail_accounts?select=*&enabled=eq.true")).map((a) => ({
+  label: a.label,
+  host: a.imap_host,
+  port: a.imap_port || 993,
+  user: a.username,
+  pass: a.password,
+}));
+const envAccounts = [
+  { label: "네이버 메일(Secrets)", host: "imap.naver.com", port: 993, user: process.env.NAVER_MAIL_USER, pass: process.env.NAVER_MAIL_PASSWORD },
+  { label: "네이버 웍스(Secrets)", host: "imap.worksmobile.com", port: 993, user: process.env.WORKS_MAIL_USER, pass: process.env.WORKS_MAIL_PASSWORD },
+].filter((a) => a.user && a.pass);
+
+// 같은 계정이 양쪽에 있으면 설정 화면 쪽만 사용 (host+user 기준)
+const seen = new Set(dbAccounts.map((a) => `${a.host}|${a.user}`.toLowerCase()));
+const ACCOUNTS = [...dbAccounts, ...envAccounts.filter((a) => !seen.has(`${a.host}|${a.user}`.toLowerCase()))];
+
+if (ACCOUNTS.length === 0) {
+  console.log("등록된 메일 계정 없음 — CRM 설정 화면에서 계정을 추가하면 자동으로 수집이 시작됩니다.");
+  process.exit(0);
+}
+console.log(`메일 계정 ${ACCOUNTS.length}개:`, ACCOUNTS.map((a) => `${a.label}(${a.host})`).join(", "));
+
 const companies = (await sb("/rest/v1/crm_companies?select=id,name,domain&domain=not.is.null")).filter(
   (c) => (c.domain || "").trim() !== ""
 );
@@ -75,7 +87,7 @@ for (const account of ACCOUNTS) {
   console.log(`\n[${account.label}] ${account.host} 접속...`);
   const client = new ImapFlow({
     host: account.host,
-    port: 993,
+    port: account.port || 993,
     secure: true,
     auth: { user: account.user, pass: account.pass },
     logger: false,
