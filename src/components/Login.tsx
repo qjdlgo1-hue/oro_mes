@@ -1,5 +1,14 @@
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { logAudit } from "../lib/db";
+
+// 기록 탭용 접속 기기 요약 (보안 점검 — 상세 UA 대신 기기/브라우저만)
+export function deviceInfo(): string {
+  const ua = navigator.userAgent;
+  const dev = /Mobi|Android|iPhone|iPad/i.test(ua) ? "모바일" : "PC";
+  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : /Firefox\//.test(ua) ? "Firefox" : "기타";
+  return `${dev}·${br}`;
+}
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -20,6 +29,8 @@ export default function Login() {
         else if (msg.includes("network") || msg.includes("fetch")) setErr("네트워크 오류 — 인터넷 연결을 확인하세요.");
         else if (msg.includes("rate")) setErr("시도 횟수가 많습니다. 잠시 후 다시 시도하세요.");
         else setErr("로그인 실패 — 이메일/비밀번호를 확인하세요.");
+      } else {
+        logAudit("로그인", "auth", "", { device: deviceInfo() }); // 기록 탭 접속 이력 (best-effort)
       }
     } catch { setErr("네트워크 오류 — 인터넷 연결을 확인하세요."); }
     setBusy(false);
