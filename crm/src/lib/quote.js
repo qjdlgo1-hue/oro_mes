@@ -10,7 +10,7 @@
 export const TIER_LABELS = ["0.5KG", "1KG", "3KG", "5KG"];
 export const TIER_STEP = 0.011; // 구간당 마진 감소폭 (엑셀 헤더의 '할인률 1.10%')
 
-export function calcItem(item, pgcPrice, agcnPrice) {
+export function calcItem(item, pgcPrice, agcnPrice, globalEtc) {
   // 사급 = Ni 자재를 고객이 지급 → Ni 재료비 미적용 (값이 있어도 0으로 계산)
   const isSagup = (item.gubun || "").trim() === "사급";
   const niCost = isSagup ? 0 : (Number(item.material_ni) || 0);
@@ -18,8 +18,11 @@ export function calcItem(item, pgcPrice, agcnPrice) {
   const pgcCost =
     (Number(item.pgc_grams) || 0) * (Number(pgcPrice) || 0) +
     (Number(item.agcn_grams) || 0) * (Number(agcnPrice) || 0);
-  // 재료비(기타) = 입력한 값 그대로
-  const etcCost = Number(item.material_etc) || 0;
+  // 재료비(기타) = 기준 정보에서 입력한 값을 모든 품목에 동일 적용
+  //               (기준 정보에 값이 없으면 품목별 저장값 사용)
+  const etcCost = globalEtc !== undefined && globalEtc !== null && globalEtc !== ""
+    ? Number(globalEtc) || 0
+    : Number(item.material_etc) || 0;
   const total = niCost + pgcCost + etcCost;
   const yieldG = Number(item.yield_grams) || 50;
   const cost = yieldG > 0 ? total / yieldG : 0; // 공정비용(원/g)
