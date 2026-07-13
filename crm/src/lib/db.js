@@ -107,6 +107,39 @@ export async function mailAccountDelete(id) {
   if (error) throw new Error(`메일 계정 삭제 실패: ${error.message}`);
 }
 
+// ----- 견적 (PGC/AgCN 월별 가격 + 거래처별 품목, 클라우드 모드 전용) -----
+
+export async function pgcPricesList() {
+  const { data, error } = await supabase.from("crm_pgc_prices").select("*").order("ym", { ascending: false });
+  if (error) throw new Error(`PGC 가격 불러오기 실패: ${error.message}`);
+  return data || [];
+}
+
+export async function pgcPriceSave(row) {
+  const { error } = await supabase.from("crm_pgc_prices").upsert(row);
+  if (error) throw new Error(`PGC 가격 저장 실패: ${error.message}`);
+}
+
+export async function quoteItemsList(companyId) {
+  const { data, error } = await supabase
+    .from("crm_quote_items").select("*")
+    .eq("company_id", companyId)
+    .is("deleted_at", null)
+    .order("sort", { ascending: true });
+  if (error) throw new Error(`견적 품목 불러오기 실패: ${error.message}`);
+  return data || [];
+}
+
+export async function quoteItemSave(item) {
+  const { error } = await supabase.from("crm_quote_items").upsert(item);
+  if (error) throw new Error(`견적 품목 저장 실패: ${error.message}`);
+}
+
+export async function quoteItemDelete(id) {
+  const { error } = await supabase.from("crm_quote_items").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(`견적 품목 삭제 실패: ${error.message}`);
+}
+
 // ----- local 모드: 브라우저 localStorage -----
 
 const LOCAL_KEYS = {

@@ -67,6 +67,37 @@ alter table crm_contacts add column if not exists deleted_at timestamptz;
 alter table crm_deals add column if not exists deleted_at timestamptz;
 alter table crm_activities add column if not exists deleted_at timestamptz;
 
+-- 견적: 월별 PGC/AgCN 평균가 + 거래처별 품목
+-- (마이그레이션 "create_crm_quotes", "add_agcn_to_quotes")
+create table if not exists crm_pgc_prices (
+  ym text primary key,
+  price numeric not null,       -- PGC 원/g
+  agcn_price numeric,           -- 청화은 원/g
+  created_at timestamptz default now()
+);
+create table if not exists crm_quote_items (
+  id text primary key,
+  company_id text references crm_companies(id) on delete cascade,
+  gubun text,                   -- 사급/도급
+  model text not null,
+  spec text,
+  pgc_grams numeric not null default 0,
+  agcn_grams numeric not null default 0,
+  material_ni numeric not null default 0,
+  material_etc numeric not null default 0,
+  yield_grams numeric not null default 50,
+  margin_rate numeric not null default 0.35,
+  note text,
+  sort int not null default 0,
+  deleted_at timestamptz,
+  created_at timestamptz default now()
+);
+create index if not exists idx_crm_quote_items_company on crm_quote_items(company_id);
+alter table crm_pgc_prices enable row level security;
+alter table crm_quote_items enable row level security;
+create policy "crm_pgc_prices_all" on crm_pgc_prices for all to authenticated using (true) with check (true);
+create policy "crm_quote_items_all" on crm_quote_items for all to authenticated using (true) with check (true);
+
 -- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
 -- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
 create table if not exists crm_mail_accounts (

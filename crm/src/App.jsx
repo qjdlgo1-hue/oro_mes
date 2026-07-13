@@ -4,7 +4,9 @@ import {
   cloudLoadAll, cloudLoadOne, cloudInsert, cloudUpdate, cloudDelete, cloudDeleteCompanyCascade,
   localLoad, localSave, getSavedMode, saveMode,
   mailAccountsList, mailAccountSave, mailAccountDelete,
+  pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete,
 } from "./lib/db";
+import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx } from "./lib/quote";
 
 // ============================================================================
 // ORO CRM - 실제 동작 버전 (2단계: Supabase 연동)
@@ -497,6 +499,17 @@ export default function OroCrmApp() {
             onEditDeal={(d) => setModal({ type: "deal", companyId: d.companyId, initial: d })}
           />
         )}
+        {screen === "quotes" && (
+          <QuoteScreen
+            mode={mode}
+            companies={companies}
+            onLogActivity={(companyId, title, body) => {
+              const now = new Date();
+              const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+              addActivity({ companyId, channel: "memo", direction: "sent", person: "견적 담당", title, body, dealId: "", date });
+            }}
+          />
+        )}
         {screen === "settings" && <SettingsScreen mode={mode} />}
       </div>
 
@@ -578,6 +591,7 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "영업 파이프라인", icon: "▤" },
+    { key: "quotes", label: "견적", icon: "₩" },
     { key: "settings", label: "설정", icon: "⚙" },
   ];
 
@@ -655,6 +669,315 @@ function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, onSwitch
         )}
       </div>
     </div>
+  );
+}
+
+// ===========================================================================
+// 화면: 견적 — 매월 PGC/AgCN 가격만 넣으면 거래처별 견적서 엑셀 자동 생성
+// (계산식은 src/lib/quote.js — 기존 '국내' 엑셀과 동일)
+// ===========================================================================
+function QuoteScreen({ mode, companies, onLogActivity }) {
+  const isMobile = useIsMobile();
+  const thisYm = new Date().toISOString().slice(0, 7);
+
+  const [ym, setYm] = useState(thisYm);
+  const [prices, setPrices] = useState([]); // 월별 가격 이력
+  const [pgcPrice, setPgcPrice] = useState("");
+  const [agcnPrice, setAgcnPrice] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [items, setItems] = useState([]);
+  const [overrides, setOverrides] = useState({}); // {itemId: {tierIdx: 수정판가}}
+  const [editing, setEditing] = useState(null); // null | {} | item
+  const [busy, setBusy] = useState(false);
+
+  // 가격 이력 로드 + 해당 월 가격 채우기 (없으면 최신 값을 기본으로)
+  const loadPrices = async () => {
+    try {
+      const list = await pgcPricesList();
+      setPrices(list);
+      const row = list.find((p) => p.ym === ym) || list[0];
+      if (row) {
+        setPgcPrice(String(list.find((p) => p.ym === ym)?.price ?? row.price ?? ""));
+        setAgcnPrice(String(list.find((p) => p.ym === ym)?.agcn_price ?? row.agcn_price ?? ""));
+      }
+    } catch (e) { alert(e.message); }
+  };
+  useEffect(() => { if (mode === "cloud") loadPrices(); }, [mode]);
+
+  // 월 바꾸면 그 달 저장값(있으면)으로 갱신
+  useEffect(() => {
+    const row = prices.find((p) => p.ym === ym);
+    if (row) {
+      setPgcPrice(String(row.price ?? ""));
+      setAgcnPrice(String(row.agcn_price ?? ""));
+    }
+  }, [ym]);
+
+  // 거래처 선택 시 품목 로드
+  const loadItems = async (cid) => {
+    if (!cid) { setItems([]); return; }
+    try { setItems(await quoteItemsList(cid)); setOverrides({}); } catch (e) { alert(e.message); }
+  };
+  useEffect(() => { if (mode === "cloud") loadItems(companyId); }, [companyId, mode]);
+
+  if (mode !== "cloud") {
+    return (
+      <div>
+        <Header title="견적" sub="거래처별 견적서 생성" />
+        <div style={{ padding: 28 }}>
+          <Empty>견적 기능은 서버(클라우드) 모드에서만 사용할 수 있습니다.</Empty>
+        </div>
+      </div>
+    );
+  }
+
+  const company = companies.find((c) => c.id === companyId);
+  const pgcN = Number(pgcPrice) || 0;
+  const agcnN = Number(agcnPrice) || 0;
+  const prevRow = prices.find((p) => p.ym < ym); // 직전 저장 월 (참고 표시용)
+  const won = (n) => (Number(n) || 0).toLocaleString("ko-KR");
+
+  const savePrices = async () => {
+    if (!pgcN) { alert("PGC 평균가를 입력하세요."); return; }
+    try {
+      await pgcPriceSave({ ym, price: pgcN, agcn_price: agcnN || null });
+      await loadPrices();
+      alert(`${ym} 가격이 저장되었습니다.`);
+    } catch (e) { alert(e.message); }
+  };
+
+  const tierPrice = (item, calc, ti) => {
+    const ov = overrides[item.id]?.[ti];
+    return ov !== undefined && ov !== "" ? Number(ov) : calc.tiers[ti];
+  };
+
+  const download = async () => {
+    if (!company || items.length === 0 || busy) return;
+    if (!pgcN) { alert("PGC 평균가를 먼저 입력하세요."); return; }
+    setBusy(true);
+    try {
+      const rows = items.map((it) => {
+        const calc = calcItem(it, pgcN, agcnN);
+        return { gubun: it.gubun, model: it.model, spec: it.spec, note: it.note || "", prices: TIER_LABELS.map((_, ti) => tierPrice(it, calc, ti)) };
+      });
+      await downloadQuoteXlsx({ companyName: company.name, ym, pgcPrice: pgcN, agcnPrice: agcnN, rows });
+      onLogActivity(company.id, `${ym} 견적서 발행`, `PGC ₩${won(pgcN)}/g${agcnN ? `, AgCN ₩${won(agcnN)}/g` : ""} 기준 · 품목 ${items.length}건 견적서 엑셀 생성`);
+    } catch (e) { alert(`견적서 생성 실패: ${e.message}`); }
+    setBusy(false);
+  };
+
+  const removeItem = async (it) => {
+    if (!window.confirm(`'${it.model}' 품목을 삭제할까요?`)) return;
+    try { await quoteItemDelete(it.id); loadItems(companyId); } catch (e) { alert(e.message); }
+  };
+
+  const thStyle = { padding: "8px 8px", fontSize: 11, fontWeight: 700, color: "#fff", background: T.navy, whiteSpace: "nowrap", textAlign: "center" };
+  const tdStyle = { padding: "7px 8px", fontSize: 12, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" };
+
+  return (
+    <div>
+      <Header
+        title="견적"
+        sub="매월 PGC·AgCN 평균가만 입력하면 거래처별 견적 단가가 자동 계산됩니다"
+        right={
+          <button onClick={download} disabled={!company || items.length === 0 || busy} style={{ ...btnStyle("primary"), opacity: !company || items.length === 0 || busy ? 0.4 : 1 }}>
+            {busy ? "생성 중..." : "📥 견적서 엑셀 다운로드"}
+          </button>
+        }
+      />
+      <div style={{ padding: isMobile ? 14 : 28 }}>
+        {/* 기준 가격 + 거래처 선택 */}
+        <Panel title="기준 정보">
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>기준 월</div>
+              <input type="month" style={{ ...inputStyle, width: 150 }} value={ym} onChange={(e) => setYm(e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>PGC 평균가 (원/g)</div>
+              <input type="number" style={{ ...inputStyle, width: 130 }} value={pgcPrice} onChange={(e) => setPgcPrice(e.target.value)} />
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>AgCN(청화은) 평균가 (원/g)</div>
+              <input type="number" style={{ ...inputStyle, width: 130 }} value={agcnPrice} onChange={(e) => setAgcnPrice(e.target.value)} />
+            </div>
+            <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>가격 저장</button>
+            <div style={{ flex: 1 }} />
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>거래처</div>
+              <select style={{ ...inputStyle, width: 200 }} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+                <option value="">거래처를 선택하세요</option>
+                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+          {prevRow && (
+            <div style={{ marginTop: 10, fontSize: 11, color: T.sub }}>
+              참고: {prevRow.ym} 저장값 — PGC ₩{won(prevRow.price)}/g{prevRow.agcn_price ? `, AgCN ₩${won(prevRow.agcn_price)}/g` : ""}
+            </div>
+          )}
+        </Panel>
+
+        <div style={{ height: 16 }} />
+
+        {/* 품목 표 */}
+        <div style={{ background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              {company ? `${company.name} 견적 품목 (${items.length}건)` : "견적 품목"}
+            </div>
+            {company && <button onClick={() => setEditing({})} style={{ ...btnStyle("primary"), fontSize: 12, padding: "7px 14px" }}>+ 품목 추가</button>}
+          </div>
+
+          {!company && <Empty>위에서 거래처를 선택하세요</Empty>}
+          {company && items.length === 0 && <Empty>등록된 품목이 없습니다 — "+ 품목 추가"로 등록하세요</Empty>}
+
+          {company && items.length > 0 && (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>구분</th>
+                    <th style={{ ...thStyle, textAlign: "left" }}>모델명</th>
+                    <th style={{ ...thStyle, textAlign: "left" }}>사양</th>
+                    <th style={thStyle}>PGC(g)</th>
+                    <th style={thStyle}>AgCN(g)</th>
+                    <th style={thStyle}>수율(g)</th>
+                    <th style={thStyle}>공정비용(원/g)</th>
+                    <th style={thStyle}>마진</th>
+                    {TIER_LABELS.map((t) => <th key={t} style={{ ...thStyle, background: T.tealDark }}>{t}</th>)}
+                    <th style={thStyle}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it) => {
+                    const calc = calcItem(it, pgcN, agcnN);
+                    return (
+                      <tr key={it.id}>
+                        <td style={{ ...tdStyle, textAlign: "center", color: T.sub }}>{it.gubun}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700 }}>{it.model}</td>
+                        <td style={{ ...tdStyle, color: T.sub, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{it.spec}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.pgc_grams || "-"}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.agcn_grams || "-"}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.yield_grams}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{won(Math.round(calc.cost))}</td>
+                        <td style={{ ...tdStyle, textAlign: "right", color: T.teal, fontWeight: 700 }}>{((it.margin_rate || 0) * 100).toFixed(1)}%</td>
+                        {TIER_LABELS.map((_, ti) => {
+                          const val = tierPrice(it, calc, ti);
+                          const m = marginOf(val, calc.cost);
+                          const overridden = overrides[it.id]?.[ti] !== undefined && overrides[it.id][ti] !== "";
+                          return (
+                            <td key={ti} style={{ ...tdStyle, textAlign: "right", background: overridden ? "#FFF7E0" : undefined }}>
+                              <input
+                                type="number"
+                                value={overridden ? overrides[it.id][ti] : calc.tiers[ti]}
+                                onChange={(e) => setOverrides((prev) => ({ ...prev, [it.id]: { ...prev[it.id], [ti]: e.target.value } }))}
+                                style={{ width: 76, border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, textAlign: "right", fontFamily: "inherit" }}
+                              />
+                              <div style={{ fontSize: 9, color: m < 0.1 ? T.danger : T.sub, marginTop: 1 }}>{(m * 100).toFixed(1)}%</div>
+                            </td>
+                          );
+                        })}
+                        <td style={tdStyle}>
+                          <IconBtn onClick={() => setEditing(it)}>✎</IconBtn>
+                          <IconBtn danger onClick={() => removeItem(it)}>🗑</IconBtn>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {company && items.length > 0 && (
+            <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
+              단가 = 공정비용 ÷ (1−마진율), 100원 단위 올림 · 수량 구간(0.5→5KG)마다 마진 1.1%p씩 낮아짐 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 (아래 %는 해당 단가의 실제 마진율)
+            </div>
+          )}
+        </div>
+      </div>
+
+      {editing !== null && company && (
+        <QuoteItemModal
+          companyId={company.id}
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); loadItems(companyId); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// 견적 품목 추가/수정 모달
+function QuoteItemModal({ companyId, item, onClose, onSaved }) {
+  const isNew = !item.id;
+  const [f, setF] = useState({
+    gubun: item.gubun || "사급",
+    model: item.model || "",
+    spec: item.spec || "",
+    pgc_grams: item.pgc_grams ?? 0,
+    agcn_grams: item.agcn_grams ?? 0,
+    material_ni: item.material_ni ?? 0,
+    material_etc: item.material_etc ?? 1800,
+    yield_grams: item.yield_grams ?? 50,
+    marginPct: Math.round(((item.margin_rate ?? 0.35) * 1000)) / 10, // % 표시
+    note: item.note || "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF((prev) => ({ ...prev, [k]: v }));
+
+  const save = async () => {
+    if (!f.model.trim() || busy) return;
+    setBusy(true);
+    try {
+      await quoteItemSave({
+        id: item.id || newId(),
+        company_id: companyId,
+        gubun: f.gubun,
+        model: f.model.trim(),
+        spec: f.spec.trim(),
+        pgc_grams: Number(f.pgc_grams) || 0,
+        agcn_grams: Number(f.agcn_grams) || 0,
+        material_ni: Number(f.material_ni) || 0,
+        material_etc: Number(f.material_etc) || 0,
+        yield_grams: Number(f.yield_grams) || 50,
+        margin_rate: (Number(f.marginPct) || 0) / 100,
+        note: f.note.trim() || null,
+        sort: item.sort ?? 999,
+      });
+      onSaved();
+    } catch (e) { alert(e.message); setBusy(false); }
+  };
+
+  return (
+    <Modal title={isNew ? "견적 품목 추가" : "견적 품목 수정"} onClose={onClose}>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 2 }}>
+          <Field label="모델명 *"><input style={inputStyle} value={f.model} onChange={(e) => set("model", e.target.value)} placeholder="예: ACC1625-G20A" /></Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label="구분">
+            <select style={inputStyle} value={f.gubun} onChange={(e) => set("gubun", e.target.value)}>
+              <option>사급</option><option>도급</option>
+            </select>
+          </Field>
+        </div>
+      </div>
+      <Field label="사양"><input style={inputStyle} value={f.spec} onChange={(e) => set("spec", e.target.value)} placeholder="예: Ni+Au(0.2um)" /></Field>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}><Field label="PGC 사용량(g)"><input type="number" style={inputStyle} value={f.pgc_grams} onChange={(e) => set("pgc_grams", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="AgCN 사용량(g)"><input type="number" style={inputStyle} value={f.agcn_grams} onChange={(e) => set("agcn_grams", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="수율(g)"><input type="number" style={inputStyle} value={f.yield_grams} onChange={(e) => set("yield_grams", e.target.value)} /></Field></div>
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}><Field label="재료비 Ni자재(원)"><input type="number" style={inputStyle} value={f.material_ni} onChange={(e) => set("material_ni", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="재료비 기타(원)"><input type="number" style={inputStyle} value={f.material_etc} onChange={(e) => set("material_etc", e.target.value)} /></Field></div>
+        <div style={{ flex: 1 }}><Field label="목표 마진율(%)"><input type="number" style={inputStyle} value={f.marginPct} onChange={(e) => set("marginPct", e.target.value)} /></Field></div>
+      </div>
+      <Field label="비고 (견적서에 표시)"><input style={inputStyle} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
+      <ModalActions onClose={onClose} onSave={save} disabled={!f.model.trim() || busy} saveLabel={busy ? "저장 중..." : "저장"} />
+    </Modal>
   );
 }
 
@@ -990,6 +1313,7 @@ function MobileTabBar({ screen, setScreen }) {
     { key: "dashboard", label: "대시보드", icon: "▦" },
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "파이프라인", icon: "▤" },
+    { key: "quotes", label: "견적", icon: "₩" },
     { key: "settings", label: "설정", icon: "⚙" },
   ];
   return (
