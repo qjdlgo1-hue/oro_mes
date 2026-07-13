@@ -1,0 +1,31 @@
+# CRM 메일 자동 수집 (네이버 메일 + 네이버 웍스)
+# 1시간마다 IMAP으로 새 메일을 확인해 거래처 도메인과 매칭되는 메일을
+# CRM 타임라인(crm_activities)에 기록한다. Secrets가 없으면 조용히 건너뜀.
+# 수동 실행: Actions 탭 → "CRM 메일 자동 수집" → Run workflow
+name: CRM 메일 자동 수집
+
+on:
+  schedule:
+    - cron: "5 * * * *" # 매시 5분 (UTC 기준이지만 매시간이라 무관)
+  workflow_dispatch:
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install collector deps
+        working-directory: crm/collector
+        run: npm install --no-audit --no-fund
+      - name: Collect mail into CRM
+        working-directory: crm/collector
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NAVER_MAIL_USER: ${{ secrets.NAVER_MAIL_USER }}
+          NAVER_MAIL_PASSWORD: ${{ secrets.NAVER_MAIL_PASSWORD }}
+          WORKS_MAIL_USER: ${{ secrets.WORKS_MAIL_USER }}
+          WORKS_MAIL_PASSWORD: ${{ secrets.WORKS_MAIL_PASSWORD }}
+        run: node collect-mail.mjs
