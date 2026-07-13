@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Order, PlanEntry } from "./lib/types";
-import { listOrders, listPlans, backendName, getMenuConfig, MenuGroupRow, MenuPlacement } from "./lib/db";
+import { listOrders, listPlans, backendName, getMenuConfig, MenuGroupRow, MenuPlacement, logAudit } from "./lib/db";
 import { completionDate } from "./lib/plan";
 import { supabase, hasSupabase } from "./lib/supabase";
 import { ToastHost } from "./lib/toast";
@@ -210,7 +210,7 @@ export default function App() {
           <span className="badge" style={{ marginLeft: "auto" }}>
             {session?.user?.email && role}
             {supabase && session && <button className="btn ghost" style={{ marginLeft: 8, padding: "3px 10px", fontSize: 12 }}
-              onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
+              onClick={async () => { await logAudit("로그아웃", "auth", "", {}); supabase!.auth.signOut(); }}>로그아웃</button>}
           </span>
         </header>
 
@@ -260,7 +260,7 @@ export default function App() {
             <span className="muted">{backendName} · 주문 {orders.length}건{session?.user?.email ? ` · ${session.user.email} (${role})` : ""}</span>
             <a className="xlink" href="https://hr.orocorp.kr">HR ↗</a>
             {supabase && session && <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }}
-              onClick={() => supabase!.auth.signOut()}>로그아웃</button>}
+              onClick={async () => { await logAudit("로그아웃", "auth", "", {}); supabase!.auth.signOut(); }}>로그아웃</button>}
           </span>
         </div>
         <div className="wrap"><ErrorBoundary>{loading ? <div className="muted">불러오는 중…</div> : render()}</ErrorBoundary></div>
