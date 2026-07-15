@@ -121,11 +121,12 @@ export async function pgcPriceSave(row) {
 }
 
 export async function quoteItemsList(companyId) {
-  const { data, error } = await supabase
+  let query = supabase
     .from("crm_quote_items").select("*")
-    .eq("company_id", companyId)
     .is("deleted_at", null)
     .order("sort", { ascending: true });
+  if (companyId) query = query.eq("company_id", companyId); // 없으면 전체 품목 (검색용)
+  const { data, error } = await query;
   if (error) throw new Error(`견적 품목 불러오기 실패: ${error.message}`);
   return data || [];
 }
