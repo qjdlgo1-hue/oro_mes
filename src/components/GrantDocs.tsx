@@ -1461,9 +1461,30 @@ export default function GrantDocs() {
 
           {/* 공통: 지급요청서 */}
           {cur.forms.includes("f1") && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <Field label="지급액(원)" w={160}><input style={inp} value={d.payAmount || ""} onChange={e => setD({ payAmount: e.target.value })} /></Field>
-              <AiTextarea label="지급 사유" field="지급 사유(사업비 지급요청서)" value={d.payReason || ""} minHeight={54} ctx={aiCtx} onChange={v => setD({ payReason: v })} />
+            <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>🧾 사업비 지급요청서</div>
+              {/* 수령인: 창업기업(오알오) 자체 지급 vs 업체(외주·구매처) 지급 */}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+                <label style={lbl}>수령인 (입금받는 곳)</label>
+                <div className="seg">
+                  <button className={(d.payeeType || "self") === "self" ? "on" : ""} onClick={() => setD({ payeeType: "self" })}>🏢 창업기업({prof.company || "오알오"})</button>
+                  <button className={d.payeeType === "vendor" ? "on" : ""} onClick={() => setD({ payeeType: "vendor" })}>🏭 업체(외주·구매처)</button>
+                </div>
+                <span className="muted" style={{ fontSize: 11.5 }}>업체를 고르면 그 업체 계좌 정보가 수령인 칸에 들어갑니다.</span>
+              </div>
+              {d.payeeType === "vendor" && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <Field label="업체 기업명" w={190}><input style={inp} value={d.rcvCompany || ""} placeholder={d.vendor || d.svcVendor || d.vName || ""} onChange={e => setD({ rcvCompany: e.target.value })} /></Field>
+                  <Field label="대표자" w={120}><input style={inp} value={d.rcvCeo || ""} placeholder={d.vCeo || ""} onChange={e => setD({ rcvCeo: e.target.value })} /></Field>
+                  <Field label="은행명" w={120}><input style={inp} value={d.rcvBank || ""} onChange={e => setD({ rcvBank: e.target.value })} /></Field>
+                  <Field label="예금주" w={130}><input style={inp} value={d.rcvHolder || ""} placeholder={d.rcvCompany || ""} onChange={e => setD({ rcvHolder: e.target.value })} /></Field>
+                  <Field label="계좌번호" w={190}><input style={inp} value={d.rcvAccount || ""} onChange={e => setD({ rcvAccount: e.target.value })} /></Field>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="지급액(원)" w={160}><input style={inp} value={d.payAmount || ""} onChange={e => setD({ payAmount: e.target.value })} /></Field>
+                <AiTextarea label="지급 사유" field="지급 사유(사업비 지급요청서)" value={d.payReason || ""} minHeight={54} ctx={aiCtx} onChange={v => setD({ payReason: v })} />
+              </div>
             </div>
           )}
 

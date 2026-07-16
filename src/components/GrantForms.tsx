@@ -59,6 +59,11 @@ function F1({ p, d, sign }: P) {
   const solid = "1px solid #000";
   const reason = String(d.payReason || "");
   const CB = ({ it }: { it: string }) => <><B on={d.expenseItem === it} /> {it}</>;
+  // 수령인: 기본은 창업기업(오알오) 정보, 업체 선택 시 업체 계좌 정보로 표시
+  const rcvVendor = d.payeeType === "vendor";
+  const rcv = rcvVendor
+    ? { company: d.rcvCompany, ceo: d.rcvCeo, bank: d.rcvBank, holder: d.rcvHolder, account: d.rcvAccount }
+    : { company: p.company, ceo: p.ceo, bank: p.bank, holder: p.holder, account: p.account };
   return (
     <div style={{ margin: "0 3mm" }}>
       <table className="gt gx" style={{ marginBottom: "3mm" }}><tbody>
@@ -72,11 +77,11 @@ function F1({ p, d, sign }: P) {
         <tr style={{ height: "6.9mm" }}><th style={{ width: "20.7%" }}>창 업 기 업 명</th><td style={{ textAlign: "center" }}>{p.company}</td></tr>
         <tr style={{ height: "6.9mm" }}><th>과 제 명</th><td style={{ textAlign: "center" }}>{p.project}</td></tr>
       </tbody></table>
-      <div style={sec}>□ 수령인 정보</div>
+      <div style={sec}>□ 수령인 정보{rcvVendor ? " (업체)" : ""}</div>
       <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
-        <tr style={{ height: "6.9mm" }}><th style={{ width: "20.7%" }}>기 업 명</th><td style={{ width: "31.8%", textAlign: "center" }}>{p.company}</td><th style={{ width: "15.4%" }}>대 표 자</th><td style={{ textAlign: "center" }}>{p.ceo}</td></tr>
-        <tr style={{ height: "6.9mm" }}><th>은 행 명</th><td style={{ textAlign: "center" }}>{p.bank}</td><th>예 금 주</th><td style={{ textAlign: "center" }}>{p.holder}</td></tr>
-        <tr style={{ height: "6.9mm" }}><th>계 좌 번 호</th><td colSpan={3} style={{ textAlign: "center" }}>{p.account}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th style={{ width: "20.7%" }}>기 업 명</th><td style={{ width: "31.8%", textAlign: "center" }}>{rcv.company}</td><th style={{ width: "15.4%" }}>대 표 자</th><td style={{ textAlign: "center" }}>{rcv.ceo}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th>은 행 명</th><td style={{ textAlign: "center" }}>{rcv.bank}</td><th>예 금 주</th><td style={{ textAlign: "center" }}>{rcv.holder}</td></tr>
+        <tr style={{ height: "6.9mm" }}><th>계 좌 번 호</th><td colSpan={3} style={{ textAlign: "center" }}>{rcv.account}</td></tr>
       </tbody></table>
       <div style={sec}>□ 지급액 및 사유</div>
       <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
