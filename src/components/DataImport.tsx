@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { thBase, tdBase } from "../lib/styles";
 import { useEffect, useMemo, useState } from "react";
 import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, listOrders, logAudit } from "../lib/db";
 import { parseInout } from "../lib/parseInout";
@@ -98,8 +99,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   }
 
   const box: React.CSSProperties = { width: "100%", height: 130, fontSize: 12, padding: 8, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "monospace" };
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0, borderBottom: "1px solid var(--line)" };
-  const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
+  const th: React.CSSProperties = { ...thBase, borderBottom: "1px solid var(--line)" };
+  const td: React.CSSProperties = tdBase;
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
   const isOut = kind === "out";
 

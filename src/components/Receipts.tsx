@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Receipt } from "../lib/types";
@@ -34,7 +35,6 @@ const RULES: [RegExp, string][] = [
 function suggestAccount(text: string): string { const t = (text || "").toLowerCase(); for (const [re, acc] of RULES) if (re.test(t)) return acc; return ""; }
 const TYPES = ["카드", "세금계산서", "현금영수증", "간이영수증", OVERSEA_RTYPE];
 const won = (n: any) => (Number(n) || 0).toLocaleString("ko-KR");
-const todayIso = () => new Date().toISOString().slice(0, 10);
 const emptyForm = (): Receipt => ({ rdate: todayIso(), vendor: "", bizno: "", supply: 0, vat: 0, total: 0, rtype: "카드", account: "복리후생비", memo: "" });
 function quarterOf(rdate: string) { const y = rdate.slice(0, 4); const m = +rdate.slice(5, 7); return `${y}-${m <= 6 ? 1 : 2}기`; }
 const periodLabelOf = (q: string) => { const m = q.match(/^(\d{4})-(\d)기$/); return m ? `${m[1]}년 ${m[2]}기` : q; }; // "2026-1기" → "2026년 1기"

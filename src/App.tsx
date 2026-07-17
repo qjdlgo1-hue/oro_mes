@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from "react";
+import { todayIso } from "./lib/fmt";
 import type { Session } from "@supabase/supabase-js";
 import { Order, PlanEntry } from "./lib/types";
 import { listOrders, listPlans, backendName, getMenuConfig, MenuGroupRow, MenuPlacement, logAudit } from "./lib/db";
@@ -114,8 +115,7 @@ export default function App() {
 
   // 지연 생산 배지(현장): 완료 전인데 완료예정일이 지난 계획 수
   const lateCount = useMemo(() => {
-    const t = new Date(); const p = (n: number) => String(n).padStart(2, "0");
-    const today = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`;
+    const today = todayIso();
     const oset = new Set(orders.map(o => o.id));
     return Object.values(plans).filter(pl => !pl.done && oset.has(pl.order_id) && (completionDate(pl) || "9999") < today).length;
   }, [plans, orders]);

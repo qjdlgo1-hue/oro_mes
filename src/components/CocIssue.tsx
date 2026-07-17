@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Order, CocData, Settings, PlanEntry } from "../lib/types";
 import { listCocs, upsertCoc, getSettings, saveSettings, listPlans, logAudit, storageUpload, storageBlobToDataUrl } from "../lib/db";
@@ -11,7 +12,6 @@ import { useIsMobile } from "../lib/useIsMobile";
 import MonthPicker from "./MonthPicker";
 
 const TODAY = new Date();
-const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const L = {
   ko: { title: "성적서", sub: "Certificate of Compliance", pinfo: "제품 정보", manu: "제조사", cust: "고객사", model: "모델명", size: "사이즈", comp: "조성", prod: "생산일", netwt: "중량", exp: "유효기간", thick: "두께 (평균)", item: "항목", unit: "단위", spec: "규격", result: "결과", gold: "금", silver: "은", sg: "비중", visual: "외관검사", coh: "응집", unp: "미도금", pd: "입자밀도", cert: "검사자", overall: "종합판정", issue: "발행번호" },

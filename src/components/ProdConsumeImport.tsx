@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { thBase, tdBase } from "../lib/styles";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { ProdConsume, listProdConsume, appendProdConsume, clearProdConsume, logAudit } from "../lib/db";
@@ -51,8 +52,8 @@ export default function ProdConsumeImport() {
     setBusy(true); try { await clearProdConsume(); toast.success("삭제됨"); load(); } catch (e: any) { toast.error(errMsg(e)); } setBusy(false);
   }
 
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
-  const td: React.CSSProperties = { padding: "4px 8px", borderBottom: "1px solid var(--line2)", fontSize: 12, textAlign: "right" };
+  const th: React.CSSProperties = thBase;
+  const td: React.CSSProperties = { ...tdBase, padding: "4px 8px", fontSize: 12 };
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
 
   return (

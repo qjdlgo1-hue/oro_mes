@@ -21,8 +21,9 @@ export function tdGroupSum(d: Record<string, any>, group: string): number {
   return ledgerRows(d).filter(r => TD_ITEM_GROUP[r.item || ""] === group).reduce((s, r) => s + num(r.amount), 0);
 }
 
-const kdate = (iso?: string, blank = "    년   월   일") =>
-  iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(0, 4)}년 ${Number(iso.slice(5, 7))}월 ${Number(iso.slice(8, 10))}일` : blank;
+import { kdate as kdateShared } from "./grantformsShared";
+// 기술닥터 서식의 빈칸 표기("    년   월   일")를 유지한 채 공통 kdate를 재사용
+const kdate = (iso?: string, blank = "    년   월   일") => kdateShared(iso, blank);
 
 // [상용화서식 제○호] 우측 상단 라벨
 const FormNo = ({ no }: { no: string }) => <p style={{ fontSize: "13pt", margin: "0 0 2mm" }}>[상용화서식 {no}]</p>;

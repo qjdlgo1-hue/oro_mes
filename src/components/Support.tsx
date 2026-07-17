@@ -5,12 +5,11 @@ import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
 import * as XLSX from "xlsx";
-import { nf as won } from "../lib/fmt";
+import { nf as won, todayIso } from "../lib/fmt";
 import { useIsMobile } from "../lib/useIsMobile";
 import { usePaged } from "../lib/usePaged";
 import GrantDocs from "./GrantDocs";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
 const dateKo = (iso?: string) => { if (!iso) return ""; const [y, m, d] = iso.split("-"); return `${y}년 ${m}월 ${d}일`; };
 const blankItem = (): InspItem => ({ name: "", spec: "", unit: "EA", qty: 0, price: 0, note: "" });
 const normPhotos = (arr?: any[]): { path: string; caption?: string }[] => (arr || []).map(x => typeof x === "string" ? { path: x } : x);

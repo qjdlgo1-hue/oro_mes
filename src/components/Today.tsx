@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
@@ -7,7 +8,6 @@ import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 
 const p = (n: number) => String(n).padStart(2, "0");
-function todayIso() { const t = new Date(); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; }
 
 export default function Today({ orders }: { orders: Order[] }) {
   const [plans, setPlans] = useState<Record<string, PlanEntry>>({});

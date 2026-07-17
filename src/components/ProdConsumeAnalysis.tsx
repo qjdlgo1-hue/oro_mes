@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { thBase, tdBase } from "../lib/styles";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts";
 import { ProdConsume, listProdConsume } from "../lib/db";
 import { toast } from "../lib/toast";
@@ -70,8 +71,8 @@ export default function ProdConsumeAnalysis() {
 
   const totalProd = prodRows.reduce((s, r) => s + (Number(r.prod_qty) || 0), 0);
   const totalLoss = consRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
-  const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
+  const th: React.CSSProperties = thBase;
+  const td: React.CSSProperties = tdBase;
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
 
   const HBar = ({ data, color = "var(--accent)", onPick }: { data: { name: string; value: number }[]; color?: string; onPick?: (n: string) => void }) => (

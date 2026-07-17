@@ -25,13 +25,10 @@ export const sspTerm = (v: SspProgramKey) =>
     : { founder: "청년창업자", school: "청년창업사관학교", schoolTag: "청년(딥테크)창업사관학교" };
 export const sspInfo = (p: GrantProfile, v: SspProgramKey) => (p.ssp?.[v] || {}) as NonNullable<GrantProfile["ssp"]>[string];
 
-export const kdate = (iso?: string, blank = "20  년   월   일") =>
-  iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(0, 4)}년 ${Number(iso.slice(5, 7))}월 ${Number(iso.slice(8, 10))}일` : blank;
+export { kdate } from "./grantformsShared";
+import { kdate, TitleBox } from "./grantformsShared";
 // 공통 스타일
 const body: React.CSSProperties = { verticalAlign: "top", padding: "2mm 2.5mm", fontSize: "10.5pt", whiteSpace: "pre-wrap", lineHeight: 1.65 };
-const TitleBox = ({ children }: { children: React.ReactNode }) => (
-  <h2 style={{ textAlign: "center", fontSize: "18pt", fontWeight: 700, margin: "2mm 0 5mm" }}>{children}</h2>
-);
 // 날짜 + 서명 줄 (원문 "년 월 일" + "대표자명 : (인/서명)")
 export function DateSign({ d, label = "대표자명", who, sign, seal = "(인)" }: { d?: string; label?: string; who?: string; sign?: string; seal?: string }) {
   const dp = dateParts(d);

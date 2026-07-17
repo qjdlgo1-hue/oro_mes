@@ -1,5 +1,7 @@
 // 지원사업 서류 자동작성 — 한 건 입력으로 창업중심대학사업 서식 세트를 자동 생성·일괄 인쇄
 import { useEffect, useMemo, useRef, useState } from "react";
+import { inp, lbl } from "../lib/styles";
+import { todayIso } from "../lib/fmt";
 import { errMsg } from "../lib/errmsg";
 import { hasSupabase } from "../lib/supabase";
 import { toast } from "../lib/toast";
@@ -20,10 +22,7 @@ import GrantForm from "./GrantForms";
 import GrantFormTD from "./GrantFormsTD";
 import GrantFormSSP from "./GrantFormsSSP";
 
-const todayIso = () => { const t = new Date(); const p = (n: number) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; };
 
-const inp: React.CSSProperties = { padding: 7, border: "1px solid var(--line)", borderRadius: 6, width: "100%", fontSize: 13 };
-const lbl: React.CSSProperties = { fontSize: 11.5, color: "var(--muted)", display: "block", marginBottom: 2 };
 
 function Field({ label, children, w }: { label: string; children: React.ReactNode; w?: number }) {
   return <div style={{ minWidth: w || 160, flex: w ? undefined : 1 }}><label style={lbl}>{label}</label>{children}</div>;
