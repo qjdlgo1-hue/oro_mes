@@ -489,7 +489,7 @@ export default function Receipts() {
             <button className="btn" onClick={() => window.print()}>인쇄/PDF</button>
             <span className="muted" style={{ fontSize: 12 }}>인쇄하면 이 정산서만 A4로 출력됩니다.</span>
           </div>
-          <div className="gdoc">
+          <div className="gdoc printable">
             <h2 className="gtitle">해외출장 경비 정산서</h2>
             <table className="gt gx" style={{ fontSize: "11pt" }}><tbody>
               <tr style={{ height: "7mm" }}>

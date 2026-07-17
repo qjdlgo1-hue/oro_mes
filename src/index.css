@@ -82,14 +82,23 @@ table.spec td.item{background:#F4F7F8;font-weight:700;text-align:left;width:34%;
 .certby{text-align:right;margin-top:18px;font-size:13px;}
 .certby input{border:none;border-bottom:1px solid #888;font-family:inherit;font-size:13px;}
 .nodata{padding:40px;text-align:center;color:var(--muted);}
+/* 인쇄: 표시 대상은 .printable 한 클래스로 통일(.cert/.gdoc/.brep-print 루트에 부여).
+   과거엔 인쇄 대상이 늘 때마다 visibility 복원 규칙을 복붙해 백지 인쇄 버그가 반복됐음. */
 @media print{
   @page{size:A4;margin:10mm;}
   body{background:#fff;}
   body *{visibility:hidden;}
-  .cert, .cert *{visibility:visible;}
-  .cert{position:absolute;left:0;top:0;width:100%;box-shadow:none;border:none;padding:0;margin:0;min-height:auto;}
+  .printable, .printable *{visibility:visible;}
   .no-print,.botnav,header.app,.mrail,.subnav{display:none!important;}
   .mrail-main{margin-left:0!important;}
+  /* 대상별 배치 보정 */
+  .cert{position:absolute;left:0;top:0;width:100%;box-shadow:none;border:none;padding:0;margin:0;min-height:auto;}
+  .brep-print{border:none;box-shadow:none;padding:0;} .brep-md{font-size:12px;}
+  /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm) — @page 여백 10mm과 합산해 맞춤 */
+  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:7mm 5mm 3mm 7mm;page-break-after:always;}
+  .gdoc:last-child{page-break-after:auto;}
+  .grant-edit,.grant-side{display:none!important;}
+  .gph{visibility:hidden!important;}
 }
 
 @media (max-width: 900px){ .rcpt-grid { grid-template-columns: 1fr !important; } }
@@ -285,7 +294,7 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .brep-t td{padding:4px 10px;border:1px solid var(--line2);}
 .brep-md h2{font-size:19px;} .brep-md h3{font-size:15px;} .brep-md h4{font-size:13.5px;}
 /* 전역 print 규칙(body * visibility:hidden) 위에서 보고서 본문을 명시적으로 표시 */
-@media print{ .brep-print,.brep-print *{visibility:visible;} .brep-print{border:none;box-shadow:none;padding:0;} .brep-md{font-size:12px;} }
+/* (인쇄 규칙은 상단 @media print 블록에 통합 — .printable) */
 
 /* 지원사업 서류 자동작성 — A4 서식 재현 */
 .gdoc{background:#fff;border:1px solid var(--line);box-shadow:0 1px 4px rgba(0,0,0,.08);max-width:800px;margin:0 auto 18px;padding:46px 52px;color:#000;font-family:"Batang","Noto Serif KR","Malgun Gothic",serif;font-size:14px;line-height:1.6;}
@@ -307,12 +316,4 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .glabel td{font-size:12px;height:26px;}
 .gpage{page-break-after:always;}
 .gdoc + .gdoc{margin-top:18px;}
-@media print{
-  /* 전역 print 규칙(body * visibility:hidden)은 .cert만 보이게 하므로 서식(.gdoc)도 명시적으로 표시 */
-  .gdoc,.gdoc *{visibility:visible;}
-  /* 원본 HWPX 여백(위 17mm, 좌 17mm, 우 15mm, 아래 13mm) — @page 여백 10mm과 합산해 맞춤 */
-  .gdoc{border:none;box-shadow:none;max-width:none;margin:0;padding:7mm 5mm 3mm 7mm;page-break-after:always;}
-  .gdoc:last-child{page-break-after:auto;}
-  .grant-edit,.grant-side{display:none!important;}
-  .gph{visibility:hidden!important;}
-}
+/* (인쇄 규칙은 상단 @media print 블록에 통합 — .printable) */

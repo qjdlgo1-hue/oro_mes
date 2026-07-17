@@ -314,7 +314,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
 
           {/* 미리보기(읽기전용) = 인쇄/PDF 대상 */}
           <div ref={certWrapRef} style={isMobile && fit ? ({ zoom: fitScale } as any) : { overflowX: "auto" }}>
-          <div className="cert" ref={certRef}>
+          <div className="cert printable" ref={certRef}>
             {fmt.header && <div style={{ textAlign: "center", fontSize: 12, color: "#555", marginBottom: 6, borderBottom: "1px solid #eee", paddingBottom: 4 }}>{fmt.header}</div>}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               {settings.logo ? <img src={settings.logo} style={{ maxHeight: fmt.logoH || 46, maxWidth: 220 }} /> : <span style={{ width: 1 }} />}
