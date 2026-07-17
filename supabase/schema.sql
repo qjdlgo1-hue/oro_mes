@@ -35,6 +35,101 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 insert into profiles (id, email) select id, email from auth.users on conflict (id) do nothing;
 -- 관리자 지정 예: update profiles set role='admin' where email='dwlee@orocorp.kr';
 
+-- ===== 누락 보완 (라이브 DB 기준 스냅샷 2026-07) =====
+-- 아래 테이블들은 세션 중 마이그레이션으로 생성되었으나 이 파일에 빠져 있었음.
+-- 이 파일만으로 새 DB를 재구축할 수 있도록 실제 스키마를 반영.
+
+-- 생산계획 보강: 생산수량 오버라이드·배송일 수동지정
+alter table plans add column if not exists qty numeric;
+alter table plans add column if not exists deliver_date date;
+
+-- 증빙(영수증)
+create table if not exists receipts (
+  id uuid primary key default gen_random_uuid(),
+  rdate date, vendor text, bizno text,
+  supply numeric default 0, vat numeric default 0, total numeric default 0,
+  rtype text, account text, memo text, company text, period text,
+  created_at timestamptz default now(), created_by text,
+  image_path text, image_paths jsonb
+);
+
+-- 생산/판매 실적 (이카운트 가져오기 — kind: in=생산, out=판매)
+create table if not exists inout_rows (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('in','out')),
+  ym text not null, idate date, item_code text, name text, spec text,
+  qty numeric default 0, amount numeric, customer text, note text,
+  sig text not null, created_at timestamptz default now(),
+  trade_type text, gubun text, cust_code text, vat numeric, total numeric,
+  currency text, fx_rate numeric
+);
+create unique index if not exists inout_rows_kind_sig on inout_rows(kind, sig); -- appendInout onConflict 근거
+
+-- 생산·소모 (원재료 소모 분석)
+create table if not exists prod_consume (
+  id uuid primary key default gen_random_uuid(),
+  ym text, idate date, prod_code text, prod_name text, mat_code text, mat_name text,
+  prod_qty numeric, std_qty numeric, act_qty numeric, mat_price numeric, diff numeric, amount numeric,
+  sig text not null unique, created_at timestamptz default now()
+);
+
+-- 제품별 원재료 사용량 (BOM)
+create table if not exists bom (
+  product text primary key, agcn numeric default 0, pgc numeric default 0,
+  note text, updated_at timestamptz default now()
+);
+
+-- 지원사업 과제·검수조서
+create table if not exists projects (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, company text default '오알오', vendor text,
+  period_from date, period_to date, note text, created_at timestamptz default now(),
+  announce text
+);
+create table if not exists inspections (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references projects(id) on delete cascade,
+  insp_no text, deliver_place text, vendor text, inspect_date date, inspector text,
+  sign_path text, items jsonb default '[]', photos jsonb default '[]',
+  created_at timestamptz default now()
+);
+
+-- 메뉴 구성 편집기
+create table if not exists menu_groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null, sort int default 0
+);
+create table if not exists menu_placement (
+  item_key text primary key,
+  group_id uuid references menu_groups(id) on delete set null,
+  sort int default 0
+);
+alter table app_settings add column if not exists format jsonb;
+alter table app_settings add column if not exists menu_order jsonb;
+
+-- 역할별 권한 매트릭스
+create table if not exists role_permissions (
+  role text not null, capability text not null, allowed boolean not null default false,
+  primary key (role, capability)
+);
+
+-- RLS: 사내 도구 표준 정책(authenticated 전체 허용) — 신규 테이블 일괄 적용
+do $$ declare t text;
+begin
+  foreach t in array array['receipts','inout_rows','prod_consume','bom','projects','inspections','menu_groups','menu_placement','role_permissions'] loop
+    execute format('alter table %I enable row level security', t);
+    if not exists (select 1 from pg_policies where schemaname='public' and tablename=t and policyname=t||'_all') then
+      execute format('create policy %I on %I for all to authenticated using (true) with check (true)', t||'_all', t);
+    end if;
+  end loop;
+end $$;
+
+-- ===== Edge Function: manage-users =====
+-- supabase/functions/manage-users — master 전용 계정 생성/비밀번호 재설정 (Service Role 사용, 배포됨)
+
+-- 참고: crm_* 테이블(companies/contacts/deals/activities/mail_accounts/pgc_prices/quote_items)은
+-- 별도 CRM 앱(dist/crm) 세션에서 생성 — 정의는 해당 마이그레이션 이력 참조.
+
 -- 소프트 삭제(휴지통): 관리자 휴지통에서 복구/영구삭제
 alter table orders add column if not exists deleted_at timestamptz;
 alter table receipts add column if not exists deleted_at timestamptz;
