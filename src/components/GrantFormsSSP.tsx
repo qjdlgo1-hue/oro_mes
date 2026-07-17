@@ -603,7 +603,9 @@ function S9({ v, p, d }: SspProps) {
   const show = [...rows]; while (show.length < 8) show.push({});
   const total = rows.reduce((s, r) => s + num(r.amount), 0);
   const hired = num(d.pcHired);
-  const limit = 10000000 + 2500000 * hired; // 원본 xlsx 수식: =10,000,000+(2,500,000×채용승인 직원수)
+  // 구매한도 — 집행계획서 기준(사용자 확정): 600만 + 신규고용 1명당 200만(최대 3인), 상한 1,200만.
+  // (전산장비 내역서 xlsx 수식 1,000만+250만×인원과 상이 — 원본 문서 간 모순으로 집행계획서를 따름)
+  const limit = Math.min(6000000 + 2000000 * Math.min(3, hired), 12000000);
   const cell: React.CSSProperties = { fontSize: "9.5pt", textAlign: "center", height: "9mm" };
   return (
     <div>

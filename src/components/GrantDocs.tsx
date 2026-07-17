@@ -1,5 +1,5 @@
 // 지원사업 서류 자동작성 — 한 건 입력으로 창업중심대학사업 서식 세트를 자동 생성·일괄 인쇄
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { errMsg } from "../lib/errmsg";
 import { hasSupabase } from "../lib/supabase";
 import { toast } from "../lib/toast";
@@ -8,7 +8,7 @@ import { usePaged } from "../lib/usePaged";
 import {
   GrantDoc, GrantPhoto, GrantProfile,
   listGrantDocs, listGrantSettle, getGrantDoc, saveGrantDoc, deleteGrantDoc, getGrantProfile, saveGrantProfile,
-  downscaleImage, storageUpload, storageObjectUrl, aiGrantWrite, aiGrantRead, GrantReadResult,
+  downscaleImage, storageUpload, storageObjectUrl, aiGrantWrite, aiGrantRead, GrantReadResult, logAudit,
 } from "../lib/db";
 import {
   FORMS, FormKey, EXPENSE_ITEMS, FORM_PRESETS, calcTotal, money, docAmount, settleSummary,
@@ -70,12 +70,15 @@ export default function GrantDocs() {
   const [profOpen, setProfOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    getGrantProfile().then(p => { setProf(p); if (!p.company) setProfOpen(true); }).catch(() => {});
+    getGrantProfile().then(p => { setProf(p); if (!p.company) setProfOpen(true); })
+      .catch(e => toast.error("회사 정보 불러오기 실패: " + errMsg(e)));
   }, []);
   async function saveProf() {
     setBusy(true);
-    try { await saveGrantProfile(prof); toast.success("회사 정보 저장됨"); setProfOpen(false); }
-    catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
+    try {
+      await saveGrantProfile(prof); toast.success("회사 정보 저장됨"); setProfOpen(false);
+      logAudit("지원사업 회사정보 변경", "grant_profile", "", { program: prog });
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -90,8 +93,10 @@ export default function GrantDocs() {
   async function setSignPath(signPath: string) {
     const next = { ...prof, signPath };
     setProf(next);
-    try { await saveGrantProfile(next); toast.success(signPath ? "서명이 등록되었습니다 — 모든 서식의 (인) 위에 표시됩니다." : "서명 삭제됨"); }
-    catch (e: any) { toast.error("서명 저장 실패: " + errMsg(e)); }
+    try {
+      await saveGrantProfile(next); toast.success(signPath ? "서명이 등록되었습니다 — 모든 서식의 (인) 위에 표시됩니다." : "서명 삭제됨");
+      logAudit(signPath ? "서명(도장) 등록" : "서명(도장) 삭제", "grant_profile", "", {});
+    } catch (e: any) { toast.error("서명 저장 실패: " + errMsg(e)); }
   }
   function uploadSign() {
     const el = document.createElement("input");
@@ -139,14 +144,21 @@ export default function GrantDocs() {
   // ---- 건 목록 ----
   const [docs, setDocs] = useState<GrantDoc[]>([]);
   const { paged, remaining, showMore } = usePaged(docs, 30);
-  const loadDocs = (pg: ProgramKey = prog) => listGrantDocs(pg).then(setDocs).catch(e => toast.error("목록 불러오기 실패: " + errMsg(e)));
-  useEffect(() => { loadDocs(prog); }, [prog]);
+  // 공고 전환 경쟁 방지: 이전 공고의 늦은 응답이 새 목록을 덮지 않도록 cleanup 플래그 사용
+  useEffect(() => {
+    let gone = false;
+    listGrantDocs(prog).then(r => { if (!gone) setDocs(r); }).catch(e => { if (!gone) toast.error("목록 불러오기 실패: " + errMsg(e)); });
+    return () => { gone = true; };
+  }, [prog]);
 
   // ---- 정산 현황 (건 data 포함 목록) ----
   const [view, setView] = useState<"list" | "settle">("list");
   const [settleDocs, setSettleDocs] = useState<GrantDoc[]>([]);
   useEffect(() => {
-    if (view === "settle") listGrantSettle(prog).then(setSettleDocs).catch(e => toast.error("정산 목록 불러오기 실패: " + errMsg(e)));
+    if (view !== "settle") return;
+    let gone = false;
+    listGrantSettle(prog).then(r => { if (!gone) setSettleDocs(r); }).catch(e => { if (!gone) toast.error("정산 목록 불러오기 실패: " + errMsg(e)); });
+    return () => { gone = true; };
   }, [view, prog]);
 
   // ---- 현재 편집 건 ----
@@ -191,18 +203,22 @@ export default function GrantDocs() {
   }
   async function removeDoc(r: GrantDoc) {
     if (!(await confirmDialog({ title: "건 삭제", message: `'${r.title}' 건과 서류 데이터를 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
-    try { await deleteGrantDoc(r.id!); setDocs(ds => ds.filter(x => x.id !== r.id)); if (cur?.id === r.id) setCur(null); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+    try {
+      await deleteGrantDoc(r.id!); setDocs(ds => ds.filter(x => x.id !== r.id)); if (cur?.id === r.id) setCur(null); toast.success("삭제됨");
+      logAudit("지원사업 건 삭제", "grant_doc", r.id!, { program: prog, title: r.title });
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
   async function save() {
     if (!cur) return;
     if (!cur.title.trim()) { toast.error("건 이름(품명/용역명)을 입력하세요."); return; }
     setBusy(true);
     try {
+      const isNew = !cur.id;
       const saved = await saveGrantDoc(cur);
       setCur(saved);
       setDocs(ds => cur.id ? ds.map(x => x.id === saved.id ? { ...x, title: saved.title, expense_item: saved.expense_item, forms: saved.forms } : x) : [saved, ...ds]);
       toast.success("저장됨");
+      logAudit(isNew ? "지원사업 건 추가" : "지원사업 건 수정", "grant_doc", saved.id || "", { program: prog, title: saved.title, item: saved.expense_item });
     } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
@@ -232,7 +248,10 @@ export default function GrantDocs() {
   const needAllDocs = isSsp && !!cur && (cur.forms.includes("s20") || cur.forms.includes("s22"));
   const [allDocs, setAllDocs] = useState<GrantDoc[]>([]);
   useEffect(() => {
-    if (needAllDocs) listGrantSettle(prog).then(setAllDocs).catch(() => setAllDocs([]));
+    if (!needAllDocs) return;
+    let gone = false;
+    listGrantSettle(prog).then(r => { if (!gone) setAllDocs(r); }).catch(() => { if (!gone) setAllDocs([]); });
+    return () => { gone = true; };
   }, [needAllDocs, prog]);
 
   // ---- 사진 업로드 (다중 선택 / 드래그 / 붙여넣기) ----
@@ -274,13 +293,20 @@ export default function GrantDocs() {
   const setPhoto = (i: number, patch: Partial<GrantPhoto>) => setCur(c => c ? { ...c, photos: c.photos.map((p, j) => j === i ? { ...p, ...patch } : p) } : c);
   const delPhoto = (i: number) => setCur(c => c ? { ...c, photos: c.photos.filter((_, j) => j !== i) } : c);
 
-  // 단가×수량 자동 합계
+  // 단가×수량 자동 합계 — 건을 새로 열었을 때는 저장된(수동 입력 가능) 합계를 유지하고,
+  // 사용자가 이 건에서 단가/수량을 실제로 바꿨을 때만 재계산한다.
+  const totRef = useRef<{ id: string; key: string } | null>(null);
   useEffect(() => {
-    if (!cur) return;
+    if (!cur) { totRef.current = null; return; }
+    const id = cur.id || "(new)";
+    const key = `${d.unitPrice ?? ""}|${d.qty ?? ""}`;
+    const prev = totRef.current;
+    totRef.current = { id, key };
+    if (!prev || prev.id !== id || prev.key === key) return; // 건 열기/전환 직후 또는 값 무변경
     const t = calcTotal(d.unitPrice, d.qty);
     if (t != null && String(t) !== String(d.total || "")) setD({ total: t });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.unitPrice, d.qty]);
+  }, [d.unitPrice, d.qty, cur?.id]);
 
   // 현물 표 행
   const ikRows: any[] = Array.isArray(d.ik) ? d.ik : [];
@@ -1122,7 +1148,7 @@ export default function GrantDocs() {
             const pcRows: any[] = Array.isArray(d.pcRows) ? d.pcRows : [];
             return (
               <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>💻 전산장비 구매 세부내역 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 한도: 1,000만원 + 채용승인 직원 1인당 250만원 (원본 수식)</span></div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>💻 전산장비 구매 세부내역 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>— 한도: 600만원 + 신규고용 1인당 200만원(최대 3인), 총 1,200만원 (집행계획서 기준)</span></div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Field label="기수 표기" w={150}><input style={inp} value={d.cohort || ""} placeholder={prog === "ysc" ? "딥테크 1기" : "글로벌 6기"} onChange={e => setD({ cohort: e.target.value })} /></Field>
                   <Field label="채용승인 받은 직원수" w={150}><input style={inp} value={d.pcHired || ""} onChange={e => setD({ pcHired: e.target.value })} /></Field>

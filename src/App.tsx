@@ -89,7 +89,7 @@ export default function App() {
     } catch (e) { console.error(e); }
     setLoading(false);
   }, []);
-  const reloadMenu = useCallback(() => { getMenuConfig().then(c => { setGroups(c.groups); setPlacement(c.placement); }).catch(() => {}); }, []);
+  const reloadMenu = useCallback(() => { getMenuConfig().then(c => { setGroups(c.groups); setPlacement(c.placement); }).catch(e => console.warn("메뉴 구성 불러오기 실패(기본 구성 사용):", e)); }, []);
 
   const signedIn = !hasSupabase || !!session;
   useEffect(() => { if (signedIn) { refresh(); loadPerms(); reloadMenu(); } }, [signedIn, refresh, reloadMenu]);

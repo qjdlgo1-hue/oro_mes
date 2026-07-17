@@ -150,21 +150,25 @@ export default function Receipts() {
   }, [rows]);
   const curTrip = trips.find(t => t.name === selTrip) || null;
 
-  async function add(r?: QItem) {
+  // 성공 여부를 반환 — 인식 큐의 '바로 추가'는 저장이 확인된 경우에만 큐에서 제거한다(실패 시 인식 결과 보존).
+  async function add(r?: QItem): Promise<boolean> {
     const rec = r || form;
     const file = r ? r.file : (formFile || undefined);
-    if (!rec.vendor.trim()) { toast.error("거래처명을 입력하세요."); return; }
-    if (!(Number(rec.total) > 0)) { toast.error("합계금액을 입력하세요."); return; }
+    if (!rec.vendor.trim()) { toast.error("거래처명을 입력하세요."); return false; }
+    if (!(Number(rec.total) > 0)) { toast.error("합계금액을 입력하세요."); return false; }
     let supply = Number(rec.supply) || 0, vat = Number(rec.vat) || 0;
     if (isOversea(rec)) { supply = Number(rec.total); vat = 0; } // 해외 지출: 매입세액공제 불가
     else if (!supply) { supply = Math.round(Number(rec.total) / 1.1); vat = Number(rec.total) - supply; }
     setBusy(true);
+    let ok = false;
     try {
       await addReceipt({ ...rec, supply, vat, total: Number(rec.total), company, period }, file);
       await logAudit("증빙 추가", "receipt", "", { vendor: rec.vendor, total: rec.total, image: !!file });
       toast.success("목록에 추가됨" + (file ? " (원본 저장)" : "")); if (!r) { setForm(emptyForm()); setFormFile(null); } await reload();
+      ok = true;
     } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
+    return ok;
   }
   async function del(r: Receipt) {
     if (!r.id) return;
@@ -316,7 +320,8 @@ export default function Receipts() {
                   <div style={{ color: "var(--muted)" }}>{r.rdate} · {r.rtype} · {r.account}{r.memo ? ` · ⚠ ${r.memo}` : ""}{r.file ? " · 📎원본" : ""}</div>
                   <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                     <button className="btn ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => { setForm({ ...r }); setFormFile(r.file || null); setQueue(q => q.filter((_, x) => x !== i)); }}>입력칸으로</button>
-                    <button className="btn green" style={{ fontSize: 11, padding: "3px 8px" }} onClick={() => { add(r); setQueue(q => q.filter((_, x) => x !== i)); }}>바로 추가</button>
+                    <button className="btn green" style={{ fontSize: 11, padding: "3px 8px" }} disabled={busy}
+                      onClick={async () => { if (await add(r)) setQueue(q => q.filter((_, x) => x !== i)); }}>바로 추가</button>
                     <button className="btn" style={{ fontSize: 11, padding: "3px 8px", background: "#9aa3af" }} onClick={() => setQueue(q => q.filter((_, x) => x !== i))}>버리기</button>
                   </div>
                 </div>

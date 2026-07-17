@@ -33,7 +33,7 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
       listInout("in").then(setInRows).catch(e => toast.error("생산 불러오기 실패: " + errMsg(e))),
       listInout("out").then(setOutRows).catch(e => toast.error("판매 불러오기 실패: " + errMsg(e))),
     ]).finally(() => setLoaded(true));
-    listPlans().then(setPlans).catch(() => {});
+    listPlans().then(setPlans).catch(e => toast.error("생산계획 불러오기 실패: " + errMsg(e)));
   }, []);
 
   const isIn = view === "in";

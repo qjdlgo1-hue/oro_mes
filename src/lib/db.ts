@@ -10,9 +10,17 @@ const LS = {
   inout_out: "oro_inout_out",
 };
 function lsGet<T>(k: string, def: T): T {
-  try { return JSON.parse(localStorage.getItem(k) || "") as T; } catch { return def; }
+  try {
+    const raw = localStorage.getItem(k);
+    if (raw == null) return def; // 키 없음 — 파싱 시도 없이 기본값
+    return JSON.parse(raw) as T;
+  } catch { return def; }
 }
-function lsSet(k: string, v: unknown) { localStorage.setItem(k, JSON.stringify(v)); }
+function lsSet(k: string, v: unknown) {
+  // 용량 초과(QuotaExceededError) 등으로 실패해도 앱이 죽지 않게 — 로컬 폴백 저장은 best-effort
+  try { localStorage.setItem(k, JSON.stringify(v)); }
+  catch (e) { console.warn("localStorage 저장 실패:", k, e); }
+}
 
 // ---------- public API (auto-selects backend) ----------
 export const backendName = hasSupabase ? "Supabase(클라우드)" : "로컬(브라우저)";

@@ -34,7 +34,7 @@ export default function Support() {
   const certRef = useRef<HTMLDivElement>(null);
 
   const loadP = () => listProjects().then(setProjects).catch(e => toast.error("과제 불러오기 실패: " + errMsg(e)));
-  const loadI = () => listInspections().then(setInsps).catch(() => {});
+  const loadI = () => listInspections().then(setInsps).catch(e => toast.error("검수조서 불러오기 실패: " + errMsg(e)));
   useEffect(() => { loadP(); loadI(); }, []);
 
   const project = projects.find(p => p.id === pid) || null;
@@ -75,8 +75,10 @@ export default function Support() {
     });
     if (!ok) return;
     setBusy(true);
-    try { await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+    try {
+      await deleteProject(project.id!); setPid(""); setForm(null); await loadP(); await loadI(); toast.success("삭제됨");
+      logAudit("과제 삭제", "project", project.id!, { name: project.name });
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -187,8 +189,10 @@ export default function Support() {
   async function removeInsp(i: Inspection) {
     if (!(await confirmDialog({ title: "검수조서 삭제", message: `${i.inspect_date || "-"} 검수조서(${(i.items || []).length}품목)를 삭제할까요?\n복구할 수 없습니다.`, danger: true, confirmLabel: "삭제" }))) return;
     setBusy(true);
-    try { await deleteInspection(i.id!); await loadI(); if (form?.id === i.id) setForm(null); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+    try {
+      await deleteInspection(i.id!); await loadI(); if (form?.id === i.id) setForm(null); toast.success("삭제됨");
+      logAudit("검수조서 삭제", "inspection", i.id!, { date: i.inspect_date });
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
     setBusy(false);
   }
   async function savePdf() {

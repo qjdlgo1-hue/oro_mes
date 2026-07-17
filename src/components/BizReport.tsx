@@ -6,7 +6,7 @@ import { nf } from "../lib/fmt";
 import { usePaged } from "../lib/usePaged";
 import {
   InoutRow, ProdConsume, listInout, listOrders, listPlans, listReceipts, listProdConsume,
-  BizReport as BizReportRow, listBizReports, getBizReport, saveBizReport, deleteBizReport, aiBizReport,
+  BizReport as BizReportRow, listBizReports, getBizReport, saveBizReport, deleteBizReport, aiBizReport, logAudit,
 } from "../lib/db";
 import { Order, PlanEntry, Receipt } from "../lib/types";
 import { aggregateKpis, ruleReport, periodLabel, Kpis, PeriodType } from "../lib/bizreport";
@@ -81,7 +81,7 @@ export default function BizReport() {
   const periodKey = ptype === "month" ? ym : ptype === "quarter" ? `${year}-Q${sub}` : ptype === "half" ? `${year}-H${sub}` : year;
   const label = periodLabel(ptype, periodKey);
 
-  const loadHist = () => listBizReports().then(setHist).catch(() => {});
+  const loadHist = () => listBizReports().then(setHist).catch(e => toast.error("보고서 이력 불러오기 실패: " + errMsg(e)));
   useEffect(() => { loadHist(); }, []);
 
   async function generate() {
@@ -112,6 +112,7 @@ export default function BizReport() {
         content_md: text, kpis: k, ai: !!model, model,
       });
       setHist(h => [saved, ...h]);
+      logAudit("경영보고서 생성", "biz_report", saved.id || "", { period: periodKey, ai: !!model });
     } catch (e: any) { toast.error("보고서 생성 실패: " + errMsg(e)); }
     setBusy(false);
   }
@@ -127,8 +128,10 @@ export default function BizReport() {
   }
   async function removeReport(r: BizReportRow) {
     if (!(await confirmDialog({ title: "보고서 삭제", message: `'${r.title}' 보고서를 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
-    try { await deleteBizReport(r.id!); setHist(h => h.filter(x => x.id !== r.id)); toast.success("삭제됨"); }
-    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+    try {
+      await deleteBizReport(r.id!); setHist(h => h.filter(x => x.id !== r.id)); toast.success("삭제됨");
+      logAudit("경영보고서 삭제", "biz_report", r.id!, { title: r.title });
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
 
   const kcard: React.CSSProperties = { background: "#fff", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 14px" };
