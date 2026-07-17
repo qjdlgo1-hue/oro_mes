@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { Order, PlanEntry } from "./lib/types";
 import { listOrders, listPlans, backendName, getMenuConfig, MenuGroupRow, MenuPlacement, logAudit } from "./lib/db";
@@ -17,21 +17,23 @@ function parseHash(): { tab: TabKey | null; param: string | null } {
   const [t, param] = window.location.hash.replace(/^#/, "").split("/");
   return { tab: TAB_KEY_SET.has(t) ? (t as TabKey) : null, param: param || null };
 }
+// 첫 화면(Today)과 로그인만 정적 로드 — 나머지 탭은 lazy로 분리해 초기 번들을 줄인다
+// (xlsx·recharts·지원사업 서식 등 무거운 의존성이 해당 탭을 열 때만 내려받아짐)
 import Today from "./components/Today";
-import ImportOrders from "./components/ImportOrders";
-import ProductionPlan from "./components/ProductionPlan";
-import CocIssue from "./components/CocIssue";
-import DataImport from "./components/DataImport";
-import Insights from "./components/Insights";
-import ProdConsumeView from "./components/ProdConsume";
-import DeliverySchedule from "./components/DeliverySchedule";
-import Support from "./components/Support";
-import Dashboard from "./components/Dashboard";
-import Audit from "./components/Audit";
-import Receipts from "./components/Receipts";
-import MaterialBom from "./components/MaterialBom";
-import Admin from "./components/Admin";
 import Login from "./components/Login";
+const ImportOrders = lazy(() => import("./components/ImportOrders"));
+const ProductionPlan = lazy(() => import("./components/ProductionPlan"));
+const CocIssue = lazy(() => import("./components/CocIssue"));
+const DataImport = lazy(() => import("./components/DataImport"));
+const Insights = lazy(() => import("./components/Insights"));
+const ProdConsumeView = lazy(() => import("./components/ProdConsume"));
+const DeliverySchedule = lazy(() => import("./components/DeliverySchedule"));
+const Support = lazy(() => import("./components/Support"));
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const Audit = lazy(() => import("./components/Audit"));
+const Receipts = lazy(() => import("./components/Receipts"));
+const MaterialBom = lazy(() => import("./components/MaterialBom"));
+const Admin = lazy(() => import("./components/Admin"));
 
 // 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시 — 스크롤 상태를 여기에 가둬서 앱 전체가 스크롤마다 리렌더되지 않게 함
 function MobileSubnav({ children }: { children: React.ReactNode }) {
@@ -227,7 +229,7 @@ export default function App() {
             </div>
           </div>}
 
-        <div className="wrap"><ErrorBoundary>{loading ? <div className="muted">불러오는 중…</div> : render()}</ErrorBoundary></div>
+        <div className="wrap"><ErrorBoundary><Suspense fallback={<div className="muted">화면 불러오는 중…</div>}>{loading ? <div className="muted">불러오는 중…</div> : render()}</Suspense></ErrorBoundary></div>
         <ToastHost />
         <ConfirmHost />
       </>
@@ -263,7 +265,7 @@ export default function App() {
               onClick={async () => { await logAudit("로그아웃", "auth", "", {}); supabase!.auth.signOut(); }}>로그아웃</button>}
           </span>
         </div>
-        <div className="wrap"><ErrorBoundary>{loading ? <div className="muted">불러오는 중…</div> : render()}</ErrorBoundary></div>
+        <div className="wrap"><ErrorBoundary><Suspense fallback={<div className="muted">화면 불러오는 중…</div>}>{loading ? <div className="muted">불러오는 중…</div> : render()}</Suspense></ErrorBoundary></div>
       </div>
       <ToastHost />
       <ConfirmHost />
