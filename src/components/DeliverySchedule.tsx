@@ -1,4 +1,6 @@
 import { errMsg } from "../lib/errmsg";
+import { thBase, tdBase } from "../lib/styles";
+import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry } from "../lib/types";
@@ -65,7 +67,7 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
   // 계획을 다음 달로 밀면 캘린더가 그 달을 바로 보여준다. 사용자가 ◀▶로 옮기면 자동 선택 중단.
   useEffect(() => {
     if (!calAuto || !loaded || !allRows.length) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso(); // 로컬(KST) 기준 — UTC 자정 오차 방지
     const dels = allRows.map(r => r.del).sort();
     const target = dels.find(d => d >= today) || dels[dels.length - 1];
     if (target) {
@@ -114,8 +116,8 @@ export default function DeliverySchedule({ orders }: { orders: Order[] }) {
     else toast.error("이 브라우저에서 자동 복사 불가");
   }
 
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "left" };
-  const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13 };
+  const th: React.CSSProperties = { ...thBase, textAlign: "left", position: "static" };
+  const td: React.CSSProperties = { ...tdBase, textAlign: "left" };
   const tdR: React.CSSProperties = { ...td, textAlign: "right" };
   const selList = selDay ? (byDay[selDay] || []) : [];
 

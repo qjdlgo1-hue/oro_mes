@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { todayIso } from "../lib/fmt";
 import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry, CocData } from "../lib/types";
@@ -16,7 +17,6 @@ import MonthPicker from "./MonthPicker";
 export default function ImportOrders({ orders, onChange }: { orders: Order[]; onChange: () => void }) {
   const canImport = can("order.import"), canEdit = can("order.edit"), canDelete = can("order.delete");
   const isMobile = useIsMobile();
-  const todayIso = () => new Date().toISOString().slice(0, 10);
   const blankOrder = (): Order => ({ id: "", order_no: "수동입력", order_date: todayIso(), ym: "", item_code: "", gubun: "제품", name: "", spec: "", qty: 0, customer: "", note: "" });
   const [no, setNo] = useState<Order>(blankOrder());
   async function addManual() {

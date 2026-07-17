@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { errMsg } from "../lib/errmsg";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
-import { nf } from "../lib/fmt";
+import { nf, todayIso } from "../lib/fmt";
 import { usePaged } from "../lib/usePaged";
 import {
   InoutRow, ProdConsume, listInout, listOrders, listPlans, listReceipts, listProdConsume,
@@ -57,7 +57,6 @@ function Md({ src }: { src: string }) {
   return <div className="brep-md">{nodes}</div>;
 }
 
-const todayIso = () => { const t = new Date(); const p = (n: number) => String(n).padStart(2, "0"); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`; };
 const lastMonthKey = () => { const t = new Date(); const d = new Date(t.getFullYear(), t.getMonth() - 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
 export default function BizReport() {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { thBase, tdBase } from "../lib/styles";
 import * as XLSX from "xlsx";
 import { toast } from "../lib/toast";
 
@@ -80,8 +81,8 @@ export default function ProdInOut() {
   }
 
   const box: React.CSSProperties = { width: "100%", height: 150, fontSize: 12, padding: 8, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "monospace" };
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "7px 8px", textAlign: "right", position: "sticky", top: 0, borderBottom: "1px solid var(--line)" };
-  const td: React.CSSProperties = { padding: "6px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
+  const th: React.CSSProperties = { ...thBase, padding: "7px 8px", borderBottom: "1px solid var(--line)" };
+  const td: React.CSSProperties = { ...tdBase, padding: "6px 8px" };
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
 
   return (

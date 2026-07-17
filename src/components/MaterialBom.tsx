@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { useAsyncList } from "../lib/useAsyncList";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Order } from "../lib/types";
 import { listBom, upsertBom, logAudit, BomMap } from "../lib/db";
@@ -12,12 +13,11 @@ const num = (n: number) => (Math.round(n * 100) / 100).toLocaleString("ko-KR");
 
 export default function MaterialBom({ orders }: { orders: Order[] }) {
   const canEdit = can("bom.edit");
-  const [bom, setBom] = useState<BomMap>({});
+  const { data: bom, setData: setBom } = useAsyncList<BomMap>(listBom, {}, "BOM");
   const [ym, setYm] = usePersistState("bom.ym", "");
   const [q, setQ] = useState("");
   const bomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { listBom().then(setBom).catch(e => toast.error("불러오기 실패: " + errMsg(e))); }, []);
 
   const prodOrders = useMemo(() => orders.filter(o => o.gubun === "제품" || o.gubun === "무형상품"), [orders]);
   const products = useMemo(() => {

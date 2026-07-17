@@ -289,15 +289,21 @@ export async function receiptImageBlob(path: string): Promise<Blob | null> {
   const { data, error } = await supabase.storage.from("receipts").download(path);
   if (error) throw error; return data;
 }
-export async function readReceiptAI(imageBase64: string, mediaType: string): Promise<any> {
-  if (!supabase) throw new Error("AI 인식은 클라우드 연결에서만 됩니다.");
-  const { data, error } = await supabase.functions.invoke("read-receipt", { body: { imageBase64, mediaType } });
+// Edge Function 호출 공통 — FunctionsHttpError의 본문 {error}를 언랩해 사람이 읽을 메시지로 throw
+async function invokeFn<T = any>(name: string, body: Record<string, any>, offlineMsg: string): Promise<T> {
+  if (!supabase) throw new Error(offlineMsg);
+  const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {
     let msg = error.message;
     try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
     throw new Error(msg);
   }
   if (data?.error) throw new Error(data.error);
+  return data as T;
+}
+
+export async function readReceiptAI(imageBase64: string, mediaType: string): Promise<any> {
+  const data = await invokeFn<any>("read-receipt", { imageBase64, mediaType }, "AI 인식은 클라우드 연결에서만 됩니다.");
   return data.rec;
 }
 
@@ -496,27 +502,12 @@ export async function deleteBizReport(id: string): Promise<void> {
 }
 // AI 보고서 생성 — Edge Function 호출 (키 미설정/실패 시 throw, 호출측에서 규칙 기반 폴백)
 export async function aiBizReport(payload: { periodLabel: string; kpis: unknown }): Promise<{ md: string; model: string }> {
-  if (!supabase) throw new Error("로컬 모드에서는 AI 분석을 사용할 수 없습니다.");
-  const { data, error } = await supabase.functions.invoke("biz-report", { body: payload });
-  if (error) {
-    let msg = error.message;
-    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
-    throw new Error(msg);
-  }
-  if (data?.error) throw new Error(data.error);
-  return data as { md: string; model: string };
+  return invokeFn<{ md: string; model: string }>("biz-report", payload, "로컬 모드에서는 AI 분석을 사용할 수 없습니다.");
 }
 
 // AI 문장 다듬기 — 서류 칸의 짧은 초안을 공식 문체로 확장 (Edge Function 'grant-write')
 export async function aiGrantWrite(payload: { field: string; draft: string; context: Record<string, any> }): Promise<string> {
-  if (!supabase) throw new Error("로컬 모드에서는 AI 다듬기를 사용할 수 없습니다.");
-  const { data, error } = await supabase.functions.invoke("grant-write", { body: payload });
-  if (error) {
-    let msg = error.message;
-    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
-    throw new Error(msg);
-  }
-  if (data?.error) throw new Error(data.error);
+  const data = await invokeFn<any>("grant-write", payload, "로컬 모드에서는 AI 다듬기를 사용할 수 없습니다.");
   return String(data?.text || "");
 }
 
@@ -527,14 +518,7 @@ export type GrantReadResult = {
   supplyTotal?: number | null; vat?: number | null; total?: number | null;
 };
 export async function aiGrantRead(payload: { fileBase64: string; mediaType: string }): Promise<GrantReadResult> {
-  if (!supabase) throw new Error("로컬 모드에서는 거래명세서 AI 인식을 사용할 수 없습니다.");
-  const { data, error } = await supabase.functions.invoke("grant-doc-read", { body: payload });
-  if (error) {
-    let msg = error.message;
-    try { const j = await (error as any).context?.json?.(); if (j?.error) msg = j.error; } catch { /* */ }
-    throw new Error(msg);
-  }
-  if (data?.error) throw new Error(data.error);
+  const data = await invokeFn<any>("grant-doc-read", payload, "로컬 모드에서는 거래명세서 AI 인식을 사용할 수 없습니다.");
   return (data?.data || {}) as GrantReadResult;
 }
 

@@ -1,4 +1,5 @@
 import { errMsg } from "../lib/errmsg";
+import { thBase, tdBase } from "../lib/styles";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend, CartesianGrid } from "recharts";
 import * as XLSX from "xlsx";
@@ -112,8 +113,8 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
   const kpi = (label: string, val: string, color = "#1f2330") => (
     <div style={card}><div className="muted" style={{ fontSize: 12 }}>{label}</div><div style={{ fontSize: 22, fontWeight: 700, color }}>{val}</div></div>
   );
-  const th: React.CSSProperties = { background: "#f1f3f7", color: "#374151", fontSize: 12, fontWeight: 700, padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 };
-  const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid var(--line2)", fontSize: 13, textAlign: "right" };
+  const th: React.CSSProperties = thBase;
+  const td: React.CSSProperties = tdBase;
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
 
   const empty = rows.length === 0;

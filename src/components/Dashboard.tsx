@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAsyncList } from "../lib/useAsyncList";
 import { Order, PlanEntry } from "../lib/types";
 import { listPlans } from "../lib/db";
 import { money as won } from "../lib/fmt";
@@ -8,8 +9,7 @@ const TH: React.CSSProperties = { background: "#f1f3f7", color: "#374151", paddi
 const TD: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7" };
 
 export default function Dashboard({ orders }: { orders: Order[] }) {
-  const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
-  useEffect(() => { listPlans().then(setPlans); }, []);
+  const { data: plans } = useAsyncList<Record<string, PlanEntry>>(listPlans, {}, "생산계획");
 
   const prod = useMemo(() => orders.filter(o => o.gubun === "제품" || o.gubun === "무형상품"), [orders]);
   const months = useMemo(() => [...new Set(prod.map(o => o.ym))].sort(), [prod]);

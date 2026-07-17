@@ -3,9 +3,7 @@ import { dateParts, money, num, settleSummary, SSP_ITEMS, SspFormKey, SspProgram
 import { Stamp } from "./GrantForms";
 import { SspProps, sspTerm, sspInfo, kdate, DateSign, body } from "./GrantFormsSSP";
 
-const TitleBox = ({ children }: { children: React.ReactNode }) => (
-  <h2 style={{ textAlign: "center", fontSize: "18pt", fontWeight: 700, margin: "2mm 0 5mm" }}>{children}</h2>
-);
+import { TitleBox } from "./grantformsShared";
 
 // ── 12. 사업비 권리의무 이전 확인서 (개인→법인 전환 시) ──
 function S12({ v, p, d, sign }: SspProps) {
