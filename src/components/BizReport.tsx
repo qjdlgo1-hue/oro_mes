@@ -176,7 +176,7 @@ export default function BizReport() {
       )}
 
       {md && (
-        <div className="card brep-print">
+        <div className="card brep-print printable">
           <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
             <span className="muted" style={{ fontSize: 11.5 }}>{aiUsed ? `🤖 AI 분석 (${aiUsed})` : "📐 규칙 기반 요약"}</span>
           </div>
