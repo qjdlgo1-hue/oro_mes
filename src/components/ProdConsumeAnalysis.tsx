@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts";
 import { ProdConsume, listProdConsume } from "../lib/db";
+import { toast } from "../lib/toast";
+import { errMsg } from "../lib/errmsg";
 import { nf, nf1, nf3 } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
 import { useIsMobile } from "../lib/useIsMobile";
@@ -19,7 +21,7 @@ export default function ProdConsumeAnalysis() {
   const [loaded, setLoaded] = useState(false);
   const isMobile = useIsMobile();
   const yw = isMobile ? 78 : 120;
-  useEffect(() => { listProdConsume().then(setRows).catch(() => {}).finally(() => setLoaded(true)); }, []);
+  useEffect(() => { listProdConsume().then(setRows).catch(e => toast.error("생산·소모 데이터 불러오기 실패: " + errMsg(e))).finally(() => setLoaded(true)); }, []);
 
   const months = useMemo(() => [...new Set(rows.map(r => r.ym).filter(Boolean))].sort(), [rows]);
   const scoped = useMemo(() => ym ? rows.filter(r => r.ym === ym) : rows, [rows, ym]);

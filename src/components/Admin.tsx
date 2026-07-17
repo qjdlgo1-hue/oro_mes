@@ -124,7 +124,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
 
   // ---- 휴지통 ----
   const [trash, setTrash] = useState<{ orders: any[]; receipts: any[] }>({ orders: [], receipts: [] });
-  const loadTrash = () => listTrash().then(setTrash).catch(() => {});
+  const loadTrash = () => listTrash().then(setTrash).catch(e => toast.error("휴지통 불러오기 실패: " + errMsg(e)));
   useEffect(() => { loadTrash(); }, []);
   async function restoreItem(kind: "order" | "receipt", it: any) {
     setBusy(true);

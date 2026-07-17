@@ -111,19 +111,41 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
     catch (e: any) { setSaveState("error"); toast.error("성적서 저장 실패 — 입력이 서버에 반영되지 않았습니다: " + errMsg(e)); }
   }
   function queueSave(c: CocData) {
+    // 다른 주문의 편집이 대기 중이면 먼저 저장 — 디바운스 창(0.8s) 안에 주문을 전환해도 마지막 입력이 유실되지 않게
+    if (pendingRef.current && pendingRef.current.order_id !== c.order_id) {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+      flushSave();
+    }
     pendingRef.current = c; setSaveState("saving");
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(flushSave, 800);
   }
   useEffect(() => () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); flushSave(); }, []);
-  useEffect(() => { setUnlocked(false); setSaveState("idle"); }, [sel]);
+  // 주문 전환 시: 이전 주문의 미저장 입력을 즉시 저장하고 편집 상태 초기화
+  useEffect(() => { flushSave(); setUnlocked(false); setSaveState("idle"); }, [sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setField(f: string, v: string) { if (!order) return; const next = { ...data, [f]: v }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
   function setMany(patch: Record<string, string>) { if (!order) return; const next = { ...data, ...patch }; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
   function clearProd() { if (!order) return; const next = { ...data }; delete next.prod; const c: CocData = { order_id: order.id, data: next }; setCocs(prev => ({ ...prev, [order.id]: c })); queueSave(c); }
-  function setLogo() { pickDataUrl(400, d => { const s = { ...settings, logo: d }; setSettings(s); saveSettings(s); }); }
-  function setStamp() { pickDataUrl(300, d => { const s = { ...settings, stamp: d }; setSettings(s); saveSettings(s); }); }
-  function setFmt(patch: any) { const nf = { ...fmt, ...patch }; const s = { ...settings, format: nf }; setSettings(s); saveSettings(s); }
+  // 설정 저장 — 실패를 사용자에게 알리고(모든 인쇄물에 영향) 변경 이력을 기록
+  async function persistSettings(s: any, what: string) {
+    setSettings(s);
+    try { await saveSettings(s); logAudit("설정 변경", "settings", "", { what }); }
+    catch (e: any) { toast.error(`${what} 저장 실패 — 서버에 반영되지 않았습니다: ` + errMsg(e)); }
+  }
+  function setLogo() { pickDataUrl(400, d => { persistSettings({ ...settings, logo: d }, "로고"); }); }
+  function setStamp() { pickDataUrl(300, d => { persistSettings({ ...settings, stamp: d }, "도장"); }); }
+  // 서식 문구는 키 입력마다 바뀌므로 저장은 0.8s 디바운스 (화면 반영은 즉시)
+  const fmtTimer = useRef<number>();
+  function setFmt(patch: any) {
+    const s = { ...settings, format: { ...fmt, ...patch } };
+    setSettings(s);
+    if (fmtTimer.current) window.clearTimeout(fmtTimer.current);
+    fmtTimer.current = window.setTimeout(() => {
+      saveSettings(s).then(() => logAudit("설정 변경", "settings", "", { what: "성적서 서식" }))
+        .catch((e: any) => toast.error("성적서 서식 저장 실패 — 서버에 반영되지 않았습니다: " + errMsg(e)));
+    }, 800);
+  }
   async function pickCocImage(key: "imgL" | "imgR") {
     pickFile(async f => { try { const path = await storageUpload("coc", f); const url = await storageBlobToDataUrl("coc", path); if (url) setImgCache(c => ({ ...c, [path]: url })); setField(key + "_path", path); toast.success("이미지 저장됨"); } catch (e: any) { toast.error("업로드 실패: " + errMsg(e)); } });
   }
