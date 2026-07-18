@@ -141,6 +141,22 @@ export async function quoteItemDelete(id) {
   if (error) throw new Error(`견적 품목 삭제 실패: ${error.message}`);
 }
 
+// ----- 견적 발행 이력 (재다운로드용 스냅샷 포함) -----
+
+export async function quoteIssuesList(limit = 30) {
+  const { data, error } = await supabase
+    .from("crm_quote_issues").select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`발행 이력 불러오기 실패: ${error.message}`);
+  return data || [];
+}
+
+export async function quoteIssueSave(row) {
+  const { error } = await supabase.from("crm_quote_issues").insert(row);
+  if (error) throw new Error(`발행 이력 저장 실패: ${error.message}`);
+}
+
 // ----- local 모드: 브라우저 localStorage -----
 
 const LOCAL_KEYS = {

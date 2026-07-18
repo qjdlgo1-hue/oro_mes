@@ -99,6 +99,25 @@ alter table crm_quote_items enable row level security;
 create policy "crm_pgc_prices_all" on crm_pgc_prices for all to authenticated using (true) with check (true);
 create policy "crm_quote_items_all" on crm_quote_items for all to authenticated using (true) with check (true);
 
+-- 견적 발행 이력 (마이그레이션 "create_crm_quote_issues")
+-- 언제 어느 거래처에 어떤 기준으로 발행했는지 + 재다운로드용 품목·단가 스냅샷
+create table if not exists crm_quote_issues (
+  id text primary key,
+  company_id text references crm_companies(id) on delete cascade,
+  ym text not null,
+  pgc_price numeric,
+  agcn_price numeric,
+  etc_cost numeric,
+  item_count int not null default 0,
+  kind text not null default 'single', -- single(개별) | bulk(일괄)
+  rows jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists idx_crm_quote_issues_company on crm_quote_issues(company_id);
+create index if not exists idx_crm_quote_issues_created on crm_quote_issues(created_at desc);
+alter table crm_quote_issues enable row level security;
+create policy "crm_quote_issues_all" on crm_quote_issues for all to authenticated using (true) with check (true);
+
 -- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
 -- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
 create table if not exists crm_mail_accounts (

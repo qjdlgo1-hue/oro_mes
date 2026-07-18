@@ -18,11 +18,8 @@ export function calcItem(item, pgcPrice, agcnPrice, globalEtc) {
   const pgcCost =
     (Number(item.pgc_grams) || 0) * (Number(pgcPrice) || 0) +
     (Number(item.agcn_grams) || 0) * (Number(agcnPrice) || 0);
-  // 재료비(기타) = 기준 정보에서 입력한 값을 모든 품목에 동일 적용
-  //               (기준 정보에 값이 없으면 품목별 저장값 사용)
-  const etcCost = globalEtc !== undefined && globalEtc !== null && globalEtc !== ""
-    ? Number(globalEtc) || 0
-    : Number(item.material_etc) || 0;
+  // 재료비(기타) = 기준 정보에서 입력한 값을 모든 품목에 동일 적용 (전 품목 공통, 전역값)
+  const etcCost = Number(globalEtc) || 0;
   const total = niCost + pgcCost + etcCost;
   const yieldG = Number(item.yield_grams) || 50;
   const cost = yieldG > 0 ? total / yieldG : 0; // 공정비용(원/g)
@@ -43,8 +40,9 @@ export function marginOf(price, cost) {
 
 const won = (n) => (Number(n) || 0).toLocaleString("ko-KR");
 
-// 고객 전달용 견적서 엑셀 생성 + 다운로드 (원가·마진 정보는 절대 포함하지 않음)
-export async function downloadQuoteXlsx({ companyName, ym, pgcPrice, agcnPrice, rows }) {
+// 고객 전달용 견적서 엑셀 buffer 생성 (원가·마진 정보는 절대 포함하지 않음)
+// — 단일 다운로드와 전체 일괄(ZIP) 발행이 함께 사용
+export async function buildQuoteXlsxBuffer({ companyName, ym, pgcPrice, agcnPrice, rows }) {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("견적서", { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
@@ -144,12 +142,33 @@ export async function downloadQuoteXlsx({ companyName, ym, pgcPrice, agcnPrice, 
     ws.getCell(f + 1 + i, 1).font = { size: 9, color: { argb: "FF66717D" } };
   });
 
-  // 다운로드
-  const buf = await wb.xlsx.writeBuffer();
-  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return wb.xlsx.writeBuffer();
+}
+
+// blob을 파일로 저장
+export function saveBlob(blob, filename) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `견적서_${companyName}_${ym}.xlsx`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// 고객 전달용 견적서 엑셀 다운로드 (단일 거래처)
+export async function downloadQuoteXlsx({ companyName, ym, pgcPrice, agcnPrice, rows }) {
+  const buf = await buildQuoteXlsxBuffer({ companyName, ym, pgcPrice, agcnPrice, rows });
+  saveBlob(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `견적서_${companyName}_${ym}.xlsx`);
+}
+
+// 전체 거래처 일괄 발행: 거래처별 견적서 xlsx를 ZIP 하나로 묶어 다운로드
+// perCompany = [{ companyName, rows }] — 기준가(ym/pgc/agcn)는 공통
+export async function downloadQuoteZip({ ym, pgcPrice, agcnPrice, perCompany }) {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+  for (const { companyName, rows } of perCompany) {
+    const buf = await buildQuoteXlsxBuffer({ companyName, ym, pgcPrice, agcnPrice, rows });
+    zip.file(`견적서_${companyName}_${ym}.xlsx`, buf);
+  }
+  const blob = await zip.generateAsync({ type: "blob" });
+  saveBlob(blob, `견적서_전체_${ym}.zip`);
 }
