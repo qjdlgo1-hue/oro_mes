@@ -5,6 +5,7 @@ import { Header, inputStyle, Panel, IconBtn, Empty, btnStyle } from "../componen
 import { QuoteItemModal } from "../components/modals";
 import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
 import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx, downloadQuoteZip } from "../lib/quote";
+import { QuoteCompare } from "./QuoteCompare";
 
 // ===========================================================================
 // 화면: 견적 — 매월 PGC/AgCN 가격만 넣으면 거래처별 견적서 엑셀 자동 생성
@@ -27,6 +28,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [issues, setIssues] = useState([]); // 발행 이력 (최근순)
+  const [view, setView] = useState("edit"); // "edit"(견적서 작성) | "compare"(비교·추이)
 
   // 발행 이력 로드
   const loadIssues = async () => {
@@ -201,16 +203,40 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
         title="견적"
         sub="매월 PGC·AgCN 평균가만 입력하면 거래처별 견적 단가가 자동 계산됩니다"
         right={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={bulkDownload} disabled={bulkBusy} style={{ ...btnStyle("ghost"), opacity: bulkBusy ? 0.4 : 1 }}>
-              {bulkBusy ? "일괄 생성 중..." : "📦 전체 일괄 발행(ZIP)"}
-            </button>
-            <button onClick={download} disabled={!company || companyItems.length === 0 || busy} style={{ ...btnStyle("primary"), opacity: !company || companyItems.length === 0 || busy ? 0.4 : 1 }}>
-              {busy ? "생성 중..." : "📥 견적서 엑셀 다운로드"}
-            </button>
-          </div>
+          view === "edit" && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={bulkDownload} disabled={bulkBusy} style={{ ...btnStyle("ghost"), opacity: bulkBusy ? 0.4 : 1 }}>
+                {bulkBusy ? "일괄 생성 중..." : "📦 전체 일괄 발행(ZIP)"}
+              </button>
+              <button onClick={download} disabled={!company || companyItems.length === 0 || busy} style={{ ...btnStyle("primary"), opacity: !company || companyItems.length === 0 || busy ? 0.4 : 1 }}>
+                {busy ? "생성 중..." : "📥 견적서 엑셀 다운로드"}
+              </button>
+            </div>
+          )
         }
       />
+
+      {/* 견적서 작성 ↔ 비교·추이 화면 전환 */}
+      <div style={{ display: "flex", gap: 8, padding: isMobile ? "12px 14px 0" : "16px 28px 0" }}>
+        {[["edit", "📝 견적서 작성"], ["compare", "📊 비교·추이"]].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setView(k)}
+            style={{
+              padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              border: `1px solid ${view === k ? T.teal : T.border}`,
+              background: view === k ? T.tint2 : T.card,
+              color: view === k ? T.tealDark : T.sub,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "compare" && <QuoteCompare companies={companies} />}
+
+      {view === "edit" && (
       <div style={{ padding: isMobile ? 14 : 28 }}>
         {/* 기준 가격 + 거래처 선택 */}
         <Panel title="기준 정보">
@@ -424,6 +450,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
           </>
         )}
       </div>
+      )}
 
       {editing !== null && company && (
         <QuoteItemModal
