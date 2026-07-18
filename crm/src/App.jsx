@@ -61,6 +61,22 @@ export default function OroCrmApp() {
   const isMobile = useIsMobile(); // 모바일이면 사이드바 대신 상단바+하단 탭
   const [searchOpen, setSearchOpen] = useState(false); // 통합 검색창
 
+  // ----- 공유 수신 (안드로이드 공유 시트 → PWA Share Target) -----
+  // 갤럭시 통화 텍스트 변환/요약, 카톡, 문자 등에서 '공유 → ORO CRM' 하면
+  // /crm/?title=..&text=.. 로 열림 → 내용을 들고 있다가 대화 기록 창을 자동으로 띄움
+  const [shared, setShared] = useState(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const text = q.get("text") || "";
+      const title = q.get("title") || "";
+      const url = q.get("url") || "";
+      if (!text && !title && !url) return null;
+      // 쿼리를 즉시 지워 새로고침 시 다시 뜨지 않게
+      window.history.replaceState(null, "", window.location.pathname);
+      return { title, text: [text, url].filter(Boolean).join("\n") };
+    } catch { return null; }
+  });
+
   // ----- 로그인 상태 감시 (앱 켜질 때 1번 확인 + 이후 변화 감지) -----
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -85,6 +101,16 @@ export default function OroCrmApp() {
       .catch(() => setRole("user"));
   }, [mode, userId]);
   const canEdit = mode === "local" || role === null || role === "master" || role === "manager";
+
+  // 공유받은 내용이 있으면 (로그인·로딩 끝난 뒤) 대화 기록 창을 자동으로 띄움 — 채널 기본 '전화'
+  useEffect(() => {
+    if (!shared || loading) return;
+    if (mode === "cloud" && !userId) return; // 로그인 화면이 먼저 — 로그인하면 이어서 뜸
+    if (!canEdit) { alert("조회 전용 계정이라 공유받은 내용을 기록할 수 없습니다."); setShared(null); return; }
+    const firstLine = (shared.title || shared.text.split("\n").find((l) => l.trim()) || "공유된 내용").trim().slice(0, 60);
+    setModal({ type: "activity", share: true, initial: { channel: "phone", direction: "received", title: firstLine, body: shared.text } });
+    setShared(null);
+  }, [shared, loading, mode, userId, canEdit]);
   useEffect(() => {
     (async () => {
       if (mode === "cloud") {
@@ -418,9 +444,10 @@ export default function OroCrmApp() {
         <ActivityModal
           companyId={modal.companyId}
           initial={modal.initial}
-          deals={deals.filter((d) => d.companyId === modal.companyId)}
+          companies={modal.share ? companies : undefined}
+          deals={modal.share ? [] : deals.filter((d) => d.companyId === modal.companyId)}
           onClose={() => setModal(null)}
-          onSave={(d) => { modal.initial ? updateItem("activities", modal.initial.id, d) : addActivity(d); setModal(null); }}
+          onSave={(d) => { modal.initial?.id ? updateItem("activities", modal.initial.id, d) : addActivity(d); setModal(null); }}
         />
       )}
     </div>
