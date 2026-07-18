@@ -95,7 +95,8 @@ export function DealModal({ companyId, initial, onClose, onSave }) {
 }
 
 // 대화 기록 추가/수정 모달 (핵심!)
-export function ActivityModal({ companyId, initial, deals, onClose, onSave }) {
+// companies를 넘기면(공유 수신 흐름) 모달 안에서 거래처를 직접 고름
+export function ActivityModal({ companyId, initial, deals, companies, onClose, onSave }) {
   // 오늘 날짜를 기본값으로 (YYYY-MM-DD HH:MM 형태)
   const now = new Date();
   const defaultDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -108,7 +109,16 @@ export function ActivityModal({ companyId, initial, deals, onClose, onSave }) {
   const set = (k, v) => setF({ ...f, [k]: v });
 
   return (
-    <Modal title={initial ? "대화 기록 수정" : "대화 기록 추가"} onClose={onClose}>
+    <Modal title={initial?.id ? "대화 기록 수정" : companies ? "공유받은 내용 기록" : "대화 기록 추가"} onClose={onClose}>
+      {/* 공유 수신 흐름: 어느 거래처의 대화인지 먼저 선택 */}
+      {companies && (
+        <Field label="거래처 *">
+          <select style={inputStyle} value={f.companyId || ""} onChange={(e) => set("companyId", e.target.value)}>
+            <option value="">거래처를 선택하세요</option>
+            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+      )}
       {/* 채널 선택 - 버튼으로 */}
       <Field label="채널 *">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -163,7 +173,12 @@ export function ActivityModal({ companyId, initial, deals, onClose, onSave }) {
         </Field>
       )}
 
-      <ModalActions onClose={onClose} onSave={() => f.title.trim() && onSave(f)} disabled={!f.title.trim()} saveLabel="기록 저장" />
+      <ModalActions
+        onClose={onClose}
+        onSave={() => f.title.trim() && (!companies || f.companyId) && onSave(f)}
+        disabled={!f.title.trim() || (companies && !f.companyId)}
+        saveLabel="기록 저장"
+      />
     </Modal>
   );
 }

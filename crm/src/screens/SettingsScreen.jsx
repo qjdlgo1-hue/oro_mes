@@ -102,7 +102,18 @@ export function SettingsScreen({ mode, canEdit = true }) {
             · 네이버 쪽 설정에서 <b style={{ color: T.navy }}>IMAP 사용</b>이 켜져 있어야 합니다 (네이버 메일: 환경설정 → POP3/IMAP 설정).<br />
             · 2단계 인증을 쓰는 계정은 실제 비밀번호 대신 <b style={{ color: T.navy }}>애플리케이션 비밀번호</b>를 발급해 입력하세요.<br />
             · <span style={{ color: T.danger }}>비밀번호는 서버 DB에 저장되며 CRM에 로그인한 팀원이 볼 수 있습니다.</span> 가능하면 전용 앱 비밀번호를 사용하세요.<br />
-            · SMTP 정보는 지금은 저장만 해두며, 나중에 CRM에서 메일을 보내는 기능이 생기면 사용됩니다.
+            · SMTP 정보는 견적 화면의 "📧 메일 발송"이 발신 계정으로 사용합니다.
+          </div>
+        </Panel>
+
+        <div style={{ height: 20 }} />
+        <Panel title="📲 통화·대화를 공유로 기록하기 (갤럭시)">
+          <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.8 }}>
+            ① 휴대폰 브라우저(크롬/삼성인터넷)로 이 CRM을 열고 메뉴에서 <b style={{ color: T.navy }}>"홈 화면에 추가"</b>로 설치합니다.<br />
+            ② 통화가 끝나면 삼성 전화 앱의 <b style={{ color: T.navy }}>통화 녹음 텍스트 변환/AI 요약</b> 화면에서 <b style={{ color: T.navy }}>공유</b>를 누릅니다.<br />
+            ③ 공유 목록에서 <b style={{ color: T.navy }}>ORO CRM</b>을 선택하면 대화 기록 창이 내용이 채워진 채 열립니다 — 거래처만 고르고 저장하세요.<br />
+            · 통화뿐 아니라 카카오톡·문자 등 <b style={{ color: T.navy }}>어떤 텍스트든 공유</b>하면 같은 방식으로 기록됩니다.<br />
+            · 공유 목록에 ORO CRM이 안 보이면 홈 화면에서 지웠다가 다시 설치해 보세요.
           </div>
         </Panel>
       </div>
