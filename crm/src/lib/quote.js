@@ -18,11 +18,8 @@ export function calcItem(item, pgcPrice, agcnPrice, globalEtc) {
   const pgcCost =
     (Number(item.pgc_grams) || 0) * (Number(pgcPrice) || 0) +
     (Number(item.agcn_grams) || 0) * (Number(agcnPrice) || 0);
-  // 재료비(기타) = 기준 정보에서 입력한 값을 모든 품목에 동일 적용
-  //               (기준 정보에 값이 없으면 품목별 저장값 사용)
-  const etcCost = globalEtc !== undefined && globalEtc !== null && globalEtc !== ""
-    ? Number(globalEtc) || 0
-    : Number(item.material_etc) || 0;
+  // 재료비(기타) = 기준 정보에서 입력한 값을 모든 품목에 동일 적용 (전 품목 공통, 전역값)
+  const etcCost = Number(globalEtc) || 0;
   const total = niCost + pgcCost + etcCost;
   const yieldG = Number(item.yield_grams) || 50;
   const cost = yieldG > 0 ? total / yieldG : 0; // 공정비용(원/g)

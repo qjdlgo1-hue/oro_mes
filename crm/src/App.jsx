@@ -229,11 +229,14 @@ export default function OroCrmApp() {
   }, []);
 
   // ----- 데이터 불러오기 (모드와 로그인 상태가 정해지면 실행) -----
+  // 의존성은 session 객체가 아니라 userId — 1시간마다 토큰이 자동 갱신되며
+  // 새 session 객체가 와도 사용자가 같으면 전체 재로딩하지 않음
+  const userId = session?.user?.id || null;
   useEffect(() => {
     (async () => {
       if (mode === "cloud") {
         if (!authChecked) return; // 아직 로그인 확인 중
-        if (!session) { setLoading(false); return; } // 로그인 화면이 뜰 차례
+        if (!userId) { setLoading(false); return; } // 로그인 화면이 뜰 차례
         setLoading(true);
         try {
           const all = await cloudLoadAll(); // 서버에서 전부 가져오기
@@ -256,13 +259,13 @@ export default function OroCrmApp() {
         setLoading(false);
       }
     })();
-  }, [mode, session, authChecked]);
+  }, [mode, userId, authChecked]);
 
   // ----- 실시간 동기화 (클라우드 모드 + 로그인 상태에서만) -----
   // 다른 팀원의 변경이나 자동 수집된 메일이 저장되면 서버가 알려주고,
   // 해당 종류만 다시 불러와 화면에 반영합니다 (0.5초 디바운스로 묶음 처리).
   useEffect(() => {
-    if (mode !== "cloud" || !session) return;
+    if (mode !== "cloud" || !userId) return;
 
     const timers = {};
     const refreshKind = (kind) => {
@@ -298,7 +301,7 @@ export default function OroCrmApp() {
       document.removeEventListener("visibilitychange", onVisible);
       Object.values(timers).forEach(clearTimeout);
     };
-  }, [mode, session]);
+  }, [mode, userId]);
 
   // ----- 로컬 모드에서만: 데이터가 바뀔 때마다 자동으로 브라우저에 저장 -----
   // (클라우드 모드는 아래 조작 함수들이 서버에 바로 저장하므로 여기선 할 일 없음)
@@ -317,7 +320,7 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudInsert("companies", item); } catch (e) { alert(e.message); return; }
     }
-    setCompanies([...companies, item]);
+    setCompanies((prev) => [...prev, item]);
   };
 
   // 새 담당자 추가
@@ -326,7 +329,7 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudInsert("contacts", item); } catch (e) { alert(e.message); return; }
     }
-    setContacts([...contacts, item]);
+    setContacts((prev) => [...prev, item]);
   };
 
   // 새 딜 추가
@@ -335,7 +338,7 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudInsert("deals", item); } catch (e) { alert(e.message); return; }
     }
-    setDeals([...deals, item]);
+    setDeals((prev) => [...prev, item]);
   };
 
   // 딜 단계 변경 (파이프라인에서 앞/뒤 이동)
@@ -343,7 +346,7 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudUpdate("deals", dealId, { stage: newStage }); } catch (e) { alert(e.message); return; }
     }
-    setDeals(deals.map((d) => (d.id === dealId ? { ...d, stage: newStage } : d)));
+    setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, stage: newStage } : d)));
   };
 
   // 새 대화 기록 추가 (이메일/LINE/WeChat 수동 기록의 핵심)
@@ -352,18 +355,19 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudInsert("activities", item); } catch (e) { alert(e.message); return; }
     }
-    setActivities([item, ...activities]); // 최신 것이 맨 위로
+    setActivities((prev) => [item, ...prev]); // 최신 것이 맨 위로
   };
 
   // ----- 수정 함수들 (모달에서 저장 시 호출) -----
+  // 주의: setState는 항상 함수형(prev => ...)으로 — 연속 조작 시 이전 스냅샷으로
+  //       덮어써서 다른 변경이 화면에서 사라지는 것을 방지
   const kindSetters = { companies: setCompanies, contacts: setContacts, deals: setDeals, activities: setActivities };
-  const kindGetters = { companies, contacts, deals, activities };
 
   const updateItem = async (kind, id, data) => {
     if (mode === "cloud") {
       try { await cloudUpdate(kind, id, data); } catch (e) { alert(e.message); return false; }
     }
-    kindSetters[kind](kindGetters[kind].map((x) => (x.id === id ? { ...x, ...data } : x)));
+    kindSetters[kind]((prev) => prev.map((x) => (x.id === id ? { ...x, ...data } : x)));
     return true;
   };
 
@@ -372,7 +376,7 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudDelete(kind, id); } catch (e) { alert(e.message); return false; }
     }
-    kindSetters[kind](kindGetters[kind].filter((x) => x.id !== id));
+    kindSetters[kind]((prev) => prev.filter((x) => x.id !== id));
     return true;
   };
 
@@ -381,10 +385,10 @@ export default function OroCrmApp() {
     if (mode === "cloud") {
       try { await cloudDeleteCompanyCascade(companyId); } catch (e) { alert(e.message); return false; }
     }
-    setContacts(contacts.filter((x) => x.companyId !== companyId));
-    setDeals(deals.filter((x) => x.companyId !== companyId));
-    setActivities(activities.filter((x) => x.companyId !== companyId));
-    setCompanies(companies.filter((x) => x.id !== companyId));
+    setContacts((prev) => prev.filter((x) => x.companyId !== companyId));
+    setDeals((prev) => prev.filter((x) => x.companyId !== companyId));
+    setActivities((prev) => prev.filter((x) => x.companyId !== companyId));
+    setCompanies((prev) => prev.filter((x) => x.id !== companyId));
     setSelectedCompanyId(null);
     setScreen("companies");
     return true;
@@ -708,7 +712,7 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
   };
   useEffect(() => { if (mode === "cloud") loadPrices(); }, [mode]);
 
-  // 월 바꾸면 그 달 저장값(있으면)으로 갱신
+  // 월 바꾸면 그 달 저장값(있으면)으로 갱신 — 저장값이 없으면 직전 값이 남음(아래 안내 표시)
   useEffect(() => {
     const row = prices.find((p) => p.ym === ym);
     if (row) {
@@ -716,7 +720,8 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
       setAgcnPrice(String(row.agcn_price ?? ""));
       if (row.etc_cost != null) setEtcCost(String(row.etc_cost));
     }
-  }, [ym]);
+  }, [ym, prices]);
+  const ymSaved = prices.some((p) => p.ym === ym); // 선택한 월의 기준 정보가 저장돼 있는지
 
   // 품목은 전체를 한 번에 로드 (거래처 구분 없이 검색할 수 있게)
   const loadItems = async () => {
@@ -848,6 +853,11 @@ function QuoteScreen({ mode, companies, onLogActivity }) {
               </select>
             </div>
           </div>
+          {!ymSaved && prices.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 11, color: T.warn, fontWeight: 700 }}>
+              ⚠ {ym}에 저장된 기준 정보가 없습니다 — 직전 값이 표시 중입니다. 이 월 가격으로 쓰려면 값을 확인하고 [기준 정보 저장]을 누르세요.
+            </div>
+          )}
           {prevRow && (
             <div style={{ marginTop: 10, fontSize: 11, color: T.sub }}>
               참고: {prevRow.ym} 저장값 — PGC ₩{won(prevRow.price)}/g{prevRow.agcn_price ? `, AgCN ₩${won(prevRow.agcn_price)}/g` : ""}
@@ -1476,7 +1486,7 @@ function Dashboard({ companies, deals, activities, openCompany }) {
             {needReply.length === 0 && <Empty>답장 필요한 대화가 없습니다 👍</Empty>}
             {needReply.map((a, i) => {
               const company = companies.find((c) => c.id === a.companyId);
-              const ch = CHANNELS[a.channel];
+              const ch = CHANNELS[a.channel] || CHANNELS.memo; // 알 수 없는 채널값 방어
               return (
                 <div key={a.id} onClick={() => openCompany(a.companyId)}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px", borderBottom: i < needReply.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer" }}>
@@ -1720,7 +1730,7 @@ function CompanyDetail({
 
 // 타임라인 개별 항목
 function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
-  const ch = CHANNELS[activity.channel];
+  const ch = CHANNELS[activity.channel] || CHANNELS.memo; // 알 수 없는 채널값 방어 (크래시 방지)
   const isSent = activity.direction === "sent";
   return (
     <div style={{ display: "flex", gap: 14, padding: "16px 20px", borderBottom: last ? "none" : `1px solid ${T.border}` }}>
@@ -1771,7 +1781,8 @@ function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
       <div style={{ padding: isMobile ? 14 : 28, overflowX: "auto" }}>
         <div style={{ display: "flex", gap: 14, minWidth: "max-content" }}>
           {STAGES.map((stage) => {
-            const cards = deals.filter((d) => d.stage === stage.key);
+            // stageInfo로 매칭 — 알 수 없는 단계값의 딜도 '문의' 칸에 표시 (사라지지 않게)
+            const cards = deals.filter((d) => stageInfo(d.stage).key === stage.key);
             return (
               <div key={stage.key} style={{ width: 230, flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "0 4px" }}>
