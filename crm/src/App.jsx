@@ -75,6 +75,16 @@ export default function OroCrmApp() {
   // 의존성은 session 객체가 아니라 userId — 1시간마다 토큰이 자동 갱신되며
   // 새 session 객체가 와도 사용자가 같으면 전체 재로딩하지 않음
   const userId = session?.user?.id || null;
+
+  // ----- 역할(권한): MES와 같은 profiles.role — master/manager는 편집, 그 외는 조회 전용 -----
+  const [role, setRole] = useState(null); // null = 확인 중 (편집 가능으로 취급해 깜빡임 방지)
+  useEffect(() => {
+    if (mode !== "cloud" || !userId) { setRole(null); return; }
+    supabase.from("profiles").select("role").eq("id", userId).maybeSingle()
+      .then(({ data }) => setRole(data?.role || "user"))
+      .catch(() => setRole("user"));
+  }, [mode, userId]);
+  const canEdit = mode === "local" || role === null || role === "master" || role === "manager";
   useEffect(() => {
     (async () => {
       if (mode === "cloud") {
@@ -312,7 +322,7 @@ export default function OroCrmApp() {
             deals={deals}
             activities={activities}
             openCompany={(id) => { setSelectedCompanyId(id); setScreen("company"); }}
-            onAdd={() => setModal({ type: "company" })}
+            onAdd={canEdit ? () => setModal({ type: "company" }) : null}
           />
         )}
         {screen === "company" && selectedCompanyId && (
@@ -323,33 +333,36 @@ export default function OroCrmApp() {
             activities={activities.filter((a) => a.companyId === selectedCompanyId)}
             allDeals={deals}
             back={() => setScreen("companies")}
-            onAddActivity={() => setModal({ type: "activity", companyId: selectedCompanyId })}
-            onAddContact={() => setModal({ type: "contact", companyId: selectedCompanyId })}
-            onAddDeal={() => setModal({ type: "deal", companyId: selectedCompanyId })}
-            onEditCompany={(c) => setModal({ type: "company", initial: c })}
-            onDeleteCompany={(c) => {
+            onAddActivity={canEdit ? () => setModal({ type: "activity", companyId: selectedCompanyId }) : null}
+            onAddContact={canEdit ? () => setModal({ type: "contact", companyId: selectedCompanyId }) : null}
+            onAddDeal={canEdit ? () => setModal({ type: "deal", companyId: selectedCompanyId }) : null}
+            onEditCompany={canEdit ? (c) => setModal({ type: "company", initial: c }) : null}
+            onDeleteCompany={canEdit ? (c) => {
               if (window.confirm(`'${c.name}' 거래처를 삭제할까요?\n담당자·딜·대화기록도 함께 삭제됩니다.`)) deleteCompany(c.id);
-            }}
-            onEditContact={(p) => setModal({ type: "contact", companyId: selectedCompanyId, initial: p })}
-            onDeleteContact={(p) => { if (window.confirm(`담당자 '${p.name}'을(를) 삭제할까요?`)) deleteItem("contacts", p.id); }}
-            onEditDeal={(d) => setModal({ type: "deal", companyId: selectedCompanyId, initial: d })}
-            onDeleteDeal={(d) => { if (window.confirm(`딜 '${d.title}'을(를) 삭제할까요?`)) deleteItem("deals", d.id); }}
-            onEditActivity={(a) => setModal({ type: "activity", companyId: selectedCompanyId, initial: a })}
-            onDeleteActivity={(a) => { if (window.confirm(`대화 기록 '${a.title}'을(를) 삭제할까요?`)) deleteItem("activities", a.id); }}
+            } : null}
+            onEditContact={canEdit ? (p) => setModal({ type: "contact", companyId: selectedCompanyId, initial: p }) : null}
+            onDeleteContact={canEdit ? (p) => { if (window.confirm(`담당자 '${p.name}'을(를) 삭제할까요?`)) deleteItem("contacts", p.id); } : null}
+            onEditDeal={canEdit ? (d) => setModal({ type: "deal", companyId: selectedCompanyId, initial: d }) : null}
+            onDeleteDeal={canEdit ? (d) => { if (window.confirm(`딜 '${d.title}'을(를) 삭제할까요?`)) deleteItem("deals", d.id); } : null}
+            onEditActivity={canEdit ? (a) => setModal({ type: "activity", companyId: selectedCompanyId, initial: a }) : null}
+            onDeleteActivity={canEdit ? (a) => { if (window.confirm(`대화 기록 '${a.title}'을(를) 삭제할까요?`)) deleteItem("activities", a.id); } : null}
           />
         )}
         {screen === "pipeline" && (
           <Pipeline
             deals={deals}
             companies={companies}
+            canEdit={canEdit}
             moveDeal={moveDeal}
-            onEditDeal={(d) => setModal({ type: "deal", companyId: d.companyId, initial: d })}
+            onEditDeal={canEdit ? (d) => setModal({ type: "deal", companyId: d.companyId, initial: d }) : null}
           />
         )}
         {screen === "quotes" && (
           <QuoteScreen
             mode={mode}
             companies={companies}
+            contacts={contacts}
+            canEdit={canEdit}
             onLogActivity={(companyId, title, body) => {
               const now = new Date();
               const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -357,7 +370,7 @@ export default function OroCrmApp() {
             }}
           />
         )}
-        {screen === "settings" && <SettingsScreen mode={mode} />}
+        {screen === "settings" && <SettingsScreen mode={mode} canEdit={canEdit} />}
       </div>
 
       {/* 모바일: 하단 탭바 */}

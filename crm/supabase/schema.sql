@@ -99,6 +99,13 @@ alter table crm_quote_items enable row level security;
 create policy "crm_pgc_prices_all" on crm_pgc_prices for all to authenticated using (true) with check (true);
 create policy "crm_quote_items_all" on crm_quote_items for all to authenticated using (true) with check (true);
 
+-- 메일 첨부파일 (마이그레이션 "add_activity_attachments_and_mail_files_bucket")
+-- 수집기가 첨부를 비공개 버킷 crm-mail-files에 올리고 목록을 활동에 기록
+-- attachments: [{name, path, size, type}]
+alter table crm_activities add column if not exists attachments jsonb;
+-- insert into storage.buckets (id, name, public) values ('crm-mail-files','crm-mail-files', false);
+-- create policy "crm_mail_files_read" on storage.objects for select to authenticated using (bucket_id = 'crm-mail-files');
+
 -- 견적 발행 이력 (마이그레이션 "create_crm_quote_issues")
 -- 언제 어느 거래처에 어떤 기준으로 발행했는지 + 재다운로드용 품목·단가 스냅샷
 create table if not exists crm_quote_issues (

@@ -6,12 +6,13 @@ import { QuoteItemModal } from "../components/modals";
 import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
 import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx, downloadQuoteZip } from "../lib/quote";
 import { QuoteCompare } from "./QuoteCompare";
+import { MailSendModal } from "../components/MailSendModal";
 
 // ===========================================================================
 // 화면: 견적 — 매월 PGC/AgCN 가격만 넣으면 거래처별 견적서 엑셀 자동 생성
 // (계산식은 src/lib/quote.js — 기존 '국내' 엑셀과 동일)
 // ===========================================================================
-export function QuoteScreen({ mode, companies, onLogActivity }) {
+export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogActivity }) {
   const isMobile = useIsMobile();
   const thisYm = new Date().toISOString().slice(0, 7);
 
@@ -29,6 +30,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [issues, setIssues] = useState([]); // 발행 이력 (최근순)
   const [view, setView] = useState("edit"); // "edit"(견적서 작성) | "compare"(비교·추이)
+  const [mailOpen, setMailOpen] = useState(false); // 메일 발송 모달
 
   // 발행 이력 로드
   const loadIssues = async () => {
@@ -205,6 +207,11 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
         right={
           view === "edit" && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {canEdit && (
+              <button onClick={() => { if (!pgcN) { alert("PGC 평균가를 먼저 입력하세요."); return; } setMailOpen(true); }} style={btnStyle("ghost")}>
+                📧 메일 발송
+              </button>
+              )}
               <button onClick={bulkDownload} disabled={bulkBusy} style={{ ...btnStyle("ghost"), opacity: bulkBusy ? 0.4 : 1 }}>
                 {bulkBusy ? "일괄 생성 중..." : "📦 전체 일괄 발행(ZIP)"}
               </button>
@@ -257,7 +264,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
               <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>재료비(기타) (원, 전 품목 공통)</div>
               <input type="number" style={{ ...inputStyle, width: 130 }} value={etcCost} onChange={(e) => setEtcCost(e.target.value)} />
             </div>
-            <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>기준 정보 저장</button>
+            {canEdit && <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>기준 정보 저장</button>}
             <div style={{ flex: 1 }} />
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>거래처</div>
@@ -294,7 +301,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                 placeholder="🔍 모델명·사양·거래처 검색"
                 style={{ ...inputStyle, width: isMobile ? 170 : 230, padding: "7px 10px", fontSize: 12 }}
               />
-              {company && <button onClick={() => setEditing({})} style={{ ...btnStyle("primary"), fontSize: 12, padding: "7px 14px" }}>+ 품목 추가</button>}
+              {company && canEdit && <button onClick={() => setEditing({})} style={{ ...btnStyle("primary"), fontSize: 12, padding: "7px 14px" }}>+ 품목 추가</button>}
             </div>
           </div>
 
@@ -341,6 +348,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                           <select
                             value={it.gubun || ""}
                             onChange={(e) => changeGubun(it, e.target.value)}
+                            disabled={!canEdit}
                             style={{ border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 4px", fontSize: 11, fontFamily: "inherit", background: "#fff", color: T.text, cursor: "pointer" }}
                           >
                             {!knownGubun && <option value={it.gubun || ""}>{it.gubun || "선택"}</option>}
@@ -361,6 +369,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                               value={it.material_ni ?? 0}
                               onChange={(e) => changeNi(it, e.target.value)}
                               onBlur={() => saveNi(it)}
+                              disabled={!canEdit}
                               onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
                               style={{ width: 76, border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, textAlign: "right", fontFamily: "inherit" }}
                             />
@@ -382,6 +391,7 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                                 type="number"
                                 value={overridden ? overrides[it.id][ti] : calc.tiers[ti]}
                                 onChange={(e) => setOverrides((prev) => ({ ...prev, [it.id]: { ...prev[it.id], [ti]: e.target.value } }))}
+                                disabled={!canEdit}
                                 style={{ width: 76, border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, textAlign: "right", fontFamily: "inherit" }}
                               />
                               <div style={{ fontSize: 9, color: m < 0.1 ? T.danger : T.sub, marginTop: 1 }}>{(m * 100).toFixed(1)}%</div>
@@ -389,8 +399,8 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                           );
                         })}
                         <td style={tdStyle}>
-                          <IconBtn onClick={() => setEditing(it)}>✎</IconBtn>
-                          <IconBtn danger onClick={() => removeItem(it)}>🗑</IconBtn>
+                          {canEdit && <IconBtn onClick={() => setEditing(it)}>✎</IconBtn>}
+                          {canEdit && <IconBtn danger onClick={() => removeItem(it)}>🗑</IconBtn>}
                         </td>
                       </tr>
                     );
@@ -432,8 +442,8 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
                         <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, fontWeight: 700 }}>{nameOf(iss.company_id)}</td>
                         <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}` }}>{iss.ym}</td>
                         <td style={{ padding: "7px 12px", fontSize: 11, borderBottom: `1px solid ${T.border}` }}>
-                          <span style={{ padding: "1px 8px", borderRadius: 4, fontWeight: 700, background: iss.kind === "bulk" ? T.tint2 : T.tint, color: iss.kind === "bulk" ? T.tealDark : T.sub }}>
-                            {iss.kind === "bulk" ? "일괄" : "개별"}
+                          <span style={{ padding: "1px 8px", borderRadius: 4, fontWeight: 700, background: iss.kind === "bulk" ? T.tint2 : iss.kind === "mail" ? "#E8EEF4" : T.tint, color: iss.kind === "bulk" ? T.tealDark : iss.kind === "mail" ? T.navy : T.sub }}>
+                            {iss.kind === "bulk" ? "일괄" : iss.kind === "mail" ? "📧 메일" : "개별"}
                           </span>
                         </td>
                         <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, textAlign: "right" }}>{iss.item_count}건</td>
@@ -458,6 +468,23 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
           item={editing}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); loadItems(); }}
+        />
+      )}
+
+      {mailOpen && (
+        <MailSendModal
+          companies={companies}
+          items={items}
+          contacts={contacts || []}
+          buildRows={rowsOf}
+          ym={ym}
+          pgcPrice={pgcN}
+          initialCompanyId={companyId || null}
+          onSent={(comp, rows, to) => {
+            onLogActivity(comp.id, `${ym} 견적서 메일 발송`, `${to} 앞 견적서 발송 · PGC ₩${won(pgcN)}/g 기준 · 품목 ${rows.length}건`);
+            recordIssue(comp.id, rows, "mail");
+          }}
+          onClose={() => { setMailOpen(false); loadIssues(); }}
         />
       )}
     </div>

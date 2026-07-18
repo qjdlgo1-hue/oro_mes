@@ -99,7 +99,7 @@ export function Dashboard({ companies, deals, activities, openCompany }) {
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : `repeat(${STAGES.length}, 1fr)`, gap: isMobile ? 8 : 12, paddingTop: 4 }}>
               {STAGES.map((stage) => {
                 const cards = deals.filter((d) => stageInfo(d.stage).key === stage.key);
-                const sum = cards.reduce((acc, c) => acc + (parseDealValue(c.value) || 0), 0);
+                const sum = cards.reduce((acc, c) => acc + (c.valueNum ?? parseDealValue(c.value) ?? 0), 0);
                 return (
                   <div key={stage.key} style={{ borderTop: `3px solid ${stage.color}`, background: T.bg, borderRadius: 8, padding: "10px 12px" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: T.sub }}>{stage.label}</div>

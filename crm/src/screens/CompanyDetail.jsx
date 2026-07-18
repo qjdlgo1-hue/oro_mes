@@ -1,7 +1,27 @@
 import React, { useState } from "react";
 import { T, CHANNELS, stageInfo } from "../theme";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { supabase } from "../lib/supabase";
 import { Header, SectionHead, InfoRow, TierBadge, FilterChip, IconBtn, Empty, btnStyle } from "../components/ui";
+
+// 메일 제목 정규화 — Re:/Fwd:/답장:/전달: 접두를 반복 제거해 같은 스레드를 묶는 키로 사용
+export function normSubject(title) {
+  let s = String(title || "").trim();
+  const re = /^\s*((re|fw|fwd|답장|전달|회신)\s*:|\[(re|fw|fwd)\])\s*/i;
+  while (re.test(s)) s = s.replace(re, "");
+  return s.toLowerCase().trim();
+}
+
+// 첨부파일 열기 — 비공개 버킷이라 서명 URL 발급 후 새 탭
+async function openAttachment(att) {
+  try {
+    const { data, error } = await supabase.storage.from("crm-mail-files").createSignedUrl(att.path, 300);
+    if (error) throw error;
+    window.open(data.signedUrl, "_blank");
+  } catch (e) { alert(`파일 열기 실패: ${e.message}`); }
+}
+
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 // ===========================================================================
 // 화면 3: 거래처 상세 (CRM의 심장)
@@ -12,6 +32,7 @@ export function CompanyDetail({
   onEditDeal, onDeleteDeal, onEditActivity, onDeleteActivity,
 }) {
   const [filter, setFilter] = useState("all"); // 타임라인 채널 필터
+  const [openThreads, setOpenThreads] = useState(() => new Set()); // 펼쳐진 스레드 키
   const isMobile = useIsMobile();
 
   if (!company) return null;
@@ -21,6 +42,27 @@ export function CompanyDetail({
     .filter((a) => filter === "all" || a.channel === filter)
     .sort((a, b) => b.date.localeCompare(a.date));
 
+  // 이메일은 같은 제목(Re:/Fwd: 제거)끼리 스레드로 묶음 — 최신 메일만 보이고 이전 것은 접힘
+  const entries = [];
+  const threadOf = new Map(); // normSubject key -> entry
+  for (const a of filtered) {
+    if (a.channel === "email") {
+      const key = normSubject(a.title);
+      if (key && threadOf.has(key)) { threadOf.get(key).thread.push(a); continue; }
+      const entry = { main: a, thread: [], key: key || a.id };
+      if (key) threadOf.set(key, entry);
+      entries.push(entry);
+    } else {
+      entries.push({ main: a, thread: [], key: a.id });
+    }
+  }
+  const toggleThread = (key) =>
+    setOpenThreads((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
   return (
     <div>
       <Header
@@ -28,8 +70,8 @@ export function CompanyDetail({
         sub={`${company.country} · ${company.domain} · ${company.tier} 거래처`}
         right={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={() => onEditCompany(company)} style={btnStyle("ghost")}>✎ 수정</button>
-            <button onClick={() => onDeleteCompany(company)} style={{ ...btnStyle("ghost"), color: T.danger }}>🗑 삭제</button>
+            {onEditCompany && <button onClick={() => onEditCompany(company)} style={btnStyle("ghost")}>✎ 수정</button>}
+            {onDeleteCompany && <button onClick={() => onDeleteCompany(company)} style={{ ...btnStyle("ghost"), color: T.danger }}>🗑 삭제</button>}
             <button onClick={back} style={btnStyle("ghost")}>← 목록으로</button>
           </div>
         }
@@ -74,8 +116,8 @@ export function CompanyDetail({
                     {c.role} · {c.contact}
                   </div>
                 </div>
-                <IconBtn onClick={() => onEditContact(c)}>✎</IconBtn>
-                <IconBtn danger onClick={() => onDeleteContact(c)}>🗑</IconBtn>
+                {onEditContact && <IconBtn onClick={() => onEditContact(c)}>✎</IconBtn>}
+                {onDeleteContact && <IconBtn danger onClick={() => onDeleteContact(c)}>🗑</IconBtn>}
               </div>
             ))}
           </div>
@@ -90,8 +132,8 @@ export function CompanyDetail({
                 <div key={d.id} style={{ padding: "10px 12px", background: T.bg, borderRadius: 8, marginTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     <div style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 0 }}>{d.title}</div>
-                    <IconBtn onClick={() => onEditDeal(d)}>✎</IconBtn>
-                    <IconBtn danger onClick={() => onDeleteDeal(d)}>🗑</IconBtn>
+                    {onEditDeal && <IconBtn onClick={() => onEditDeal(d)}>✎</IconBtn>}
+                    {onDeleteDeal && <IconBtn danger onClick={() => onDeleteDeal(d)}>🗑</IconBtn>}
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
                     <span style={{ fontSize: 11, color: T.sub }}>{d.spec}</span>
@@ -115,9 +157,11 @@ export function CompanyDetail({
                     {ch.icon} {ch.label}
                   </FilterChip>
                 ))}
-                <button onClick={onAddActivity} style={{ ...btnStyle("primary"), fontSize: 12, padding: "7px 14px", marginLeft: 4 }}>
-                  + 대화 기록
-                </button>
+                {onAddActivity && (
+                  <button onClick={onAddActivity} style={{ ...btnStyle("primary"), fontSize: 12, padding: "7px 14px", marginLeft: 4 }}>
+                    + 대화 기록
+                  </button>
+                )}
               </div>
             </div>
 
@@ -130,15 +174,40 @@ export function CompanyDetail({
                   </div>
                 </Empty>
               )}
-              {filtered.map((a, i) => (
-                <ActivityItem
-                  key={a.id}
-                  activity={a}
-                  deal={deals.find((d) => d.id === a.dealId)}
-                  last={i === filtered.length - 1}
-                  onEdit={() => onEditActivity(a)}
-                  onDelete={() => onDeleteActivity(a)}
-                />
+              {entries.map((en, i) => (
+                <div key={en.main.id}>
+                  <ActivityItem
+                    activity={en.main}
+                    deal={deals.find((d) => d.id === en.main.dealId)}
+                    last={i === entries.length - 1 && en.thread.length === 0}
+                    onEdit={() => onEditActivity(en.main)}
+                    onDelete={() => onDeleteActivity(en.main)}
+                  />
+                  {en.thread.length > 0 && (
+                    <div style={{ padding: "0 20px 10px 70px" }}>
+                      <button
+                        onClick={() => toggleThread(en.key)}
+                        style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: T.teal, padding: 0, fontFamily: "inherit" }}
+                      >
+                        {openThreads.has(en.key) ? "▾ 이전 메일 접기" : `▸ 같은 스레드의 이전 메일 ${en.thread.length}개 보기`}
+                      </button>
+                      {openThreads.has(en.key) && (
+                        <div style={{ marginTop: 6, borderLeft: `3px solid ${T.tint2}`, background: "#FAFCFC", borderRadius: 8 }}>
+                          {en.thread.map((a, ti) => (
+                            <ActivityItem
+                              key={a.id}
+                              activity={a}
+                              deal={deals.find((d) => d.id === a.dealId)}
+                              last={ti === en.thread.length - 1}
+                              onEdit={() => onEditActivity(a)}
+                              onDelete={() => onDeleteActivity(a)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -149,9 +218,14 @@ export function CompanyDetail({
 }
 
 // 타임라인 개별 항목
+const BODY_CLAMP = 400; // 본문이 길면 여기까지만 보여주고 '더보기'
 function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
   const ch = CHANNELS[activity.channel] || CHANNELS.memo; // 알 수 없는 채널값 방어 (크래시 방지)
   const isSent = activity.direction === "sent";
+  const [bodyOpen, setBodyOpen] = useState(false);
+  const body = activity.body || "";
+  const isLong = body.length > BODY_CLAMP;
+  const shownBody = bodyOpen || !isLong ? body : body.slice(0, BODY_CLAMP) + "…";
   return (
     <div style={{ display: "flex", gap: 14, padding: "16px 20px", borderBottom: last ? "none" : `1px solid ${T.border}` }}>
       <div style={{ flexShrink: 0, paddingTop: 2 }}>
@@ -177,7 +251,30 @@ function ActivityItem({ activity, deal, last, onEdit, onDelete }) {
           </div>
         </div>
         <div style={{ fontWeight: 600, fontSize: 14, margin: "5px 0" }}>{activity.title}</div>
-        <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{activity.body}</div>
+        <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{shownBody}</div>
+        {isLong && (
+          <button
+            onClick={() => setBodyOpen((v) => !v)}
+            style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: T.teal, padding: "4px 0 0", fontFamily: "inherit" }}
+          >
+            {bodyOpen ? "▾ 본문 접기" : "▸ 본문 더보기"}
+          </button>
+        )}
+        {Array.isArray(activity.attachments) && activity.attachments.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+            {activity.attachments.map((att) => (
+              <button
+                key={att.path}
+                onClick={() => openAttachment(att)}
+                title={att.name}
+                style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 14, border: `1px solid ${T.border}`, background: T.bg, fontSize: 11, fontWeight: 600, color: T.navy, cursor: "pointer", fontFamily: "inherit", maxWidth: 220 }}
+              >
+                📎 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{att.name}</span>
+                <span style={{ color: T.sub, fontWeight: 500 }}>{fmtSize(att.size)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {deal && (
           <div style={{ marginTop: 8 }}>
             <span style={{ fontSize: 11, color: T.teal, fontWeight: 600 }}>🔗 {deal.title}</span>

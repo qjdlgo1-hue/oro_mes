@@ -54,8 +54,20 @@ export function ContactModal({ companyId, initial, onClose, onSave }) {
 
 // 딜 추가/수정 모달
 export function DealModal({ companyId, initial, onClose, onSave }) {
-  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "", ...initial });
+  const [f, setF] = useState({ companyId, title: "", spec: "", stage: "inquiry", value: "", valueNum: null, ...initial });
+  // 금액은 만원 단위 숫자로 입력 (합계·통계 정확도) — 기존 텍스트 값은 그대로 보임
+  const [manwon, setManwon] = useState(initial?.valueNum != null ? String(initial.valueNum / 10000) : "");
   const set = (k, v) => setF({ ...f, [k]: v });
+  const save = () => {
+    if (!f.title.trim()) return;
+    const n = manwon.trim() === "" ? null : (Number(manwon) || 0) * 10000;
+    onSave({
+      ...f,
+      valueNum: n,
+      // 표시용 텍스트도 함께 갱신 (숫자 미입력 시 기존 텍스트 유지)
+      value: n != null ? `${(n / 10000).toLocaleString("ko-KR")}만원` : f.value,
+    });
+  };
   return (
     <Modal title={initial ? "딜(영업기회) 수정" : "딜(영업기회) 추가"} onClose={onClose}>
       <Field label="제목 *"><input style={inputStyle} value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="예: Au도금 양산 견적" /></Field>
@@ -69,10 +81,15 @@ export function DealModal({ companyId, initial, onClose, onSave }) {
           </Field>
         </div>
         <div style={{ flex: 1 }}>
-          <Field label="예상 금액"><input style={inputStyle} value={f.value} onChange={(e) => set("value", e.target.value)} placeholder="예: 월 750만" /></Field>
+          <Field label="예상 금액 (만원)">
+            <input type="number" style={inputStyle} value={manwon} onChange={(e) => setManwon(e.target.value)} placeholder="예: 750" />
+          </Field>
         </div>
       </div>
-      <ModalActions onClose={onClose} onSave={() => f.title.trim() && onSave(f)} disabled={!f.title.trim()} />
+      {f.value && manwon.trim() === "" && (
+        <div style={{ fontSize: 11, color: T.sub, marginTop: -8, marginBottom: 12 }}>기존 금액 표기: "{f.value}" — 숫자를 입력하면 합계 통계에 정확히 반영됩니다</div>
+      )}
+      <ModalActions onClose={onClose} onSave={save} disabled={!f.title.trim()} />
     </Modal>
   );
 }
