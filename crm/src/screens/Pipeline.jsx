@@ -29,20 +29,20 @@ export function fmtWonShort(n) {
 // ===========================================================================
 // 화면 4: 파이프라인 (칸반) — 드래그앤드롭 + 단계별 금액 합계
 // ===========================================================================
-export function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
+export function Pipeline({ deals, companies, canEdit = true, moveDeal, onEditDeal }) {
   const isMobile = useIsMobile();
   const companyName = (id) => companies.find((c) => c.id === id)?.name || "?";
   const [dragOver, setDragOver] = useState(null); // 드래그 중인 칸의 stage key (하이라이트용)
 
   return (
     <div>
-      <Header title="영업 파이프라인" sub={isMobile ? "◀ ▶ 버튼으로 딜의 단계를 옮기세요" : "카드를 끌어다 놓거나 ◀ ▶ 버튼으로 단계를 옮기세요"} />
+      <Header title="영업 파이프라인" sub={!canEdit ? "조회 전용 — 단계 이동·수정은 편집 권한이 필요합니다" : isMobile ? "◀ ▶ 버튼으로 딜의 단계를 옮기세요" : "카드를 끌어다 놓거나 ◀ ▶ 버튼으로 단계를 옮기세요"} />
       <div style={{ padding: isMobile ? 14 : 28, overflowX: "auto" }}>
         <div style={{ display: "flex", gap: 14, minWidth: "max-content" }}>
           {STAGES.map((stage) => {
             // stageInfo로 매칭 — 알 수 없는 단계값의 딜도 '문의' 칸에 표시 (사라지지 않게)
             const cards = deals.filter((d) => stageInfo(d.stage).key === stage.key);
-            const sum = cards.reduce((acc, c) => acc + (parseDealValue(c.value) || 0), 0);
+            const sum = cards.reduce((acc, c) => acc + (c.valueNum ?? parseDealValue(c.value) ?? 0), 0);
             const isOver = dragOver === stage.key;
             return (
               <div
@@ -53,6 +53,7 @@ export function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOver(null);
+                  if (!canEdit) return;
                   const dealId = e.dataTransfer.getData("text/plain");
                   const deal = deals.find((d) => d.id === dealId);
                   if (deal && stageInfo(deal.stage).key !== stage.key) moveDeal(dealId, stage.key);
@@ -72,23 +73,24 @@ export function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
                     return (
                       <div
                         key={card.id}
-                        draggable={!isMobile}
+                        draggable={!isMobile && canEdit}
                         onDragStart={(e) => { e.dataTransfer.setData("text/plain", card.id); e.dataTransfer.effectAllowed = "move"; }}
-                        style={{ background: T.card, borderRadius: 10, padding: 14, border: `1px solid ${T.border}`, borderTop: `3px solid ${stage.color}`, cursor: isMobile ? "default" : "grab" }}
+                        style={{ background: T.card, borderRadius: 10, padding: 14, border: `1px solid ${T.border}`, borderTop: `3px solid ${stage.color}`, cursor: isMobile || !canEdit ? "default" : "grab" }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                           <div style={{ width: 22, height: 22, borderRadius: 6, background: T.navy, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 9 }}>
                             {companyName(card.companyId).slice(0, 2)}
                           </div>
                           <span style={{ fontWeight: 700, fontSize: 12, flex: 1 }}>{companyName(card.companyId)}</span>
-                          <IconBtn onClick={() => onEditDeal(card)}>✎</IconBtn>
+                          {onEditDeal && <IconBtn onClick={() => onEditDeal(card)}>✎</IconBtn>}
                         </div>
                         <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{card.title}</div>
                         <div style={{ fontSize: 11, color: T.sub, marginBottom: 8 }}>{card.spec}</div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: T.navy, paddingBottom: 8, borderBottom: `1px solid ${T.border}`, marginBottom: 8 }}>
                           {card.value}
                         </div>
-                        {/* 단계 이동 버튼 */}
+                        {/* 단계 이동 버튼 (편집 권한 필요) */}
+                        {canEdit && (
                         <div style={{ display: "flex", gap: 6 }}>
                           <button
                             onClick={() => idx > 0 && moveDeal(card.id, STAGES[idx - 1].key)}
@@ -105,6 +107,7 @@ export function Pipeline({ deals, companies, moveDeal, onEditDeal }) {
                             다음 ▶
                           </button>
                         </div>
+                        )}
                       </div>
                     );
                   })}

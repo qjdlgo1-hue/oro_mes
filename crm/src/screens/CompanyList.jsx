@@ -13,7 +13,7 @@ export function CompanyList({ companies, deals, activities, openCompany, onAdd }
       <Header
         title="거래처"
         sub={`${companies.length}개사 등록됨`}
-        right={<button onClick={onAdd} style={btnStyle("primary")}>+ 거래처 추가</button>}
+        right={onAdd && <button onClick={onAdd} style={btnStyle("primary")}>+ 거래처 추가</button>}
       />
       <div style={{ padding: isMobile ? 14 : 28 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>

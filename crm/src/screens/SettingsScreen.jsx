@@ -5,7 +5,7 @@ import { Header, Panel, Empty, btnStyle } from "../components/ui";
 import { MailAccountModal } from "../components/modals";
 import { mailAccountsList, mailAccountSave, mailAccountDelete } from "../lib/db";
 
-export function SettingsScreen({ mode }) {
+export function SettingsScreen({ mode, canEdit = true }) {
   const isMobile = useIsMobile();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ export function SettingsScreen({ mode }) {
       <Header
         title="설정"
         sub="메일 자동 수집 계정 관리"
-        right={<button onClick={() => setEditing({})} style={btnStyle("primary")}>+ 메일 계정 추가</button>}
+        right={canEdit && <button onClick={() => setEditing({})} style={btnStyle("primary")}>+ 메일 계정 추가</button>}
       />
       <div style={{ padding: isMobile ? 14 : 28, maxWidth: 860 }}>
         <Panel title="메일 자동 수집 계정">
@@ -82,11 +82,15 @@ export function SettingsScreen({ mode }) {
                   {a.username} · IMAP {a.imap_host}:{a.imap_port}{a.smtp_host ? ` · SMTP ${a.smtp_host}:${a.smtp_port}` : ""}
                 </div>
               </div>
-              <button onClick={() => toggleEnabled(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>
-                {a.enabled ? "중지" : "재개"}
-              </button>
-              <button onClick={() => setEditing(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>수정</button>
-              <button onClick={() => remove(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px", color: T.danger }}>삭제</button>
+              {canEdit && (
+                <>
+                  <button onClick={() => toggleEnabled(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>
+                    {a.enabled ? "중지" : "재개"}
+                  </button>
+                  <button onClick={() => setEditing(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px" }}>수정</button>
+                  <button onClick={() => remove(a)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "5px 10px", color: T.danger }}>삭제</button>
+                </>
+              )}
             </div>
           ))}
         </Panel>

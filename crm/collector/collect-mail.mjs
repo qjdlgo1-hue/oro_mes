@@ -39,6 +39,34 @@ async function sb(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// 첨부파일을 비공개 Storage 버킷(crm-mail-files)에 업로드 — 실패해도 메일 기록은 계속
+const ATTACH_MAX_SIZE = 10 * 1024 * 1024; // 개당 10MB
+const ATTACH_MAX_COUNT = 5; // 메일당 5개
+export function pickAttachments(list) {
+  return (list || [])
+    .filter((a) => a.filename && a.size > 0 && a.size <= ATTACH_MAX_SIZE)
+    .slice(0, ATTACH_MAX_COUNT);
+}
+export function safeName(name) {
+  // Storage 키로 못 쓰는 문자만 치환 (한글 파일명은 유지)
+  return String(name).replace(/[\\/:*?"<>|#%{}^~\[\]`]/g, "_").slice(0, 120);
+}
+async function uploadAttachment(activityId, idx, att) {
+  const path = `${activityId}/${idx}_${safeName(att.filename)}`;
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/crm-mail-files/${encodeURIComponent(path).replace(/%2F/g, "/")}`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": att.contentType || "application/octet-stream",
+      "x-upsert": "true",
+    },
+    body: att.content,
+  });
+  if (!res.ok) throw new Error(`첨부 업로드 실패(${att.filename}): ${res.status} ${await res.text()}`);
+  return { name: att.filename, path, size: att.size, type: att.contentType || "" };
+}
+
 // 한국시간 'YYYY-MM-DD HH:MM'
 function kstString(d) {
   const kst = new Date(d.getTime() + 9 * 3600 * 1000);
@@ -144,16 +172,28 @@ for (const account of ACCOUNTS) {
         matchedMsgs.push({ uid: msg.uid, env, company, id });
       }
 
-      // 2단계: 새로 매칭된 메일만 원문을 내려받아 본문 앞부분을 저장
+      // 2단계: 새로 매칭된 메일만 원문을 내려받아 본문 전체(1만자 한도) + 첨부 저장
       for (const { uid, env, company, id } of matchedMsgs) {
         const from = (env.from || [])[0] || {};
         const direction = addressDomain(from.address) === company.domain.toLowerCase() ? "received" : "sent";
 
         let bodyText = "";
+        let attachments = null;
         try {
           const dl = await client.download(uid, undefined, { uid: true });
           const parsed = await simpleParser(dl.content);
-          bodyText = (parsed.text || "").replace(/\s+/g, " ").trim().slice(0, 500);
+          // 본문 전체 저장 (과도한 메일 대비 1만자 한도, 줄바꿈 유지)
+          bodyText = (parsed.text || "").replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 10000);
+          // 첨부: 개당 10MB·5개 한도로 Storage 업로드 (실패한 파일은 건너뜀)
+          const picked = pickAttachments(parsed.attachments);
+          if (picked.length > 0) {
+            const uploaded = [];
+            for (let ai = 0; ai < picked.length; ai++) {
+              try { uploaded.push(await uploadAttachment(id, ai, picked[ai])); }
+              catch (e) { console.log(`  첨부 건너뜀: ${e.message}`); }
+            }
+            if (uploaded.length > 0) attachments = uploaded;
+          }
         } catch (e) {
           bodyText = "";
         }
@@ -168,6 +208,7 @@ for (const account of ACCOUNTS) {
           body: bodyText,
           deal_id: null,
           date: kstString(new Date(env.date || Date.now())),
+          attachments,
         });
       }
       console.log(`[${account.label}] ${box}: ${scanned}통 확인, 신규 ${matchedMsgs.length}통 매칭, 기록됨 ${skipped}통 건너뜀`);

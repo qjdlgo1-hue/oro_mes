@@ -20,13 +20,14 @@ const TABLES = {
   },
   deals: {
     table: "crm_deals",
-    toRow: (d) => ({ id: d.id, company_id: d.companyId, title: d.title, spec: d.spec, stage: d.stage, value: d.value }),
-    toApp: (r) => ({ id: r.id, companyId: r.company_id, title: r.title, spec: r.spec || "", stage: r.stage || "inquiry", value: r.value || "" }),
+    toRow: (d) => ({ id: d.id, company_id: d.companyId, title: d.title, spec: d.spec, stage: d.stage, value: d.value, value_num: d.valueNum }),
+    toApp: (r) => ({ id: r.id, companyId: r.company_id, title: r.title, spec: r.spec || "", stage: r.stage || "inquiry", value: r.value || "", valueNum: r.value_num != null ? Number(r.value_num) : null }),
   },
   activities: {
     table: "crm_activities",
     toRow: (a) => ({ id: a.id, company_id: a.companyId, channel: a.channel, direction: a.direction, person: a.person, title: a.title, body: a.body, deal_id: a.dealId || null, date: a.date }),
-    toApp: (r) => ({ id: r.id, companyId: r.company_id, channel: r.channel || "memo", direction: r.direction || "received", person: r.person || "", title: r.title, body: r.body || "", dealId: r.deal_id || "", date: r.date || "" }),
+    // attachments는 수집기만 기록 — 앱에서는 읽기 전용(toRow에 없으므로 수정 시에도 덮어쓰지 않음)
+    toApp: (r) => ({ id: r.id, companyId: r.company_id, channel: r.channel || "memo", direction: r.direction || "received", person: r.person || "", title: r.title, body: r.body || "", dealId: r.deal_id || "", date: r.date || "", attachments: r.attachments || null }),
   },
 };
 
