@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { T } from "../theme";
+import { T, newId } from "../theme";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { Header, inputStyle, Panel, IconBtn, Empty, btnStyle } from "../components/ui";
 import { QuoteItemModal } from "../components/modals";
-import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete } from "../lib/db";
-import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx } from "../lib/quote";
+import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
+import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx, downloadQuoteZip } from "../lib/quote";
 
 // ===========================================================================
 // 화면: 견적 — 매월 PGC/AgCN 가격만 넣으면 거래처별 견적서 엑셀 자동 생성
@@ -25,6 +25,14 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
   const [overrides, setOverrides] = useState({}); // {itemId: {tierIdx: 수정판가}}
   const [editing, setEditing] = useState(null); // null | {} | item
   const [busy, setBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [issues, setIssues] = useState([]); // 발행 이력 (최근순)
+
+  // 발행 이력 로드
+  const loadIssues = async () => {
+    try { setIssues(await quoteIssuesList()); } catch (e) { /* 이력은 부가 정보 — 조용히 무시 */ }
+  };
+  useEffect(() => { if (mode === "cloud") loadIssues(); }, [mode]);
 
   // 가격 이력 로드 + 해당 월 가격 채우기 (없으면 최신 값을 기본으로)
   const loadPrices = async () => {
@@ -99,19 +107,64 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
     return ov !== undefined && ov !== "" ? Number(ov) : calc.tiers[ti];
   };
 
+  // 품목 → 견적서 행(고객 전달용: 모델·사양·4구간 단가만) 변환
+  const rowsOf = (list) =>
+    list.map((it) => {
+      const calc = calcItem(it, pgcN, agcnN, etcN);
+      return { gubun: it.gubun, model: it.model, spec: it.spec, note: it.note || "", prices: TIER_LABELS.map((_, ti) => tierPrice(it, calc, ti)) };
+    });
+
+  // 발행 이력 저장 (실패해도 다운로드 자체는 성공으로 둠)
+  const recordIssue = async (cid, rows, kind) => {
+    try {
+      await quoteIssueSave({ id: newId(), company_id: cid, ym, pgc_price: pgcN, agcn_price: agcnN || null, etc_cost: etcN || null, item_count: rows.length, kind, rows });
+    } catch (e) { console.warn(e.message); }
+  };
+
   const download = async () => {
     if (!company || companyItems.length === 0 || busy) return;
     if (!pgcN) { alert("PGC 평균가를 먼저 입력하세요."); return; }
     setBusy(true);
     try {
-      const rows = companyItems.map((it) => {
-        const calc = calcItem(it, pgcN, agcnN, etcN);
-        return { gubun: it.gubun, model: it.model, spec: it.spec, note: it.note || "", prices: TIER_LABELS.map((_, ti) => tierPrice(it, calc, ti)) };
-      });
+      const rows = rowsOf(companyItems);
       await downloadQuoteXlsx({ companyName: company.name, ym, pgcPrice: pgcN, agcnPrice: agcnN, rows });
       onLogActivity(company.id, `${ym} 견적서 발행`, `PGC ₩${won(pgcN)}/g${agcnN ? `, AgCN ₩${won(agcnN)}/g` : ""} 기준 · 품목 ${companyItems.length}건 견적서 엑셀 생성`);
+      await recordIssue(company.id, rows, "single");
+      loadIssues();
     } catch (e) { alert(`견적서 생성 실패: ${e.message}`); }
     setBusy(false);
+  };
+
+  // 전체 거래처 일괄 발행 — 품목이 있는 모든 거래처의 견적서를 ZIP 하나로
+  const bulkDownload = async () => {
+    if (bulkBusy) return;
+    if (!pgcN) { alert("PGC 평균가를 먼저 입력하세요."); return; }
+    const targets = companies
+      .map((c) => ({ company: c, list: items.filter((it) => it.company_id === c.id) }))
+      .filter((t) => t.list.length > 0);
+    if (targets.length === 0) { alert("품목이 등록된 거래처가 없습니다."); return; }
+    if (!window.confirm(`품목이 있는 거래처 ${targets.length}곳의 ${ym} 견적서를 ZIP으로 일괄 생성할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      const perCompany = targets.map((t) => ({ companyName: t.company.name, rows: rowsOf(t.list) }));
+      await downloadQuoteZip({ ym, pgcPrice: pgcN, agcnPrice: agcnN, perCompany });
+      for (let i = 0; i < targets.length; i++) {
+        onLogActivity(targets[i].company.id, `${ym} 견적서 발행 (일괄)`, `PGC ₩${won(pgcN)}/g 기준 · 품목 ${perCompany[i].rows.length}건 — 전체 일괄 발행에 포함`);
+        await recordIssue(targets[i].company.id, perCompany[i].rows, "bulk");
+      }
+      loadIssues();
+    } catch (e) { alert(`일괄 발행 실패: ${e.message}`); }
+    setBulkBusy(false);
+  };
+
+  // 발행 이력에서 동일 견적서 재다운로드 (저장된 스냅샷 그대로)
+  const redownload = async (issue) => {
+    try {
+      await downloadQuoteXlsx({
+        companyName: nameOf(issue.company_id), ym: issue.ym,
+        pgcPrice: issue.pgc_price, agcnPrice: issue.agcn_price, rows: issue.rows || [],
+      });
+    } catch (e) { alert(`재다운로드 실패: ${e.message}`); }
   };
 
   const removeItem = async (it) => {
@@ -148,9 +201,14 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
         title="견적"
         sub="매월 PGC·AgCN 평균가만 입력하면 거래처별 견적 단가가 자동 계산됩니다"
         right={
-          <button onClick={download} disabled={!company || companyItems.length === 0 || busy} style={{ ...btnStyle("primary"), opacity: !company || companyItems.length === 0 || busy ? 0.4 : 1 }}>
-            {busy ? "생성 중..." : "📥 견적서 엑셀 다운로드"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button onClick={bulkDownload} disabled={bulkBusy} style={{ ...btnStyle("ghost"), opacity: bulkBusy ? 0.4 : 1 }}>
+              {bulkBusy ? "일괄 생성 중..." : "📦 전체 일괄 발행(ZIP)"}
+            </button>
+            <button onClick={download} disabled={!company || companyItems.length === 0 || busy} style={{ ...btnStyle("primary"), opacity: !company || companyItems.length === 0 || busy ? 0.4 : 1 }}>
+              {busy ? "생성 중..." : "📥 견적서 엑셀 다운로드"}
+            </button>
+          </div>
         }
       />
       <div style={{ padding: isMobile ? 14 : 28 }}>
@@ -321,6 +379,50 @@ export function QuoteScreen({ mode, companies, onLogActivity }) {
             </div>
           )}
         </div>
+
+        {/* 발행 이력 — 언제 어느 거래처에 발행했는지 + 동일 견적서 재다운로드 */}
+        {issues.length > 0 && (
+          <>
+            <div style={{ height: 16 }} />
+            <div style={{ background: T.card, borderRadius: 12, border: `1px solid ${T.border}`, overflow: "hidden" }}>
+              <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, fontWeight: 700, fontSize: 15 }}>
+                발행 이력 <span style={{ fontSize: 12, color: T.sub, fontWeight: 600 }}>(최근 {issues.length}건)</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
+                  <thead>
+                    <tr>
+                      {["발행일시", "거래처", "기준월", "구분", "품목", "PGC 기준가", ""].map((h, i) => (
+                        <th key={i} style={{ padding: "8px 12px", fontSize: 11, fontWeight: 700, color: T.sub, borderBottom: `1px solid ${T.border}`, textAlign: i >= 4 ? "right" : "left", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {issues.map((iss) => (
+                      <tr key={iss.id}>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap", color: T.sub }}>
+                          {(iss.created_at || "").slice(0, 16).replace("T", " ")}
+                        </td>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, fontWeight: 700 }}>{nameOf(iss.company_id)}</td>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}` }}>{iss.ym}</td>
+                        <td style={{ padding: "7px 12px", fontSize: 11, borderBottom: `1px solid ${T.border}` }}>
+                          <span style={{ padding: "1px 8px", borderRadius: 4, fontWeight: 700, background: iss.kind === "bulk" ? T.tint2 : T.tint, color: iss.kind === "bulk" ? T.tealDark : T.sub }}>
+                            {iss.kind === "bulk" ? "일괄" : "개별"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, textAlign: "right" }}>{iss.item_count}건</td>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, textAlign: "right" }}>₩{won(iss.pgc_price)}/g</td>
+                        <td style={{ padding: "7px 12px", fontSize: 12, borderBottom: `1px solid ${T.border}`, textAlign: "right" }}>
+                          <button onClick={() => redownload(iss)} style={{ ...btnStyle("ghost"), fontSize: 11, padding: "4px 10px" }}>📥 재다운로드</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {editing !== null && company && (
