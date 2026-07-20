@@ -11,6 +11,22 @@ const num = (s) => {
   return isNaN(n) ? null : n;
 };
 
+// 같은 날짜가 여러 번 들어 있으면 첫 값만 남긴다.
+// (신한은행 페이지는 하루에 고시가 여러 번 있어 같은 날짜가 반복될 수 있고,
+//  DB upsert는 한 번에 같은 키를 두 번 처리하지 못함 — "ON CONFLICT ..." 오류의 원인)
+function dedupeByDate(rows, errors) {
+  const seen = new Set();
+  const out = [];
+  let dup = 0;
+  for (const r of rows) {
+    if (seen.has(r.date)) { dup++; continue; }
+    seen.add(r.date);
+    out.push(r);
+  }
+  if (dup > 0) errors.push(`같은 날짜 ${dup}건은 첫 값만 사용했습니다 (하루 여러 고시)`);
+  return out;
+}
+
 // text와 연도(YYYY)를 받아 [{date, close, change, change_rate, buy_physical, sell_physical, deposit, withdraw}] 반환
 // 인식 실패 행은 errors에 사유와 함께 담는다.
 export function parseShinhanGold(text, year) {
@@ -69,7 +85,7 @@ export function parseShinhanGold(text, year) {
       withdraw: wd ?? null,
     });
   }
-  return { rows, errors };
+  return { rows: dedupeByDate(rows, errors), errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +132,7 @@ export function parseExcelGold(text) {
       agcn_amount: numOrNull(f[17]),
     });
   }
-  return { rows, errors };
+  return { rows: dedupeByDate(rows, errors), errors };
 }
 
 // 통합 파서 — 행마다 형식을 자동 판별
