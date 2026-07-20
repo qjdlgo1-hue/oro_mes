@@ -125,6 +125,24 @@ create index if not exists idx_crm_quote_issues_created on crm_quote_issues(crea
 alter table crm_quote_issues enable row level security;
 create policy "crm_quote_issues_all" on crm_quote_issues for all to authenticated using (true) with check (true);
 
+-- 일별 금시세 (마이그레이션 "create_crm_gold_prices")
+-- 신한은행 금시세 붙여넣기 + 그날의 PGC·청화은 가격 수동 입력, 월 평균 → 견적 기준가 반영
+create table if not exists crm_gold_prices (
+  date text primary key,          -- 'YYYY-MM-DD'
+  close numeric,                  -- 종가 (원/g)
+  change numeric,                 -- 전일대비 (상승 +/하락 -)
+  change_rate numeric,            -- 등락률 % (부호 포함)
+  buy_physical numeric,
+  sell_physical numeric,
+  deposit numeric,
+  withdraw numeric,
+  pgc numeric,
+  agcn numeric,
+  created_at timestamptz default now()
+);
+alter table crm_gold_prices enable row level security;
+create policy "crm_gold_prices_all" on crm_gold_prices for all to authenticated using (true) with check (true);
+
 -- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
 -- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
 create table if not exists crm_mail_accounts (

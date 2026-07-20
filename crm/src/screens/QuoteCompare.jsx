@@ -7,8 +7,8 @@ import { TIER_LABELS, calcItem } from "../lib/quote";
 
 const won = (n) => (Number(n) || 0).toLocaleString("ko-KR");
 
-// 전월 대비 증감 표시 (▲빨강=인상 / ▼파랑=인하)
-function Delta({ cur, prev, small }) {
+// 전월 대비 증감 표시 (▲빨강=인상 / ▼파랑=인하) — 금시세 화면에서도 재사용
+export function Delta({ cur, prev, small }) {
   if (prev == null || cur == null || prev === 0) return null;
   const diff = cur - prev;
   if (diff === 0) return <span style={{ fontSize: small ? 9 : 10, color: T.sub }}>—</span>;
@@ -22,7 +22,8 @@ function Delta({ cur, prev, small }) {
 }
 
 // 순수 div 세로 막대 그래프 (Dashboard 채널 바와 같은 방식, 라이브러리 없음)
-function BarChart({ rows, valueKey, color, height = 120 }) {
+// rows: [{ym 또는 label, [valueKey]: number}] — 금시세 화면에서도 재사용
+export function BarChart({ rows, valueKey, color, height = 120 }) {
   const vals = rows.map((r) => Number(r[valueKey]) || 0);
   const max = Math.max(1, ...vals);
   const min = Math.min(...vals.filter((v) => v > 0));
@@ -34,11 +35,12 @@ function BarChart({ rows, valueKey, color, height = 120 }) {
         const v = Number(r[valueKey]) || 0;
         const h = v > 0 ? Math.max(4, ((v - floor) / (max - floor || 1)) * height) : 2;
         const last = i === rows.length - 1;
+        const key = r.ym ?? r.label ?? i;
         return (
-          <div key={r.ym} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 52, flex: 1 }}>
+          <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 52, flex: 1 }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: last ? T.navy : T.sub, whiteSpace: "nowrap" }}>{won(v)}</div>
             <div style={{ width: "70%", maxWidth: 34, height: h, background: last ? color : `${color}55`, borderRadius: "4px 4px 0 0" }} />
-            <div style={{ fontSize: 9, color: last ? T.navy : T.sub, fontWeight: last ? 800 : 600, whiteSpace: "nowrap" }}>{r.ym.slice(2)}</div>
+            <div style={{ fontSize: 9, color: last ? T.navy : T.sub, fontWeight: last ? 800 : 600, whiteSpace: "nowrap" }}>{r.label ?? r.ym.slice(2)}</div>
             <Delta cur={v} prev={i > 0 ? Number(rows[i - 1][valueKey]) || null : null} small />
           </div>
         );
