@@ -5,6 +5,7 @@
 // App.jsx는 이 파일의 함수만 부르면 되고, 어디에 저장되는지는 몰라도 됩니다.
 // ---------------------------------------------------------------------------
 import { supabase } from "./supabase";
+import { koMsg } from "./errko";
 
 // 앱(camelCase) ↔ DB(snake_case) 컬럼 이름 변환표
 const TABLES = {
@@ -40,7 +41,7 @@ export async function cloudLoadOne(kind) {
     .from(def.table).select("*")
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
-  if (error) throw new Error(`${def.table} 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`${def.table} 불러오기 실패: ${koMsg(error.message)}`);
   return (data || []).map(def.toApp);
 }
 
@@ -57,7 +58,7 @@ export async function cloudLoadAll() {
 export async function cloudInsert(kind, item) {
   const def = TABLES[kind];
   const { error } = await supabase.from(def.table).insert(def.toRow(item));
-  if (error) throw new Error(`저장 실패: ${error.message}`);
+  if (error) throw new Error(`저장 실패: ${koMsg(error.message)}`);
 }
 
 // 서버의 한 건 수정 (예: 딜 단계 이동)
@@ -69,14 +70,14 @@ export async function cloudUpdate(kind, id, patchApp) {
   for (const [k, v] of Object.entries(row)) if (v !== undefined) patch[k] = v;
   delete patch.id;
   const { error } = await supabase.from(def.table).update(patch).eq("id", id);
-  if (error) throw new Error(`수정 실패: ${error.message}`);
+  if (error) throw new Error(`수정 실패: ${koMsg(error.message)}`);
 }
 
 // 서버의 한 건 삭제 — 실제로 지우지 않고 deleted_at만 찍음 (실수해도 복구 가능)
 export async function cloudDelete(kind, id) {
   const def = TABLES[kind];
   const { error } = await supabase.from(def.table).update({ deleted_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw new Error(`삭제 실패: ${error.message}`);
+  if (error) throw new Error(`삭제 실패: ${koMsg(error.message)}`);
 }
 
 // 거래처 삭제: 소속 담당자/딜/대화기록도 함께 삭제 표시
@@ -84,41 +85,41 @@ export async function cloudDeleteCompanyCascade(companyId) {
   const now = new Date().toISOString();
   for (const table of ["crm_contacts", "crm_deals", "crm_activities"]) {
     const { error } = await supabase.from(table).update({ deleted_at: now }).eq("company_id", companyId);
-    if (error) throw new Error(`삭제 실패(${table}): ${error.message}`);
+    if (error) throw new Error(`삭제 실패(${table}): ${koMsg(error.message)}`);
   }
   const { error } = await supabase.from("crm_companies").update({ deleted_at: now }).eq("id", companyId);
-  if (error) throw new Error(`삭제 실패: ${error.message}`);
+  if (error) throw new Error(`삭제 실패: ${koMsg(error.message)}`);
 }
 
 // ----- 메일 자동 수집 계정 (설정 화면 전용, 클라우드 모드에서만 사용) -----
 
 export async function mailAccountsList() {
   const { data, error } = await supabase.from("crm_mail_accounts").select("*").order("created_at", { ascending: true });
-  if (error) throw new Error(`메일 계정 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`메일 계정 불러오기 실패: ${koMsg(error.message)}`);
   return data || [];
 }
 
 export async function mailAccountSave(acc) {
   const { error } = await supabase.from("crm_mail_accounts").upsert(acc);
-  if (error) throw new Error(`메일 계정 저장 실패: ${error.message}`);
+  if (error) throw new Error(`메일 계정 저장 실패: ${koMsg(error.message)}`);
 }
 
 export async function mailAccountDelete(id) {
   const { error } = await supabase.from("crm_mail_accounts").delete().eq("id", id);
-  if (error) throw new Error(`메일 계정 삭제 실패: ${error.message}`);
+  if (error) throw new Error(`메일 계정 삭제 실패: ${koMsg(error.message)}`);
 }
 
 // ----- 견적 (PGC/AgCN 월별 가격 + 거래처별 품목, 클라우드 모드 전용) -----
 
 export async function pgcPricesList() {
   const { data, error } = await supabase.from("crm_pgc_prices").select("*").order("ym", { ascending: false });
-  if (error) throw new Error(`PGC 가격 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`PGC 가격 불러오기 실패: ${koMsg(error.message)}`);
   return data || [];
 }
 
 export async function pgcPriceSave(row) {
   const { error } = await supabase.from("crm_pgc_prices").upsert(row);
-  if (error) throw new Error(`PGC 가격 저장 실패: ${error.message}`);
+  if (error) throw new Error(`PGC 가격 저장 실패: ${koMsg(error.message)}`);
 }
 
 export async function quoteItemsList(companyId) {
@@ -128,18 +129,18 @@ export async function quoteItemsList(companyId) {
     .order("sort", { ascending: true });
   if (companyId) query = query.eq("company_id", companyId); // 없으면 전체 품목 (검색용)
   const { data, error } = await query;
-  if (error) throw new Error(`견적 품목 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`견적 품목 불러오기 실패: ${koMsg(error.message)}`);
   return data || [];
 }
 
 export async function quoteItemSave(item) {
   const { error } = await supabase.from("crm_quote_items").upsert(item);
-  if (error) throw new Error(`견적 품목 저장 실패: ${error.message}`);
+  if (error) throw new Error(`견적 품목 저장 실패: ${koMsg(error.message)}`);
 }
 
 export async function quoteItemDelete(id) {
   const { error } = await supabase.from("crm_quote_items").update({ deleted_at: new Date().toISOString() }).eq("id", id);
-  if (error) throw new Error(`견적 품목 삭제 실패: ${error.message}`);
+  if (error) throw new Error(`견적 품목 삭제 실패: ${koMsg(error.message)}`);
 }
 
 // ----- 견적 발행 이력 (재다운로드용 스냅샷 포함) -----
@@ -149,13 +150,13 @@ export async function quoteIssuesList(limit = 30) {
     .from("crm_quote_issues").select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new Error(`발행 이력 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`발행 이력 불러오기 실패: ${koMsg(error.message)}`);
   return data || [];
 }
 
 export async function quoteIssueSave(row) {
   const { error } = await supabase.from("crm_quote_issues").insert(row);
-  if (error) throw new Error(`발행 이력 저장 실패: ${error.message}`);
+  if (error) throw new Error(`발행 이력 저장 실패: ${koMsg(error.message)}`);
 }
 
 // ----- 일별 금시세 (신한은행 + PGC·청화은 수동 입력) -----
@@ -166,7 +167,7 @@ export async function goldPricesList(limit = 3000) {
     .from("crm_gold_prices").select("*")
     .order("date", { ascending: false })
     .limit(limit);
-  if (error) throw new Error(`금시세 불러오기 실패: ${error.message}`);
+  if (error) throw new Error(`금시세 불러오기 실패: ${koMsg(error.message)}`);
   return data || [];
 }
 
@@ -174,24 +175,24 @@ export async function goldPricesList(limit = 3000) {
 // (rows에 pgc/agcn 키가 없으므로 upsert가 해당 컬럼을 건드리지 않도록 개별 병합)
 export async function goldPricesUpsert(rows) {
   const { error } = await supabase.from("crm_gold_prices").upsert(rows, { onConflict: "date" });
-  if (error) throw new Error(`금시세 저장 실패: ${error.message}`);
+  if (error) throw new Error(`금시세 저장 실패: ${koMsg(error.message)}`);
 }
 
 export async function goldPriceSave(row) {
   const { error } = await supabase.from("crm_gold_prices").upsert(row, { onConflict: "date" });
-  if (error) throw new Error(`금시세 저장 실패: ${error.message}`);
+  if (error) throw new Error(`금시세 저장 실패: ${koMsg(error.message)}`);
 }
 
 export async function goldPriceDelete(date) {
   const { error } = await supabase.from("crm_gold_prices").delete().eq("date", date);
-  if (error) throw new Error(`금시세 삭제 실패: ${error.message}`);
+  if (error) throw new Error(`금시세 삭제 실패: ${koMsg(error.message)}`);
 }
 
 // 여러 날 한 번에 삭제 (체크박스 선택 삭제)
 export async function goldPricesDeleteMany(dates) {
   if (!dates || dates.length === 0) return;
   const { error } = await supabase.from("crm_gold_prices").delete().in("date", dates);
-  if (error) throw new Error(`금시세 일괄 삭제 실패: ${error.message}`);
+  if (error) throw new Error(`금시세 일괄 삭제 실패: ${koMsg(error.message)}`);
 }
 
 // ----- local 모드: 브라우저 localStorage -----
