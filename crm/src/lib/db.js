@@ -160,7 +160,8 @@ export async function quoteIssueSave(row) {
 
 // ----- 일별 금시세 (신한은행 + PGC·청화은 수동 입력) -----
 
-export async function goldPricesList(limit = 120) {
+// 월 평균 계산에 과거 이력까지 쓰이므로 넉넉히 로드 (표 표시는 화면에서 최근 위주로 자름)
+export async function goldPricesList(limit = 3000) {
   const { data, error } = await supabase
     .from("crm_gold_prices").select("*")
     .order("date", { ascending: false })

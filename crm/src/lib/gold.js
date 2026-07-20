@@ -72,6 +72,65 @@ export function parseShinhanGold(text, year) {
   return { rows, errors };
 }
 
+// ---------------------------------------------------------------------------
+// 엑셀 이력 형식 파서 — 사용자가 쓰던 엑셀 표를 그대로 붙여넣기 (탭 구분, 18열)
+//   날짜(YYYY-MM-DD) 매매기준율 전일대비 등락률 실물살때 실물팔때 계좌입금 계좌해지
+//   국제금시세 원달러환율 PGC 구매량 비율(%) PGC참고자료 구매대금 청화은 은수량 은구매액
+// 날짜가 완전하므로 연도 선택 불필요. PGC·구매 기록까지 전체 열을 저장한다.
+// ---------------------------------------------------------------------------
+const numOrNull = (s) => {
+  if (s == null) return null;
+  const t = String(s).replace(/[,%\s원]/g, "");
+  if (t === "" || t === "-") return null;
+  const n = parseFloat(t);
+  return isNaN(n) ? null : n;
+};
+
+export function parseExcelGold(text) {
+  const rows = [];
+  const errors = [];
+  for (const line of String(text || "").replace(/\r/g, "").split("\n")) {
+    const f = line.split("\t").map((s) => s.trim());
+    if (!/^\d{4}-\d{2}-\d{2}/.test(f[0] || "")) continue; // 날짜로 시작하는 행만 (헤더 등 무시)
+    const date = f[0].slice(0, 10);
+    const close = numOrNull(f[1]);
+    if (close == null) { errors.push(`${date} — 매매기준율이 비어 있어 건너뜀`); continue; }
+    rows.push({
+      date,
+      close,
+      change: numOrNull(f[2]),
+      change_rate: numOrNull(f[3]),
+      buy_physical: numOrNull(f[4]),
+      sell_physical: numOrNull(f[5]),
+      deposit: numOrNull(f[6]),
+      withdraw: numOrNull(f[7]),
+      intl_gold: numOrNull(f[8]),
+      usd_krw: numOrNull(f[9]),
+      pgc: numOrNull(f[10]),
+      pgc_qty: numOrNull(f[11]),
+      pgc_ratio: numOrNull(f[12]),
+      pgc_note: (f[13] || "").trim() || null,
+      pgc_amount: numOrNull(f[14]),
+      agcn: numOrNull(f[15]),
+      agcn_qty: numOrNull(f[16]),
+      agcn_amount: numOrNull(f[17]),
+    });
+  }
+  return { rows, errors };
+}
+
+// 통합 파서 — 행마다 형식을 자동 판별
+//   엑셀 형식(YYYY-MM-DD, 전체 열) → excelRows / 신한은행 형식(MM.DD.) → shinhanRows
+export function parseGoldPaste(text, year) {
+  const src = String(text || "").replace(/\r/g, "");
+  const lines = src.split("\n");
+  const excelText = lines.filter((l) => /^\d{4}-\d{2}-\d{2}/.test(l.trim().split("\t")[0] || "")).join("\n");
+  const restText = lines.filter((l) => !/^\d{4}-\d{2}-\d{2}/.test(l.trim().split("\t")[0] || "")).join("\n");
+  const excel = parseExcelGold(excelText);
+  const shinhan = parseShinhanGold(restText, year);
+  return { excelRows: excel.rows, shinhanRows: shinhan.rows, errors: [...excel.errors, ...shinhan.errors] };
+}
+
 // 월 평균 계산 — 값이 있는 날만 평균 (없으면 null)
 export function monthlyAvg(list, ym) {
   const inMonth = list.filter((r) => (r.date || "").startsWith(ym));
