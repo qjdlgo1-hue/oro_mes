@@ -20,8 +20,9 @@ export type LabelOpts = {
   qr: boolean;     // QR 코드 포함(주문 추적)
   auto: boolean;   // POP '완료' 처리 시 자동 인쇄
 };
-export const defaultLabelOpts: LabelOpts = { mode: "sheet", start: 1, copies: 1, offX: 0, offY: 0, w: 100, h: 60, qr: true, auto: true };
-const LS_KEY = "oro_label_opts";
+// 기본: 롤 라벨(EPSON TM-C3500 등), 크기는 사용 라벨 63.5×38.1mm — A4 21칸 시트는 보조 모드
+export const defaultLabelOpts: LabelOpts = { mode: "roll", start: 1, copies: 1, offX: 0, offY: 0, w: 63.5, h: 38.1, qr: true, auto: true };
+const LS_KEY = "oro_label_opts2"; // v2: 기본 모드가 sheet→roll로 바뀌어 키 갱신(구 저장값 무시)
 export function loadLabelOpts(): LabelOpts {
   try { return { ...defaultLabelOpts, ...JSON.parse(localStorage.getItem(LS_KEY) || "{}") }; }
   catch { return defaultLabelOpts; }

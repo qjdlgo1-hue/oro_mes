@@ -124,8 +124,8 @@ export default function Today({ orders }: { orders: Order[] }) {
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
             <b>🏷 생산 라벨 설정</b>
             <div className="seg">
+              <button className={labelOpts.mode === "roll" ? "on" : ""} onClick={() => setLabel({ mode: "roll" })}>롤 라벨 (라벨 프린터)</button>
               <button className={labelOpts.mode === "sheet" ? "on" : ""} onClick={() => setLabel({ mode: "sheet" })}>A4 라벨지 21칸</button>
-              <button className={labelOpts.mode === "roll" ? "on" : ""} onClick={() => setLabel({ mode: "roll" })}>롤 라벨</button>
             </div>
             {labelOpts.mode === "sheet" ? <>
               <label>시작 칸(1~21) <input type="number" min={1} max={21} value={labelOpts.start} onChange={e => setLabel({ start: Math.max(1, Math.min(21, Number(e.target.value) || 1)) })} style={ni} /></label>
@@ -143,7 +143,7 @@ export default function Today({ orders }: { orders: Order[] }) {
           <p className="muted" style={{ fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.7 }}>
             {labelOpts.mode === "sheet"
               ? <>A4 21칸 라벨지(프린텍 V3330, 63.5×38.1mm — Avery L7160 호환) 기준입니다. 쓰다 만 라벨지는 <b>시작 칸</b>으로 빈 칸부터 이어 인쇄하세요. 인쇄 시 <b>배율 100%(실제 크기)</b>로 설정해야 칸이 정확히 맞습니다. 위치가 밀리면 보정(mm)으로 조절.</>
-              : <>롤 라벨 프린터(예: EPSON TM-C3500)의 용지 크기에 폭·높이를 맞추세요.</>}
+              : <>롤 라벨 프린터(예: EPSON TM-C3500) 기준입니다. 기본 63.5×38.1mm — 프린터에 넣은 롤 용지 크기와 폭·높이를 맞추고, 프린터 드라이버의 용지 설정도 같은 크기로 지정하세요.</>}
             {" "}각 행의 🏷 버튼으로 언제든 다시 인쇄할 수 있습니다.<br />
             💡 <b>다이얼로그 없이 완전 자동 출력</b>: 현장 PC 크롬 바로가기에 <code>--kiosk-printing</code> 옵션 + 기본 프린터 지정 → 완료 버튼만 눌러도 라벨이 바로 나옵니다.
           </p>
