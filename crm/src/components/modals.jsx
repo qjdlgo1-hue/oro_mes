@@ -252,10 +252,11 @@ export function QuoteItemModal({ companyId, item, onClose, onSaved }) {
               onChange={(e) => set("material_ni", e.target.value)} disabled={f.gubun === "사급"} />
           </Field>
         </div>
+        <div style={{ flex: 1 }}><Field label="재료비 기타(원)"><input type="number" style={inputStyle} value={f.material_etc} onChange={(e) => set("material_etc", e.target.value)} /></Field></div>
         <div style={{ flex: 1 }}><Field label="목표 마진율(%)"><input type="number" style={inputStyle} value={f.marginPct} onChange={(e) => set("marginPct", e.target.value)} /></Field></div>
       </div>
       <div style={{ fontSize: 11, color: T.sub, marginTop: -6, marginBottom: 12 }}>
-        ※ 재료비(기타)는 견적 화면의 "기준 정보"에서 입력한 값이 전 품목에 공통 적용됩니다.
+        ※ 재료비(기타)는 품목별 값입니다 — 견적 화면 기준 정보의 [기타 전 품목 일괄 적용]으로 한 번에 바꿀 수 있습니다.
       </div>
       <Field label="비고 (견적서에 표시)"><input style={inputStyle} value={f.note} onChange={(e) => set("note", e.target.value)} /></Field>
       <ModalActions onClose={onClose} onSave={save} disabled={!f.model.trim() || busy} saveLabel={busy ? "저장 중..." : "저장"} />

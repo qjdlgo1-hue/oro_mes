@@ -84,7 +84,7 @@ export function QuoteCompare({ companies }) {
   // 월별 추이: 저장된 최근 N개월 (오름차순) × 선택 거래처 품목
   const trendMonths = [...prices].sort((a, b) => (a.ym < b.ym ? -1 : 1)).slice(-monthsN);
   const trendItems = items.filter((it) => it.company_id === companyId);
-  const priceAt = (it, m) => calcItem(it, m.price, m.agcn_price, m.etc_cost ?? 1800).tiers[tierIdx];
+  const priceAt = (it, m) => calcItem(it, m.price, m.agcn_price).tiers[tierIdx];
 
   // 발행 비교: A 선택 후 B는 같은 거래처의 다른 발행만
   const a = issues.find((x) => x.id === issueA);
@@ -173,7 +173,7 @@ export function QuoteCompare({ companies }) {
               </table>
             </div>
             <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
-              현재 품목 정보(투입량·수율·마진)에 각 달의 저장된 기준가(PGC·AgCN·기타)를 적용해 재계산한 {TIER_LABELS[tierIdx]} 단가입니다 · ▲ 인상 / ▼ 인하 (전월 대비)
+              현재 품목 정보(투입량·수율·마진·기타 재료비)에 각 달의 저장된 기준가(PGC·AgCN)를 적용해 재계산한 {TIER_LABELS[tierIdx]} 단가입니다 · ▲ 인상 / ▼ 인하 (전월 대비)
             </div>
           </>
         )}
