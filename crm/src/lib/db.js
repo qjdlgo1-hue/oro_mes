@@ -186,6 +186,13 @@ export async function goldPriceDelete(date) {
   if (error) throw new Error(`금시세 삭제 실패: ${error.message}`);
 }
 
+// 여러 날 한 번에 삭제 (체크박스 선택 삭제)
+export async function goldPricesDeleteMany(dates) {
+  if (!dates || dates.length === 0) return;
+  const { error } = await supabase.from("crm_gold_prices").delete().in("date", dates);
+  if (error) throw new Error(`금시세 일괄 삭제 실패: ${error.message}`);
+}
+
 // ----- local 모드: 브라우저 localStorage -----
 
 const LOCAL_KEYS = {

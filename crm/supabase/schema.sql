@@ -143,6 +143,18 @@ create table if not exists crm_gold_prices (
 alter table crm_gold_prices enable row level security;
 create policy "crm_gold_prices_all" on crm_gold_prices for all to authenticated using (true) with check (true);
 
+-- 시세 테이블 확장 (마이그레이션 "extend_crm_gold_prices_purchase_columns")
+-- 사용자 엑셀 구조: 국제금시세/환율 + PGC 구매량·비율·참고·구매대금 + 은수량·은구매액
+alter table crm_gold_prices
+  add column if not exists intl_gold numeric,
+  add column if not exists usd_krw numeric,
+  add column if not exists pgc_qty numeric,
+  add column if not exists pgc_ratio numeric,
+  add column if not exists pgc_note text,
+  add column if not exists pgc_amount numeric,
+  add column if not exists agcn_qty numeric,
+  add column if not exists agcn_amount numeric;
+
 -- 메일 자동 수집 계정 (CRM 설정 화면에서 관리, 수집기가 매시간 읽음)
 -- 마이그레이션 "create_crm_mail_accounts"로 적용되어 있음.
 create table if not exists crm_mail_accounts (
