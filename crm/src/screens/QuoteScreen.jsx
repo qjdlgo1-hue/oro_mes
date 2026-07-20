@@ -3,7 +3,7 @@ import { T, newId } from "../theme";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { Header, inputStyle, Panel, IconBtn, Empty, btnStyle } from "../components/ui";
 import { QuoteItemModal } from "../components/modals";
-import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
+import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemsBulkSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
 import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx, downloadQuoteZip } from "../lib/quote";
 import { QuoteCompare } from "./QuoteCompare";
 import { GoldPriceScreen } from "./GoldPriceScreen";
@@ -115,7 +115,7 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
   // 품목 → 견적서 행(고객 전달용: 모델·사양·4구간 단가만) 변환
   const rowsOf = (list) =>
     list.map((it) => {
-      const calc = calcItem(it, pgcN, agcnN, etcN);
+      const calc = calcItem(it, pgcN, agcnN);
       return { gubun: it.gubun, model: it.model, spec: it.spec, note: it.note || "", prices: TIER_LABELS.map((_, ti) => tierPrice(it, calc, ti)) };
     });
 
@@ -185,20 +185,60 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
     } catch (e) { alert(e.message); }
   };
 
-  // 재료비(Ni)를 표에서 바로 입력: 타이핑 중엔 화면만 갱신, 칸을 벗어나면 저장
-  const changeNi = (it, val) => {
-    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, material_ni: val } : x)));
+  // ----- 표에서 바로 입력·수정 (타이핑 중엔 화면만 갱신, 칸을 벗어나면 그 칸 저장) -----
+  // DB 컬럼만 추려서 저장 (_marginPct 같은 화면 전용 값이 섞이지 않게)
+  const ITEM_COLS = ["id", "company_id", "gubun", "model", "spec", "pgc_grams", "agcn_grams", "material_ni", "material_etc", "yield_grams", "margin_rate", "note", "sort"];
+  const cleanItem = (it) => Object.fromEntries(ITEM_COLS.map((c) => [c, it[c]]));
+
+  const changeField = (it, key, val) => {
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, [key]: val } : x)));
   };
-  const saveNi = async (it) => {
-    const ni = Number(it.material_ni) || 0;
+  const saveField = async (it, key, isText) => {
+    const raw = it[key];
+    const v = isText ? String(raw ?? "").trim() : (Number(raw) || 0);
     try {
-      await quoteItemSave({ ...it, material_ni: ni });
-      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, material_ni: ni } : x)));
+      await quoteItemSave({ ...cleanItem(it), [key]: v });
+      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, [key]: v } : x)));
+    } catch (e) { alert(e.message); }
+  };
+  // 마진은 % 단위로 입력받아 비율로 저장 (_marginPct = 화면 전용 임시값)
+  const saveMargin = async (it) => {
+    const pct = Number(it._marginPct);
+    const rate = isNaN(pct) ? (Number(it.margin_rate) || 0) : pct / 100;
+    try {
+      await quoteItemSave({ ...cleanItem(it), margin_rate: rate });
+      setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, margin_rate: rate, _marginPct: undefined } : x)));
+    } catch (e) { alert(e.message); }
+  };
+
+  // 기준 정보의 재료비(기타)를 전 품목에 일괄 적용
+  const applyEtcAll = async () => {
+    const v = Number(etcCost) || 0;
+    if (items.length === 0) { alert("품목이 없습니다."); return; }
+    if (!window.confirm(`재료비(기타) ₩${won(v)}을 전체 거래처 품목 ${items.length}건에 일괄 적용할까요?
+(각 품목의 기타 값이 모두 이 값으로 바뀝니다)`)) return;
+    try {
+      await quoteItemsBulkSave(items.map((it) => ({ ...cleanItem(it), material_etc: v })));
+      await loadItems();
+      alert(`품목 ${items.length}건에 재료비(기타) ₩${won(v)}을 적용했습니다.`);
     } catch (e) { alert(e.message); }
   };
 
   const thStyle = { padding: "8px 8px", fontSize: 11, fontWeight: 700, color: "#fff", background: T.navy, whiteSpace: "nowrap", textAlign: "center" };
   const tdStyle = { padding: "7px 8px", fontSize: 12, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" };
+  const cellInputStyle = { border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, fontFamily: "inherit" };
+  // 표 인라인 입력칸 — 컴포넌트가 아닌 함수 호출(리렌더 시 input이 유지돼 포커스가 안 끊김)
+  const cellInput = (it, key, opts = {}) => (
+    <input
+      type={opts.text ? "text" : "number"}
+      value={it[key] ?? (opts.text ? "" : 0)}
+      onChange={(e) => changeField(it, key, e.target.value)}
+      onBlur={() => saveField(it, key, opts.text)}
+      disabled={!canEdit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+      style={{ ...cellInputStyle, width: opts.w || 76, textAlign: opts.text ? "left" : "right" }}
+    />
+  );
 
   return (
     <div>
@@ -264,9 +304,10 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
               <input type="number" style={{ ...inputStyle, width: 130 }} value={agcnPrice} onChange={(e) => setAgcnPrice(e.target.value)} />
             </div>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>재료비(기타) (원, 전 품목 공통)</div>
-              <input type="number" style={{ ...inputStyle, width: 130 }} value={etcCost} onChange={(e) => setEtcCost(e.target.value)} />
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>재료비(기타) (원)</div>
+              <input type="number" style={{ ...inputStyle, width: 110 }} value={etcCost} onChange={(e) => setEtcCost(e.target.value)} />
             </div>
+            {canEdit && <button onClick={applyEtcAll} style={{ ...btnStyle("ghost"), padding: "10px 14px" }} title="기타 값을 모든 거래처 품목에 한 번에 적용합니다">기타 전 품목 일괄 적용</button>}
             {canEdit && <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>기준 정보 저장</button>}
             <div style={{ flex: 1 }} />
             <div>
@@ -336,7 +377,7 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
                 </thead>
                 <tbody>
                   {viewItems.map((it) => {
-                    const calc = calcItem(it, pgcN, agcnN, etcN);
+                    const calc = calcItem(it, pgcN, agcnN);
                     const knownGubun = it.gubun === "사급" || it.gubun === "도급";
                     return (
                       <tr key={it.id}>
@@ -359,31 +400,30 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
                             <option value="도급">도급</option>
                           </select>
                         </td>
-                        <td style={{ ...tdStyle, fontWeight: 700 }}>{it.model}</td>
-                        <td style={{ ...tdStyle, color: T.sub, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }}>{it.spec}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.pgc_grams || "-"}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.agcn_grams || "-"}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700 }}>{cellInput(it, "model", { text: true, w: 110 })}</td>
+                        <td style={{ ...tdStyle, color: T.sub }}>{cellInput(it, "spec", { text: true, w: 150 })}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{cellInput(it, "pgc_grams", { w: 56 })}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{cellInput(it, "agcn_grams", { w: 56 })}</td>
                         <td style={{ ...tdStyle, textAlign: "right", color: calc.isSagup ? T.sub : undefined }}>
-                          {calc.isSagup ? (
-                            "사급 미적용"
-                          ) : (
-                            <input
-                              type="number"
-                              value={it.material_ni ?? 0}
-                              onChange={(e) => changeNi(it, e.target.value)}
-                              onBlur={() => saveNi(it)}
-                              disabled={!canEdit}
-                              onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
-                              style={{ width: 76, border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, textAlign: "right", fontFamily: "inherit" }}
-                            />
-                          )}
+                          {calc.isSagup ? "사급 미적용" : cellInput(it, "material_ni", { w: 76 })}
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right" }}>{won(Math.round(calc.pgcCost))}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{won(calc.etcCost)}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{cellInput(it, "material_etc", { w: 70 })}</td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{won(Math.round(calc.total))}</td>
-                        <td style={{ ...tdStyle, textAlign: "right" }}>{it.yield_grams}</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>{cellInput(it, "yield_grams", { w: 56 })}</td>
                         <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{won(Math.round(calc.cost))}</td>
-                        <td style={{ ...tdStyle, textAlign: "right", color: T.teal, fontWeight: 700 }}>{((it.margin_rate || 0) * 100).toFixed(1)}%</td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          <input
+                            type="number"
+                            value={it._marginPct ?? ((it.margin_rate || 0) * 100).toFixed(1)}
+                            onChange={(e) => changeField(it, "_marginPct", e.target.value)}
+                            onBlur={() => saveMargin(it)}
+                            disabled={!canEdit}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+                            style={{ ...cellInputStyle, width: 52, textAlign: "right", color: T.teal, fontWeight: 700 }}
+                          />
+                          <span style={{ fontSize: 11, color: T.teal, fontWeight: 700, marginLeft: 2 }}>%</span>
+                        </td>
                         {TIER_LABELS.map((_, ti) => {
                           const val = tierPrice(it, calc, ti);
                           const m = marginOf(val, calc.cost);
@@ -414,7 +454,7 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
           )}
           {viewItems.length > 0 && (
             <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
-              거래처명을 클릭하면 그 거래처가 선택됩니다 · 구분·재료비(Ni)는 표에서 바로 고치면 저장·재계산됩니다 (사급 = Ni 재료비 미적용) · 재료비 = Ni자재 + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(기준 정보 입력값, 전 품목 공통) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율) 100원 올림, 수량 구간마다 마진 1.1%p 감소 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 · 엑셀 다운로드는 검색과 무관하게 선택한 거래처의 전체 품목 기준입니다
+              거래처명을 클릭하면 그 거래처가 선택됩니다 · 모델명·사양·PGC(g)·AgCN(g)·재료비(Ni)·재료비(기타)·수율·마진은 표에서 바로 고치면 칸을 벗어날 때 저장·재계산됩니다 (사급 = Ni 재료비 미적용) · 재료비 = Ni자재 + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(품목별 저장값 — 기준 정보의 [기타 전 품목 일괄 적용]으로 한 번에 변경) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율) 100원 올림, 수량 구간마다 마진 1.1%p 감소 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 · 엑셀 다운로드는 검색과 무관하게 선택한 거래처의 전체 품목 기준입니다
             </div>
           )}
         </div>

@@ -138,6 +138,13 @@ export async function quoteItemSave(item) {
   if (error) throw new Error(`견적 품목 저장 실패: ${koMsg(error.message)}`);
 }
 
+// 여러 품목 한 번에 저장 (예: 재료비(기타) 전 품목 일괄 적용)
+export async function quoteItemsBulkSave(items) {
+  if (!items || items.length === 0) return;
+  const { error } = await supabase.from("crm_quote_items").upsert(items);
+  if (error) throw new Error(`견적 품목 일괄 저장 실패: ${koMsg(error.message)}`);
+}
+
 export async function quoteItemDelete(id) {
   const { error } = await supabase.from("crm_quote_items").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) throw new Error(`견적 품목 삭제 실패: ${koMsg(error.message)}`);
