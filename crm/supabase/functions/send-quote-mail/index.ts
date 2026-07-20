@@ -37,11 +37,14 @@ Deno.serve(async (req: Request) => {
   // 보내는 주소: username이 이메일이면 그대로, 아니면 네이버 형식으로
   const from = String(acc.username).includes("@") ? acc.username : `${acc.username}@naver.com`;
 
+  // 포트별 보안 방식: 465 = 처음부터 TLS(implicit), 587/25 = 평문 연결 후 STARTTLS 업그레이드
+  // (587에 tls:true로 붙으면 핸드셰이크가 실패해 발송이 안 됨)
+  const port = acc.smtp_port || 465;
   const client = new SMTPClient({
     connection: {
       hostname: acc.smtp_host,
-      port: acc.smtp_port || 465,
-      tls: true,
+      port,
+      tls: port === 465,
       auth: { username: acc.username, password: acc.password },
     },
   });
@@ -68,6 +71,9 @@ Deno.serve(async (req: Request) => {
     return json(200, { ok: true });
   } catch (e) {
     try { await client.close(); } catch { /* 무시 */ }
-    return json(500, { error: `발송 실패: ${e instanceof Error ? e.message : String(e)}` });
+    const msg = e instanceof Error ? e.message : String(e);
+    // 서버 로그에 원인 기록 (Supabase 대시보드 → Edge Functions → Logs 에서 확인)
+    console.error(`send-quote-mail 실패: host=${acc.smtp_host}:${acc.smtp_port || 465} user=${acc.username} to=${to} — ${msg}`);
+    return json(500, { error: `발송 실패: ${msg}` });
   }
 });
