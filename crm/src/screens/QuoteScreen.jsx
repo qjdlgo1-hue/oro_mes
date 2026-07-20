@@ -21,7 +21,8 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
   const [prices, setPrices] = useState([]); // 월별 가격 이력
   const [pgcPrice, setPgcPrice] = useState("");
   const [agcnPrice, setAgcnPrice] = useState("");
-  const [etcCost, setEtcCost] = useState("1800"); // 재료비(기타) — 모든 품목에 동일 적용
+  const [etcCost, setEtcCost] = useState("1800"); // 재료비(기타) 일괄 적용용 입력값
+  const [niCost, setNiCost] = useState(""); // 재료비(Ni) 일괄 적용용 입력값 (도급 품목 대상)
   const [companyId, setCompanyId] = useState("");
   const [items, setItems] = useState([]); // 전체 거래처 품목 (검색은 전체 대상)
   const [search, setSearch] = useState("");
@@ -224,6 +225,21 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
     } catch (e) { alert(e.message); }
   };
 
+  // 재료비(Ni)를 도급 품목 전체에 일괄 적용 (사급은 Ni 미적용이라 제외)
+  const applyNiAll = async () => {
+    if (String(niCost).trim() === "" || isNaN(Number(niCost))) { alert("적용할 재료비(Ni) 금액을 입력하세요."); return; }
+    const v = Number(niCost);
+    const targets = items.filter((it) => (it.gubun || "").trim() === "도급");
+    if (targets.length === 0) { alert("도급 품목이 없습니다 (사급은 Ni 재료비 미적용)."); return; }
+    if (!window.confirm(`재료비(Ni) ₩${won(v)}을 전체 거래처의 도급 품목 ${targets.length}건에 일괄 적용할까요?
+(사급 품목 ${items.length - targets.length}건은 Ni 미적용이라 제외됩니다)`)) return;
+    try {
+      await quoteItemsBulkSave(targets.map((it) => ({ ...cleanItem(it), material_ni: v })));
+      await loadItems();
+      alert(`도급 품목 ${targets.length}건에 재료비(Ni) ₩${won(v)}을 적용했습니다.`);
+    } catch (e) { alert(e.message); }
+  };
+
   const thStyle = { padding: "8px 8px", fontSize: 11, fontWeight: 700, color: "#fff", background: T.navy, whiteSpace: "nowrap", textAlign: "center" };
   const tdStyle = { padding: "7px 8px", fontSize: 12, borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" };
   const cellInputStyle = { border: `1px solid ${T.border}`, borderRadius: 4, padding: "3px 5px", fontSize: 12, fontFamily: "inherit" };
@@ -308,6 +324,11 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
               <input type="number" style={{ ...inputStyle, width: 110 }} value={etcCost} onChange={(e) => setEtcCost(e.target.value)} />
             </div>
             {canEdit && <button onClick={applyEtcAll} style={{ ...btnStyle("ghost"), padding: "10px 14px" }} title="기타 값을 모든 거래처 품목에 한 번에 적용합니다">기타 전 품목 일괄 적용</button>}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.sub, marginBottom: 4 }}>재료비(Ni) (원)</div>
+              <input type="number" style={{ ...inputStyle, width: 110 }} value={niCost} onChange={(e) => setNiCost(e.target.value)} placeholder="예: 45000" />
+            </div>
+            {canEdit && <button onClick={applyNiAll} style={{ ...btnStyle("ghost"), padding: "10px 14px" }} title="Ni 값을 모든 거래처의 도급 품목에 한 번에 적용합니다 (사급 제외)">Ni 도급 일괄 적용</button>}
             {canEdit && <button onClick={savePrices} style={{ ...btnStyle("ghost"), padding: "10px 14px" }}>기준 정보 저장</button>}
             <div style={{ flex: 1 }} />
             <div>
@@ -454,7 +475,7 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
           )}
           {viewItems.length > 0 && (
             <div style={{ padding: "10px 20px", fontSize: 11, color: T.sub, borderTop: `1px solid ${T.border}` }}>
-              거래처명을 클릭하면 그 거래처가 선택됩니다 · 모델명·사양·PGC(g)·AgCN(g)·재료비(Ni)·재료비(기타)·수율·마진은 표에서 바로 고치면 칸을 벗어날 때 저장·재계산됩니다 (사급 = Ni 재료비 미적용) · 재료비 = Ni자재 + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(품목별 저장값 — 기준 정보의 [기타 전 품목 일괄 적용]으로 한 번에 변경) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율) 100원 올림, 수량 구간마다 마진 1.1%p 감소 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 · 엑셀 다운로드는 검색과 무관하게 선택한 거래처의 전체 품목 기준입니다
+              거래처명을 클릭하면 그 거래처가 선택됩니다 · 모델명·사양·PGC(g)·AgCN(g)·재료비(Ni)·재료비(기타)·수율·마진은 표에서 바로 고치면 칸을 벗어날 때 저장·재계산됩니다 (사급 = Ni 재료비 미적용) · 재료비 = Ni자재 + 재료비PGC(PGC투입량×PGC평균가 + AgCN투입량×AgCN평균가) + 기타(품목별 저장값) — Ni·기타는 기준 정보의 일괄 적용 버튼으로 한 번에 변경 가능(Ni는 도급 품목만) · 공정비용 = 재료비 합계 ÷ 수율 · 단가 = 공정비용 ÷ (1−마진율) 100원 올림, 수량 구간마다 마진 1.1%p 감소 · 단가 칸을 직접 고치면 노란색으로 표시되고 다운로드에 반영됩니다 · 엑셀 다운로드는 검색과 무관하게 선택한 거래처의 전체 품목 기준입니다
             </div>
           )}
         </div>

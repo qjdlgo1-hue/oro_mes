@@ -14,6 +14,13 @@ const RULES = [
     "권한이 없어 처리할 수 없습니다 — 로그인 계정을 확인하세요"],
   [/JWT expired|invalid JWT|invalid token|refresh_token/i,
     "로그인이 만료되었습니다 — 페이지를 새로고침해 다시 로그인하세요"],
+  // 메일(SMTP) 발송 관련 — Edge Function이 돌려주는 원인 메시지 변환
+  [/535|authentication failed|auth(entication)?\s*(fail|error|invalid)|invalid login|username and password not accepted|not authorized|credentials/i,
+    "메일 계정 인증에 실패했습니다 — 설정 화면의 메일 계정 아이디·비밀번호를 확인하세요 (네이버·웍스는 2단계 인증 시 '앱 비밀번호'를 발급해 입력, IMAP/SMTP 사용 설정도 필요)"],
+  [/getaddrinfo|ENOTFOUND|dns error|name resolution/i,
+    "메일 서버 주소를 찾을 수 없습니다 — 설정 화면의 SMTP 서버 주소를 확인하세요"],
+  [/connection (refused|reset|closed)|ECONNREFUSED|ECONNRESET|BadResource|StartTls|corrupt message/i,
+    "메일 서버에 연결하지 못했습니다 — SMTP 서버 주소·포트(465)와 보안 설정을 확인하세요"],
   [/Failed to fetch|NetworkError|fetch failed|Load failed|network/i,
     "서버에 연결할 수 없습니다 — 인터넷 연결을 확인한 뒤 다시 시도하세요"],
   [/value too long for type/i,

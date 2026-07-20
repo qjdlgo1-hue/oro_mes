@@ -3,7 +3,23 @@ import { T } from "../theme";
 import { supabase } from "../lib/supabase";
 import { mailAccountsList } from "../lib/db";
 import { buildQuoteXlsxBuffer } from "../lib/quote";
+import { koMsg } from "../lib/errko";
 import { Modal, Field, inputStyle, btnStyle, Empty } from "./ui";
+
+// Edge Function 호출 — 실패 시 응답 body의 실제 원인을 꺼내 한국어로 변환
+// (supabase-js는 non-2xx면 "Edge Function returned a non-2xx status code"만 주므로 body를 직접 읽음)
+async function invokeMail(payload) {
+  const { data, error } = await supabase.functions.invoke("send-quote-mail", { body: payload });
+  if (error) {
+    let msg = error.message || "함수 호출 실패";
+    try {
+      const j = await error.context.json();
+      if (j?.error) msg = j.error;
+    } catch { /* body 없는 오류(네트워크 등)는 원래 메시지 유지 */ }
+    throw new Error(koMsg(msg));
+  }
+  if (data?.error) throw new Error(koMsg(data.error));
+}
 
 // contact 자유 입력 텍스트에서 이메일 주소 추출 (첫 번째)
 export function extractEmail(text) {
@@ -70,17 +86,13 @@ export function MailSendModal({ companies, items, contacts, buildRows, ym, pgcPr
   // 한 건 발송 (Edge Function 호출)
   const sendOne = async (r) => {
     const buf = await buildQuoteXlsxBuffer({ companyName: r.company.name, ym, pgcPrice, agcnPrice: null, rows: r.quoteRows });
-    const { data, error } = await supabase.functions.invoke("send-quote-mail", {
-      body: {
-        accountId,
-        to: r.email.trim(),
-        subject: fill(subject, r.company.name),
-        body: fill(body, r.company.name),
-        attachment: { filename: `견적서_${r.company.name}_${ym}.xlsx`, base64: bufToBase64(buf) },
-      },
+    await invokeMail({
+      accountId,
+      to: r.email.trim(),
+      subject: fill(subject, r.company.name),
+      body: fill(body, r.company.name),
+      attachment: { filename: `견적서_${r.company.name}_${ym}.xlsx`, base64: bufToBase64(buf) },
     });
-    if (error) throw new Error(error.message || "함수 호출 실패");
-    if (data?.error) throw new Error(data.error);
   };
 
   const sendAll = async () => {
@@ -109,11 +121,7 @@ export function MailSendModal({ companies, items, contacts, buildRows, ym, pgcPr
     const self = acc.username.includes("@") ? acc.username : `${acc.username}@naver.com`;
     setTestStatus("발송 중...");
     try {
-      const { data, error } = await supabase.functions.invoke("send-quote-mail", {
-        body: { accountId, to: self, subject: "[오알오 CRM] 메일 발송 테스트", body: "CRM 견적서 메일 발송 기능이 정상 동작합니다." },
-      });
-      if (error) throw new Error(error.message || "함수 호출 실패");
-      if (data?.error) throw new Error(data.error);
+      await invokeMail({ accountId, to: self, subject: "[오알오 CRM] 메일 발송 테스트", body: "CRM 견적서 메일 발송 기능이 정상 동작합니다." });
       setTestStatus(`✓ ${self} 로 테스트 메일을 보냈습니다 — 받은편지함을 확인하세요`);
     } catch (e) { setTestStatus(`✗ 실패: ${e.message}`); }
   };
