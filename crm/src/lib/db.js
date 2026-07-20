@@ -158,6 +158,34 @@ export async function quoteIssueSave(row) {
   if (error) throw new Error(`발행 이력 저장 실패: ${error.message}`);
 }
 
+// ----- 일별 금시세 (신한은행 + PGC·청화은 수동 입력) -----
+
+export async function goldPricesList(limit = 120) {
+  const { data, error } = await supabase
+    .from("crm_gold_prices").select("*")
+    .order("date", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`금시세 불러오기 실패: ${error.message}`);
+  return data || [];
+}
+
+// 붙여넣기 일괄 저장 — 같은 날짜는 시세만 갱신하고 PGC·청화은 입력값은 보존
+// (rows에 pgc/agcn 키가 없으므로 upsert가 해당 컬럼을 건드리지 않도록 개별 병합)
+export async function goldPricesUpsert(rows) {
+  const { error } = await supabase.from("crm_gold_prices").upsert(rows, { onConflict: "date" });
+  if (error) throw new Error(`금시세 저장 실패: ${error.message}`);
+}
+
+export async function goldPriceSave(row) {
+  const { error } = await supabase.from("crm_gold_prices").upsert(row, { onConflict: "date" });
+  if (error) throw new Error(`금시세 저장 실패: ${error.message}`);
+}
+
+export async function goldPriceDelete(date) {
+  const { error } = await supabase.from("crm_gold_prices").delete().eq("date", date);
+  if (error) throw new Error(`금시세 삭제 실패: ${error.message}`);
+}
+
 // ----- local 모드: 브라우저 localStorage -----
 
 const LOCAL_KEYS = {

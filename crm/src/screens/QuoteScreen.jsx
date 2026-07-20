@@ -6,6 +6,7 @@ import { QuoteItemModal } from "../components/modals";
 import { pgcPricesList, pgcPriceSave, quoteItemsList, quoteItemSave, quoteItemDelete, quoteIssuesList, quoteIssueSave } from "../lib/db";
 import { TIER_LABELS, calcItem, marginOf, downloadQuoteXlsx, downloadQuoteZip } from "../lib/quote";
 import { QuoteCompare } from "./QuoteCompare";
+import { GoldPriceScreen } from "./GoldPriceScreen";
 import { MailSendModal } from "../components/MailSendModal";
 
 // ===========================================================================
@@ -223,9 +224,9 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
         }
       />
 
-      {/* 견적서 작성 ↔ 비교·추이 화면 전환 */}
+      {/* 견적서 작성 ↔ 비교·추이 ↔ 시세 입력 화면 전환 */}
       <div style={{ display: "flex", gap: 8, padding: isMobile ? "12px 14px 0" : "16px 28px 0" }}>
-        {[["edit", "📝 견적서 작성"], ["compare", "📊 비교·추이"]].map(([k, label]) => (
+        {[["edit", "📝 견적서 작성"], ["compare", "📊 비교·추이"], ["gold", "📈 시세 입력"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setView(k)}
@@ -242,6 +243,8 @@ export function QuoteScreen({ mode, companies, contacts, canEdit = true, onLogAc
       </div>
 
       {view === "compare" && <QuoteCompare companies={companies} />}
+
+      {view === "gold" && <GoldPriceScreen canEdit={canEdit} />}
 
       {view === "edit" && (
       <div style={{ padding: isMobile ? 14 : 28 }}>
