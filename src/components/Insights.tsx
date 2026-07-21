@@ -6,13 +6,14 @@ import * as XLSX from "xlsx";
 import { InoutRow, listInout, listPlans } from "../lib/db";
 import ProdConsumeAnalysis from "./ProdConsumeAnalysis";
 import BizReport from "./BizReport";
+import MarginAnalysis from "./MarginAnalysis";
 import { Order, PlanEntry } from "../lib/types";
 import { toast } from "../lib/toast";
 import { nf } from "../lib/fmt";
 import { usePersistState } from "../lib/usePersist";
 import { useIsMobile } from "../lib/useIsMobile";
 
-type View = "in" | "out" | "pc" | "brep";
+type View = "in" | "out" | "pc" | "margin" | "brep";
 type Unit = "year" | "quarter" | "month";
 type Trade = "all" | "내자" | "외자";
 
@@ -134,9 +135,10 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
             <button className={view === "in" ? "on" : ""} onClick={() => setView("in")}>🏭 생산</button>
             <button className={view === "out" ? "on" : ""} onClick={() => setView("out")}>💰 판매</button>
             <button className={view === "pc" ? "on" : ""} onClick={() => setView("pc")}>🧪 생산·소모</button>
+            <button className={view === "margin" ? "on" : ""} onClick={() => setView("margin")}>📐 원가·마진</button>
             <button className={view === "brep" ? "on" : ""} onClick={() => setView("brep")}>📋 경영보고서</button>
           </div>
-          {view !== "pc" && view !== "brep" && <>
+          {view !== "pc" && view !== "brep" && view !== "margin" && <>
           <div className="seg">
             {(["year", "quarter", "month"] as Unit[]).map(u => (
               <button key={u} className={unit === u ? "on" : ""} onClick={() => setUnit(u)}>{u === "year" ? "연도별" : u === "quarter" ? "분기별" : "월별"}</button>
@@ -164,12 +166,13 @@ export default function Insights({ orders = [] }: { orders?: Order[] }) {
           <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportXlsx}>📊 엑셀</button>
           </>}
         </div>
-        {view !== "pc" && view !== "brep" && <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>
+        {view !== "pc" && view !== "brep" && view !== "margin" && <p className="muted" style={{ fontSize: 11, margin: "8px 2px 0" }}>
           {isIn ? "생산입고 수량(g) 기준" : "판매 공급가액(부가세 제외) 기준"} · 막대를 누르면 {unit === "year" ? "분기" : unit === "quarter" ? "월" : "상세"}로 펼쳐집니다.
         </p>}
       </div>
 
       {view === "brep" ? <BizReport /> :
+      view === "margin" ? <MarginAnalysis /> :
       view === "pc" ? <ProdConsumeAnalysis /> : empty ? <div className="card"><p className="muted">{loaded ? `데이터가 없습니다. '${isIn ? "생산" : "판매"} 가져오기' 탭에서 먼저 데이터를 넣으세요.` : "불러오는 중…"}</p></div> :
       <>
         {/* KPI */}

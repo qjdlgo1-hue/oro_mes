@@ -59,7 +59,8 @@ export function buildStock(
   bases.forEach(b => {
     const a = acc(b.item_code, b.name, b.spec); if (!a) return;
     if (b.kind === "base") a.bases.push(b);
-    else a.all.push({ date: b.bdate, ym: ymOf(b.bdate), src: "조정", qty: +b.qty || 0, note: b.note || "" });
+    else if (b.kind === "adj") a.all.push({ date: b.bdate, ym: ymOf(b.bdate), src: "조정", qty: +b.qty || 0, note: b.note || "" });
+    // kind='min'(안전재고)은 잔량 계산에 넣지 않는다 — stockMins()로 별도 조회
     if (b.cat === "material") a.hasMat = true;
   });
 
@@ -104,6 +105,32 @@ export function monthLedger(it: ItemStock, ym: string): MonthLedger {
   });
   const r3 = (n: number) => Math.round(n * 1000) / 1000;
   return { open: r3(open), inQty: r3(inQty), outQty: r3(outQty), adjQty: r3(adjQty), close: r3(open + inQty - outQty + adjQty), rows };
+}
+
+// 안전재고(발주점) 맵: 품목키 → 하한선 (품목별 최신 bdate 행 채택, qty<=0은 미설정 취급)
+export function stockMins(bases: StockBase[]): Record<string, number> {
+  const latest = new Map<string, StockBase>();
+  bases.filter(b => b.kind === "min").forEach(b => {
+    const k = itemKey(b.item_code, b.name);
+    if (!k) return;
+    const cur = latest.get(k);
+    if (!cur || cur.bdate <= b.bdate) latest.set(k, b);
+  });
+  const out: Record<string, number> = {};
+  for (const [k, b] of latest) { const q = +b.qty || 0; if (q > 0) out[k] = q; }
+  return out;
+}
+
+// 안전재고 미달 품목 목록 (하한선이 설정된 품목만 검사)
+export function lowStock(items: ItemStock[], mins: Record<string, number>): { it: ItemStock; min: number; bal: number }[] {
+  const out: { it: ItemStock; min: number; bal: number }[] = [];
+  for (const it of items) {
+    const min = mins[it.key];
+    if (!min) continue;
+    const bal = balanceOf(it);
+    if (bal < min) out.push({ it, min, bal });
+  }
+  return out;
 }
 
 // 전체 데이터에서 수불부 월 목록 (최신순 아님 — 오름차순)
