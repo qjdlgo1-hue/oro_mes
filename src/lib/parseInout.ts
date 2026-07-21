@@ -12,7 +12,8 @@ function parseDate(v: string): { iso: string; ym: string } | null {
 }
 
 // 이카운트 화면/엑셀 붙여넣기(헤더 포함) → InoutRow[].
-// 헤더에서 일자/품목코드/품목명/규격/수량(+판매: 거래처명·공급가액) 열을 자동 인식.
+// 헤더에서 일자/품목코드/품목명/규격/수량(+판매·구매: 거래처명·공급가액·부가세 등) 열을 자동 인식.
+// kind="purchase"(이카운트 [구매현황])는 판매현황과 열 구성이 같아 동일 규칙으로 파싱한다.
 export function parseInout(kind: InoutKind, text: string): InoutRow[] {
   const lines = text.split(/\r?\n/).map(l => l.replace(/ /g, " ")).filter(l => l.trim());
   if (!lines.length) return [];
@@ -55,15 +56,15 @@ export function parseInout(kind: InoutKind, text: string): InoutRow[] {
 
     const qty = qi >= 0 ? toNum(c[qi]) : 0;
     const spec = si >= 0 ? (c[si] || "") : "";
-    const amount = (kind === "out" && ai >= 0) ? toNum(c[ai]) : null;
-    const customer = (kind === "out" && ui >= 0) ? (c[ui] || "") : "";
-    const trade_type = (kind === "out" && ti >= 0) ? (c[ti] || "") : "";
+    const amount = (kind !== "in" && ai >= 0) ? toNum(c[ai]) : null;
+    const customer = (kind !== "in" && ui >= 0) ? (c[ui] || "") : "";
+    const trade_type = (kind !== "in" && ti >= 0) ? (c[ti] || "") : "";
     const gubun = gi >= 0 ? (c[gi] || "").replace(/[\[\]\s]/g, "") : "";
-    const cust_code = (kind === "out" && cc >= 0) ? String(c[cc] || "").trim() : "";
-    const vat = (kind === "out" && vi >= 0) ? toNum(c[vi]) : null;
-    const total = (kind === "out" && htot >= 0) ? toNum(c[htot]) : null;
-    const currency = (kind === "out" && cu >= 0) ? String(c[cu] || "").trim() : "";
-    const fx_rate = (kind === "out" && fx >= 0) ? toNum(c[fx]) : null;
+    const cust_code = (kind !== "in" && cc >= 0) ? String(c[cc] || "").trim() : "";
+    const vat = (kind !== "in" && vi >= 0) ? toNum(c[vi]) : null;
+    const total = (kind !== "in" && htot >= 0) ? toNum(c[htot]) : null;
+    const currency = (kind !== "in" && cu >= 0) ? String(c[cu] || "").trim() : "";
+    const fx_rate = (kind !== "in" && fx >= 0) ? toNum(c[fx]) : null;
     const base = { kind, ym: dt.ym, idate: dt.iso, item_code: code, name, spec, qty, amount, customer, trade_type, gubun, cust_code, vat, total, currency, fx_rate, note: "" };
     out.push({ ...base, id: uid(), sig: inoutSig(base) });
   }

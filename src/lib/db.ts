@@ -108,8 +108,8 @@ export async function appendOrders(orders: Order[]): Promise<void> {
   lsSet(LS.orders, [...all, ...orders]);
 }
 
-// ===== 생산입고('in') / 판매현황('out') 누적 데이터 =====
-export type InoutKind = "in" | "out";
+// ===== 생산입고('in') / 판매현황('out') / 구매입고('purchase') 누적 데이터 =====
+export type InoutKind = "in" | "out" | "purchase";
 export type InoutRow = {
   id?: string; kind: InoutKind; ym: string; idate: string;
   item_code: string; name: string; spec?: string; qty: number;
@@ -119,7 +119,7 @@ export type InoutRow = {
 export function inoutSig(r: Omit<InoutRow, "sig">): string {
   return [r.kind, r.idate, r.item_code, r.name, r.spec || "", r.qty, r.amount ?? "", r.customer || "", r.trade_type || "", r.gubun || ""].join("|");
 }
-const lsKeyOf = (k: InoutKind) => (k === "in" ? LS.inout_in : LS.inout_out);
+const lsKeyOf = (k: InoutKind) => (k === "in" ? LS.inout_in : k === "purchase" ? "oro_inout_purchase" : LS.inout_out);
 
 export async function listInout(kind: InoutKind): Promise<InoutRow[]> {
   if (supabase) {
@@ -170,6 +170,33 @@ export async function saveSettings(s: Settings): Promise<void> {
     return;
   }
   lsSet(LS_SETTINGS, s);
+}
+
+// ===== 재고: 기초재고('base') / 실사 조정('adj') =====
+// base = 기준일(bdate) 시작 시점 잔량을 qty로 설정 — 그 이전 입출고는 무시 (재실사 시 새 base 추가)
+// adj  = ±증감(실사 차이 보정 등), note에 사유
+export type StockBase = {
+  id?: string; kind: "base" | "adj"; cat: "product" | "material";
+  item_code: string; name: string; spec?: string;
+  bdate: string; qty: number; note?: string; created_at?: string;
+};
+const LS_STOCK_BASE = "oro_stock_base";
+export async function listStockBase(): Promise<StockBase[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("stock_base").select("*").order("bdate");
+    if (error) throw error;
+    return (data || []) as StockBase[];
+  }
+  return lsGet<StockBase[]>(LS_STOCK_BASE, []);
+}
+export async function addStockBase(row: StockBase): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("stock_base").insert(row); if (error) throw error; return; }
+  const all = lsGet<StockBase[]>(LS_STOCK_BASE, []);
+  lsSet(LS_STOCK_BASE, [...all, { ...row, id: row.id || "sb-" + Date.now() + Math.random().toString(36).slice(2) }]);
+}
+export async function deleteStockBase(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("stock_base").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_STOCK_BASE, lsGet<StockBase[]>(LS_STOCK_BASE, []).filter(r => r.id !== id));
 }
 
 // ---- 생산 라벨: 거래처별 포장단위(New wt, g) ----
