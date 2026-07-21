@@ -2,11 +2,12 @@ import { errMsg } from "../lib/errmsg";
 import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
-import { listPlans, listCocs, upsertPlan, logAudit } from "../lib/db";
+import { listPlans, listCocs, upsertPlan, logAudit, getLabelPacks, saveLabelPacks } from "../lib/db";
 import { completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
-import { LabelOpts, loadLabelOpts, saveLabelOpts, printProductionLabel } from "../lib/label";
+import { LabelOpts, loadLabelOpts, saveLabelOpts, calcCopies, printPowderLabels, powderLabelHtml, POWDER_LABEL_CSS } from "../lib/label";
+import { parseModelCode } from "../lib/labelRules";
 
 const p = (n: number) => String(n).padStart(2, "0");
 
@@ -61,14 +62,35 @@ export default function Today({ orders }: { orders: Order[] }) {
     return { today, late, upcoming, cocNeeded };
   }, [plans, cocs, oMap, T, tick]);
 
-  // ---- 생산 라벨 (EPSON TM-C3500 등 라벨 프린터) ----
+  // ---- 생산 라벨 (Conductive Powder 70×40mm — labelprintspec.md) ----
   const [labelOpts, setLabelOpts] = useState<LabelOpts>(loadLabelOpts);
   const [labelCfgOpen, setLabelCfgOpen] = useState(false);
   const setLabel = (patch: Partial<LabelOpts>) => setLabelOpts(o => { const n = { ...o, ...patch }; saveLabelOpts(n); return n; });
-  async function printLabel(o: Order, pl?: PlanEntry, win?: Window | null) {
-    const date = (pl && completionDate(pl)) || T;
-    try { await printProductionLabel(o, pl, date, labelOpts, win); }
-    catch (e: any) { toast.error("라벨 인쇄 실패: " + errMsg(e)); }
+  // 거래처별 포장단위(New wt, g) — 여러 PC 공유를 위해 서버(app_settings)에 저장
+  const [packs, setPacks] = useState<Record<string, number>>({});
+  useEffect(() => { getLabelPacks().then(setPacks).catch(() => { /* 오프라인 등 — 기본 포장단위로 동작 */ }); }, []);
+  const packOf = (o: Order) => packs[o.customer] || labelOpts.packDefault || 50;
+  const qtyOf = (o: Order, pl?: PlanEntry) => (pl?.qty != null ? Number(pl.qty) : Number(o.qty)) || 0;
+
+  // 🏷 인쇄 다이얼로그 — 포장단위·매수(자동계산, 수정 가능)·제조일 확인 후 인쇄
+  const [labelDlg, setLabelDlg] = useState<{ o: Order; pl?: PlanEntry } | null>(null);
+  const [dlgPack, setDlgPack] = useState("50");
+  const [dlgCopies, setDlgCopies] = useState("1");
+  const [dlgMfg, setDlgMfg] = useState(T);
+  function openLabelDlg(o: Order, pl?: PlanEntry) {
+    const pack = packOf(o);
+    setDlgPack(String(pack));
+    setDlgCopies(String(calcCopies(qtyOf(o, pl), pack)));
+    setDlgMfg((pl && completionDate(pl)) || T);
+    setLabelDlg({ o, pl });
+  }
+
+  // 거래처 기본 포장단위 저장 (달라졌을 때만)
+  async function savePackDefault(customer: string, packG: number) {
+    if (!customer || packs[customer] === packG) return;
+    const np = { ...packs, [customer]: packG };
+    setPacks(np);
+    try { await saveLabelPacks(np); } catch (e: any) { toast.error("포장단위 저장 실패: " + errMsg(e)); }
   }
 
   async function markDone(pl: PlanEntry) {
@@ -80,8 +102,17 @@ export default function Today({ orders }: { orders: Order[] }) {
       await upsertPlan(np);
       const o = oMap[pl.order_id]; logAudit("생산 완료", "plan", pl.order_id, { name: o?.name });
       toast.success(`완료 처리됨: ${oMap[pl.order_id]?.name || ""}${labelOpts.auto && labelWin ? " — 라벨 인쇄" : ""}`);
-      if (labelOpts.auto && o) await printLabel(o, np, labelWin);
-      else labelWin?.close();
+      if (labelOpts.auto && o) {
+        // 모델명에서 라벨 정보를 못 읽는 제품(PIN·PM 등 파우더 외)은 자동 인쇄를 건너뛴다
+        if (parseModelCode(o.name).s1 == null) {
+          labelWin?.close();
+          toast.info(`라벨 자동 인쇄 건너뜀 — 모델명에서 라벨 정보를 읽지 못함: ${o.name}`);
+        } else {
+          const pack = packOf(o);
+          try { printPowderLabels(o, { packG: pack, copies: calcCopies(qtyOf(o, np), pack), mfgIso: completionDate(np) || T }, labelWin); }
+          catch (e: any) { labelWin?.close(); toast.error("라벨 인쇄 실패: " + errMsg(e)); }
+        }
+      } else labelWin?.close();
     } catch (e: any) {
       labelWin?.close();
       setPlans(prev => ({ ...prev, [pl.order_id]: pl })); setTick(t => t + 1);
@@ -95,7 +126,7 @@ export default function Today({ orders }: { orders: Order[] }) {
         <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>· {o.spec}</span></div>
         <div style={{ fontSize: 12, color: "var(--muted)" }}>{o.customer} · {(pl.qty != null ? Number(pl.qty) : o.qty).toLocaleString()}g · 생산 {start.slice(5)}~{end.slice(5)}{late ? ` · 완료예정 ${end} 지남` : ""}</div>
       </div>
-      <button className="btn ghost" style={{ fontSize: 12, padding: "5px 8px" }} title="생산 라벨 인쇄" onClick={() => printLabel(o, pl)}>🏷</button>
+      <button className="btn ghost" style={{ fontSize: 12, padding: "5px 8px" }} title="생산 라벨 인쇄" onClick={() => openLabelDlg(o, pl)}>🏷</button>
       {canEdit && <button className="btn green" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => markDone(pl)}>완료</button>}
     </div>
   );
@@ -118,33 +149,34 @@ export default function Today({ orders }: { orders: Order[] }) {
       </div>
 
       {labelCfgOpen && (() => {
-        const ni: React.CSSProperties = { width: 56, padding: 5, border: "1px solid var(--line)", borderRadius: 5 };
+        const ni: React.CSSProperties = { width: 64, padding: 5, border: "1px solid var(--line)", borderRadius: 5 };
+        const customers = [...new Set(orders.map(o => o.customer).filter(Boolean))].sort();
         return (
         <div className="card" style={{ gridColumn: "1 / -1", padding: 12 }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
-            <b>🏷 생산 라벨 설정</b>
-            <div className="seg">
-              <button className={labelOpts.mode === "roll" ? "on" : ""} onClick={() => setLabel({ mode: "roll" })}>롤 라벨 (라벨 프린터)</button>
-              <button className={labelOpts.mode === "sheet" ? "on" : ""} onClick={() => setLabel({ mode: "sheet" })}>A4 라벨지 21칸</button>
-            </div>
-            {labelOpts.mode === "sheet" ? <>
-              <label>시작 칸(1~21) <input type="number" min={1} max={21} value={labelOpts.start} onChange={e => setLabel({ start: Math.max(1, Math.min(21, Number(e.target.value) || 1)) })} style={ni} /></label>
-              <label>장수 <input type="number" min={1} max={200} value={labelOpts.copies} onChange={e => setLabel({ copies: Math.max(1, Math.min(200, Number(e.target.value) || 1)) })} style={ni} /></label>
-              <label>보정 ↔(mm) <input type="number" step={0.5} value={labelOpts.offX} onChange={e => setLabel({ offX: Number(e.target.value) || 0 })} style={ni} /></label>
-              <label>보정 ↕(mm) <input type="number" step={0.5} value={labelOpts.offY} onChange={e => setLabel({ offY: Number(e.target.value) || 0 })} style={ni} /></label>
-            </> : <>
-              <label>폭(mm) <input type="number" value={labelOpts.w} onChange={e => setLabel({ w: Number(e.target.value) || 100 })} style={ni} /></label>
-              <label>높이(mm) <input type="number" value={labelOpts.h} onChange={e => setLabel({ h: Number(e.target.value) || 60 })} style={ni} /></label>
-              <label>장수 <input type="number" min={1} max={50} value={labelOpts.copies} onChange={e => setLabel({ copies: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })} style={ni} /></label>
-            </>}
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><input type="checkbox" checked={labelOpts.qr} onChange={e => setLabel({ qr: e.target.checked })} /> QR 코드</label>
+          <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+            <b>🏷 생산 라벨 설정</b> <span className="muted" style={{ fontSize: 12 }}>Conductive Powder 70×40mm 롤 라벨</span>
+            <label>기본 포장단위(g) <input type="number" min={1} value={labelOpts.packDefault} onChange={e => setLabel({ packDefault: Math.max(1, Number(e.target.value) || 50) })} style={ni} /></label>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><input type="checkbox" checked={labelOpts.auto} onChange={e => setLabel({ auto: e.target.checked })} /> <b>완료 처리 시 자동 인쇄</b></label>
           </div>
+          {customers.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>거래처별 포장단위(g) <span className="muted" style={{ fontWeight: 400 }}>— 비우면 기본값 사용. 인쇄 매수 = 생산수량 ÷ 포장단위 (올림)</span></div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+                {customers.map(c => (
+                  <label key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{c}
+                    <input type="number" min={1} placeholder={String(labelOpts.packDefault)} value={packs[c] || ""} style={ni}
+                      onChange={e => { const v = Number(e.target.value) || 0; setPacks(p => { const n = { ...p }; if (v > 0) n[c] = v; else delete n[c]; return n; }); }}
+                      onBlur={() => saveLabelPacks(packs).catch((e: any) => toast.error("포장단위 저장 실패: " + errMsg(e)))} />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="muted" style={{ fontSize: 11.5, margin: "8px 0 0", lineHeight: 1.7 }}>
-            {labelOpts.mode === "sheet"
-              ? <>A4 21칸 라벨지(프린텍 V3330, 63.5×38.1mm — Avery L7160 호환) 기준입니다. 쓰다 만 라벨지는 <b>시작 칸</b>으로 빈 칸부터 이어 인쇄하세요. 인쇄 시 <b>배율 100%(실제 크기)</b>로 설정해야 칸이 정확히 맞습니다. 위치가 밀리면 보정(mm)으로 조절.</>
-              : <>롤 라벨 프린터(예: EPSON TM-C3500) 기준입니다. 기본 63.5×38.1mm — 프린터에 넣은 롤 용지 크기와 폭·높이를 맞추고, 프린터 드라이버의 용지 설정도 같은 크기로 지정하세요.</>}
-            {" "}각 행의 🏷 버튼으로 언제든 다시 인쇄할 수 있습니다.<br />
+            라벨은 <b>70×40mm</b> 고정입니다. 라벨 프린터(예: EPSON TM-C3500) 드라이버 용지 설정에 70×40mm를 등록하고,
+            크롬 인쇄 대화상자에서 <b>여백 없음 · 배율 100% · 배경 그래픽 켜기</b>로 설정하세요.
+            하단 색 띠는 모델명으로 자동 결정됩니다 (Ag 포함 → 노랑+회색, Ag 없음 → 전체 노랑).
+            {" "}각 행의 🏷 버튼으로 미리보기·매수 수정 후 인쇄할 수 있습니다.<br />
             💡 <b>다이얼로그 없이 완전 자동 출력</b>: 현장 PC 크롬 바로가기에 <code>--kiosk-printing</code> 옵션 + 기본 프린터 지정 → 완료 버튼만 눌러도 라벨이 바로 나옵니다.
           </p>
         </div>
@@ -166,7 +198,7 @@ export default function Today({ orders }: { orders: Order[] }) {
               <div style={{ fontWeight: 700 }}>{o.name} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>· {o.spec}</span></div>
               <div style={{ fontSize: 12, color: "var(--muted)" }}>{o.customer} · {o.qty.toLocaleString()}g</div>
             </div>
-            <button className="btn ghost" style={{ fontSize: 12, padding: "5px 8px" }} title="생산 라벨 인쇄" onClick={() => printLabel(o, plans[o.id])}>🏷</button>
+            <button className="btn ghost" style={{ fontSize: 12, padding: "5px 8px" }} title="생산 라벨 인쇄" onClick={() => openLabelDlg(o, plans[o.id])}>🏷</button>
             <button className="btn ghost" style={{ fontSize: 12, padding: "5px 10px" }} onClick={() => { window.location.hash = "coc/" + o.id; }}>📄 발행하기 →</button>
           </div>
         ))}
@@ -175,6 +207,51 @@ export default function Today({ orders }: { orders: Order[] }) {
       <Section title="⚪ 다가오는 7일 생산 예정" color="#6b7f96" count={groups.upcoming.length}>
         {groups.upcoming.map(g => <Row key={g.o.id} {...g} pl={g.p} />)}
       </Section>
+
+      {labelDlg && (() => {
+        const { o, pl } = labelDlg;
+        const parse = parseModelCode(o.name);
+        const qty = qtyOf(o, pl);
+        const packG = Math.max(1, Number(dlgPack) || 0);
+        const ni: React.CSSProperties = { width: 90, padding: 6, border: "1px solid var(--line)", borderRadius: 6 };
+        const doPrint = () => {
+          const copies = Math.max(1, Math.min(500, Number(dlgCopies) || 1));
+          // 클릭 직후 동기 open — 팝업 차단 회피
+          const win = window.open("", "_blank", "width=560,height=460");
+          try { printPowderLabels(o, { packG, copies, mfgIso: dlgMfg || T }, win); }
+          catch (e: any) { toast.error("라벨 인쇄 실패: " + errMsg(e)); }
+          setLabelDlg(null);
+          savePackDefault(o.customer, packG); // 이 거래처 기본 포장단위로 기억
+        };
+        return (
+          <div onClick={() => setLabelDlg(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: 10, padding: "16px 18px", width: "100%", maxWidth: 480, boxShadow: "0 8px 30px rgba(0,0,0,.3)", maxHeight: "92vh", overflow: "auto" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>🏷 라벨 인쇄 — {o.name}</div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{o.customer} · 생산수량 {qty.toLocaleString()}g</div>
+              {parse.s1 == null
+                ? <div style={{ fontSize: 12.5, background: "#fdf3e7", border: "1px solid #e6a23c", borderRadius: 6, padding: "6px 10px", marginBottom: 8 }}>⚠ 모델명에서 사이즈·도금 정보를 읽지 못했습니다. 파우더 제품 라벨 대상인지 확인하세요 (그래도 인쇄는 가능).</div>
+                : <div style={{ fontSize: 12.5, marginBottom: 8 }}>{parse.ag > 0 ? "🟡⬜ Ag 포함 — 하단 띠: 노랑+회색" : "🟡 Ag 없음 — 하단 띠: 전체 노랑"}</div>}
+              {/* 미리보기: 인쇄와 동일한 HTML/CSS (70×40mm 실제 크기) */}
+              <style>{POWDER_LABEL_CSS}</style>
+              <div style={{ border: "1px solid var(--line)", display: "inline-block", boxShadow: "0 1px 4px rgba(0,0,0,.15)" }}
+                dangerouslySetInnerHTML={{ __html: powderLabelHtml(o.name, parse, `${packG}g`, dlgMfg || T) }} />
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, marginTop: 10 }}>
+                <label>포장단위(g)<br /><input type="number" min={1} value={dlgPack} style={ni}
+                  onChange={e => { const v = e.target.value; setDlgPack(v); const p = Number(v) || 0; if (p > 0) setDlgCopies(String(calcCopies(qty, p))); }} /></label>
+                <label>매수 <span className="muted" style={{ fontSize: 11 }}>(자동: 수량÷포장단위 올림)</span><br />
+                  <input type="number" min={1} max={500} value={dlgCopies} style={ni} onChange={e => setDlgCopies(e.target.value)} /></label>
+                <label>제조일<br /><input type="date" value={dlgMfg} style={{ ...ni, width: 140 }} onChange={e => setDlgMfg(e.target.value)} /></label>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+                <button className="btn ghost" onClick={() => setLabelDlg(null)}>취소</button>
+                <button className="btn" onClick={doPrint}>🖨 인쇄</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
