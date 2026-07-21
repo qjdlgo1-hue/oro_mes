@@ -172,6 +172,22 @@ export async function saveSettings(s: Settings): Promise<void> {
   lsSet(LS_SETTINGS, s);
 }
 
+// ---- 생산 라벨: 거래처별 포장단위(New wt, g) ----
+// 라벨 인쇄 매수 자동계산(수량 ÷ 포장단위 올림)에 사용. 여러 PC에서 공유되도록 app_settings에 저장.
+const LS_LABEL_PACKS = "oro_label_packs";
+export async function getLabelPacks(): Promise<Record<string, number>> {
+  if (supabase) {
+    const { data, error } = await supabase.from("app_settings").select("label_packs").eq("id", 1).maybeSingle();
+    if (error) throw error;
+    return ((data as any)?.label_packs as Record<string, number>) || {};
+  }
+  return lsGet<Record<string, number>>(LS_LABEL_PACKS, {});
+}
+export async function saveLabelPacks(p: Record<string, number>): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("app_settings").upsert({ id: 1, label_packs: p }, { onConflict: "id" }); if (error) throw error; return; }
+  lsSet(LS_LABEL_PACKS, p);
+}
+
 // ---- 주문 수정/삭제 ----
 export async function updateOrder(id: string, patch: Partial<Order>): Promise<void> {
   if (supabase) { const { error } = await supabase.from("orders").update(patch).eq("id", id); if (error) throw error; return; }

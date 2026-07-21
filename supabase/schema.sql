@@ -262,3 +262,8 @@ create index if not exists grant_docs_program_idx on grant_docs (program, create
 -- ===== Edge Function: grant-write =====
 -- supabase/functions/grant-write — 서류 서술형 칸의 짧은 초안을 Claude API(claude-opus-4-8)로
 -- 공식 서류 문체(보고체)로 확장. biz-report와 같은 ANTHROPIC_API_KEY secret 사용(커밋 금지).
+
+-- ===== 생산 라벨 (POP · Conductive Powder 70×40mm) =====
+-- 거래처별 포장단위(New wt, g) — Today(POP) 라벨 인쇄에서 매수 자동계산(수량 ÷ 포장단위 올림)에 사용.
+-- 예: {"거래처A": 50, "거래처B": 100}
+alter table app_settings add column if not exists label_packs jsonb;

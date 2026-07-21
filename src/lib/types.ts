@@ -39,6 +39,7 @@ export type Settings = {
   stamp?: string;  // dataURL
   company?: string;
   format?: FormatSettings;
+  label_packs?: Record<string, number>; // 거래처별 라벨 포장단위(New wt, g)
 };
 
 export type Receipt = {
