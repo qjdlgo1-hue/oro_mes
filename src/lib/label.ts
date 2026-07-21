@@ -27,6 +27,29 @@ export function calcCopies(qtyG: number, packG: number): number {
   return Math.max(1, Math.ceil(q / p));
 }
 
+// 장별 무게(New wt) 구성 — 나누어떨어지지 않으면 마지막 장만 나머지 무게로.
+// 예: 500g ÷ 200g → [200, 200, 100] (200g 2장 + 100g 1장)
+// 단, 매수를 수동으로 고쳐 자동 계산값과 다르면 수량과 매칭이 안 되므로 전부 포장단위 그대로.
+export function packWeights(qtyG: number, packG: number, copies: number): number[] {
+  const n = Math.max(1, Math.min(500, Math.floor(copies) || 1));
+  const q = Number(qtyG) || 0, p = Number(packG) || 0;
+  if (q > 0 && p > 0 && n === calcCopies(q, p)) {
+    const rem = q - p * (n - 1); // 마지막 장에 담기는 무게
+    if (rem > 0 && rem < p) return [...Array(n - 1).fill(p), rem];
+  }
+  return Array(n).fill(p || 0);
+}
+
+// 구성 요약 문구: [200,200,100] → "200g × 2장 + 100g × 1장"
+export function packSummary(weights: number[]): string {
+  const g: [number, number][] = [];
+  weights.forEach(w => {
+    const last = g[g.length - 1];
+    if (last && last[0] === w) last[1]++; else g.push([w, 1]);
+  });
+  return g.map(([w, c]) => `${w}g × ${c}장`).join(" + ");
+}
+
 const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // 라벨 CSS — labelprintspec.md §6 그대로 (실물 검증 완료, 구조·비율 변경 금지).
@@ -106,14 +129,15 @@ export function powderLabelHtml(model: string, p: ModelParse, weightText: string
 </div>`;
 }
 
-// 라벨 인쇄 — 매수만큼 반복, 라벨 1장 = 1페이지(70×40mm, 여백 0).
+// 라벨 인쇄 — 장별 무게 목록(weights)만큼 1장 = 1페이지(70×40mm, 여백 0)로 출력.
+// 나머지 분할이 있으면 마지막 장만 나머지 무게로 인쇄된다 (packWeights 참고).
 // win을 미리 열어 넘기면(클릭 직후 동기 open) 팝업 차단을 피할 수 있다.
 export function printPowderLabels(
-  o: Order, opts: { packG: number; copies: number; mfgIso: string }, win?: Window | null,
+  o: Order, opts: { weights: number[]; mfgIso: string }, win?: Window | null,
 ): void {
   const p = parseModelCode(o.name);
-  const one = powderLabelHtml(o.name, p, `${opts.packG}g`, opts.mfgIso);
-  const n = Math.max(1, Math.min(500, Math.floor(opts.copies) || 1));
+  const weights = opts.weights.length ? opts.weights.slice(0, 500) : [0];
+  const body = weights.map(w => powderLabelHtml(o.name, p, `${w}g`, opts.mfgIso)).join("");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>라벨 ${esc(o.name)}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -121,7 +145,7 @@ export function printPowderLabels(
     ${POWDER_LABEL_CSS}
     .label { page-break-after: always; }
     .label:last-child { page-break-after: auto; }
-  </style></head><body>${one.repeat(n)}</body></html>`;
+  </style></head><body>${body}</body></html>`;
   const w = win || window.open("", "_blank", "width=560,height=460");
   if (!w) throw new Error("팝업이 차단되었습니다 — 브라우저 팝업 허용 후 다시 시도하세요.");
   w.document.open();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseModelCode, buildGrade, fmtDate, expiryDate } from "../labelRules";
-import { calcCopies } from "../label";
+import { calcCopies, packWeights, packSummary } from "../label";
 
 // labelprintspec.md §5·§8의 예시 모델 2종 + 실제 주문 데이터에서 나온 변형들
 describe("parseModelCode", () => {
@@ -77,5 +77,33 @@ describe("calcCopies (매수 = 수량÷포장단위 올림)", () => {
   it("비정상 값은 1장", () => {
     expect(calcCopies(0, 50)).toBe(1);
     expect(calcCopies(100, 0)).toBe(1);
+  });
+});
+
+describe("packWeights (장별 무게 — 나머지는 마지막 장)", () => {
+  it("500g ÷ 200g → 200g 2장 + 100g 1장", () => {
+    expect(packWeights(500, 200, 3)).toEqual([200, 200, 100]);
+  });
+  it("나누어떨어지면 전부 포장단위: 500g ÷ 100g → 100g 5장", () => {
+    expect(packWeights(500, 100, 5)).toEqual([100, 100, 100, 100, 100]);
+  });
+  it("수량이 포장단위보다 작으면 1장에 실제 무게: 30g ÷ 50g → [30]", () => {
+    expect(packWeights(30, 50, 1)).toEqual([30]);
+  });
+  it("매수를 수동으로 고치면(자동값과 다르면) 분할 없이 전부 포장단위", () => {
+    expect(packWeights(500, 200, 5)).toEqual([200, 200, 200, 200, 200]);
+    expect(packWeights(500, 200, 2)).toEqual([200, 200]);
+  });
+  it("비정상 값이어도 최소 1장", () => {
+    expect(packWeights(0, 200, 1)).toEqual([200]);
+  });
+});
+
+describe("packSummary (구성 요약 문구)", () => {
+  it("[200,200,100] → '200g × 2장 + 100g × 1장'", () => {
+    expect(packSummary([200, 200, 100])).toBe("200g × 2장 + 100g × 1장");
+  });
+  it("[100×5] → '100g × 5장'", () => {
+    expect(packSummary([100, 100, 100, 100, 100])).toBe("100g × 5장");
   });
 });

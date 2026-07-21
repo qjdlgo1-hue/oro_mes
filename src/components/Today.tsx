@@ -6,7 +6,7 @@ import { listPlans, listCocs, upsertPlan, logAudit, getLabelPacks, saveLabelPack
 import { completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
-import { LabelOpts, loadLabelOpts, saveLabelOpts, calcCopies, printPowderLabels, powderLabelHtml, POWDER_LABEL_CSS } from "../lib/label";
+import { LabelOpts, loadLabelOpts, saveLabelOpts, calcCopies, packWeights, packSummary, printPowderLabels, powderLabelHtml, POWDER_LABEL_CSS } from "../lib/label";
 import { parseModelCode } from "../lib/labelRules";
 
 const p = (n: number) => String(n).padStart(2, "0");
@@ -108,8 +108,10 @@ export default function Today({ orders }: { orders: Order[] }) {
           labelWin?.close();
           toast.info(`라벨 자동 인쇄 건너뜀 — 모델명에서 라벨 정보를 읽지 못함: ${o.name}`);
         } else {
-          const pack = packOf(o);
-          try { printPowderLabels(o, { packG: pack, copies: calcCopies(qtyOf(o, np), pack), mfgIso: completionDate(np) || T }, labelWin); }
+          const pack = packOf(o), qty = qtyOf(o, np);
+          // 나누어떨어지지 않으면 마지막 장만 나머지 무게 (예: 500g÷200g → 200g×2 + 100g×1)
+          const weights = packWeights(qty, pack, calcCopies(qty, pack));
+          try { printPowderLabels(o, { weights, mfgIso: completionDate(np) || T }, labelWin); }
           catch (e: any) { labelWin?.close(); toast.error("라벨 인쇄 실패: " + errMsg(e)); }
         }
       } else labelWin?.close();
@@ -213,12 +215,13 @@ export default function Today({ orders }: { orders: Order[] }) {
         const parse = parseModelCode(o.name);
         const qty = qtyOf(o, pl);
         const packG = Math.max(1, Number(dlgPack) || 0);
+        // 장별 무게 구성 — 자동 매수일 때만 마지막 장을 나머지로 분할 (예: 500g÷200g → 200g×2 + 100g×1)
+        const weights = packWeights(qty, packG, Math.max(1, Math.min(500, Number(dlgCopies) || 1)));
         const ni: React.CSSProperties = { width: 90, padding: 6, border: "1px solid var(--line)", borderRadius: 6 };
         const doPrint = () => {
-          const copies = Math.max(1, Math.min(500, Number(dlgCopies) || 1));
           // 클릭 직후 동기 open — 팝업 차단 회피
           const win = window.open("", "_blank", "width=560,height=460");
-          try { printPowderLabels(o, { packG, copies, mfgIso: dlgMfg || T }, win); }
+          try { printPowderLabels(o, { weights, mfgIso: dlgMfg || T }, win); }
           catch (e: any) { toast.error("라벨 인쇄 실패: " + errMsg(e)); }
           setLabelDlg(null);
           savePackDefault(o.customer, packG); // 이 거래처 기본 포장단위로 기억
@@ -236,13 +239,17 @@ export default function Today({ orders }: { orders: Order[] }) {
               {/* 미리보기: 인쇄와 동일한 HTML/CSS (70×40mm 실제 크기) */}
               <style>{POWDER_LABEL_CSS}</style>
               <div style={{ border: "1px solid var(--line)", display: "inline-block", boxShadow: "0 1px 4px rgba(0,0,0,.15)" }}
-                dangerouslySetInnerHTML={{ __html: powderLabelHtml(o.name, parse, `${packG}g`, dlgMfg || T) }} />
+                dangerouslySetInnerHTML={{ __html: powderLabelHtml(o.name, parse, `${weights[0]}g`, dlgMfg || T) }} />
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 13, marginTop: 10 }}>
                 <label>포장단위(g)<br /><input type="number" min={1} value={dlgPack} style={ni}
                   onChange={e => { const v = e.target.value; setDlgPack(v); const p = Number(v) || 0; if (p > 0) setDlgCopies(String(calcCopies(qty, p))); }} /></label>
                 <label>매수 <span className="muted" style={{ fontSize: 11 }}>(자동: 수량÷포장단위 올림)</span><br />
                   <input type="number" min={1} max={500} value={dlgCopies} style={ni} onChange={e => setDlgCopies(e.target.value)} /></label>
                 <label>제조일<br /><input type="date" value={dlgMfg} style={{ ...ni, width: 140 }} onChange={e => setDlgMfg(e.target.value)} /></label>
+              </div>
+              <div style={{ fontSize: 12.5, marginTop: 8, background: "#f3f7fc", border: "1px solid var(--line)", borderRadius: 6, padding: "6px 10px" }}>
+                인쇄 구성: <b>{packSummary(weights)}</b>
+                {weights.length > 1 && weights[weights.length - 1] !== weights[0] && <span className="muted"> — 나누어떨어지지 않아 마지막 장은 나머지 무게로 인쇄됩니다.</span>}
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
                 <button className="btn ghost" onClick={() => setLabelDlg(null)}>취소</button>
