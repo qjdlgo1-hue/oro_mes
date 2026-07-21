@@ -10,6 +10,8 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.support", label: "지원사업(검수조서)" },
   { key: "menu.prodin", label: "생산 가져오기" },
   { key: "menu.sales", label: "판매 가져오기" },
+  { key: "menu.purchase", label: "구매 가져오기" },
+  { key: "menu.stock", label: "재고" },
   { key: "menu.dash", label: "대시보드" },
   { key: "menu.prodcon", label: "생산·소모 분석" },
   { key: "menu.report", label: "리포트" },
@@ -29,6 +31,7 @@ export const CAPS: { key: string; label: string }[] = [
   { key: "audit.view", label: "기록 보기" },
   { key: "receipt.edit", label: "증빙 입력/삭제" },
   { key: "bom.edit", label: "원재료(BOM) 수정" },
+  { key: "stock.edit", label: "재고 기초·조정 입력" },
 ];
 
 // 화면별 통합 권한표: view=보기 키(복수면 스위치 하나로 동시 토글), acts=그 화면의 작업, shared=다른 화면과 공유되는 권한 표기
@@ -44,6 +47,8 @@ export const SCREEN_PERMS: ScreenPerm[] = [
   { name: "생산 가져오기", group: "📥 데이터", view: ["menu.prodin"], acts: [{ k: "order.import", label: "가져오기", shared: "주문 가져오기" }] },
   { name: "판매 가져오기", group: "📥 데이터", view: ["menu.sales"], acts: [{ k: "order.import", label: "가져오기", shared: "주문 가져오기" }] },
   { name: "생산·소모", group: "📥 데이터", view: ["menu.prodcon"], acts: [{ k: "order.import", label: "가져오기", shared: "주문 가져오기" }] },
+  { name: "구매 가져오기", group: "📥 데이터", view: ["menu.purchase"], acts: [{ k: "order.import", label: "가져오기", shared: "주문 가져오기" }] },
+  { name: "재고", group: "📊 분석", view: ["menu.stock"], acts: [{ k: "stock.edit", label: "기초·조정 입력" }] },
   { name: "대시보드", group: "📊 분석", view: ["menu.dash"], acts: [] },
   { name: "리포트", group: "📊 분석", view: ["menu.report", "report.view"], acts: [] },
   { name: "증빙(영수증)", group: "📁 관리", view: ["menu.receipt"], acts: [{ k: "receipt.edit", label: "입력·삭제" }] },

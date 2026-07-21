@@ -267,3 +267,28 @@ create index if not exists grant_docs_program_idx on grant_docs (program, create
 -- 거래처별 포장단위(New wt, g) — Today(POP) 라벨 인쇄에서 매수 자동계산(수량 ÷ 포장단위 올림)에 사용.
 -- 예: {"거래처A": 50, "거래처B": 100}
 alter table app_settings add column if not exists label_packs jsonb;
+
+-- ===== 재고 관리 (구매 입고 + 기초재고·실사 조정) =====
+-- inout_rows.kind에 'purchase'(구매 입고 — 이카운트 [구매현황]) 추가.
+-- 재고 계산: 제품 = 생산입고(in) − 판매(out), 원재료 = 구매(purchase) − 생산소모(prod_consume).
+alter table inout_rows drop constraint if exists inout_rows_kind_check;
+alter table inout_rows add constraint inout_rows_kind_check check (kind in ('in','out','purchase'));
+
+-- 기초재고/실사 조정 — 수불부의 시작 잔량과 실물 보정 기록.
+-- kind='base': 기준일(bdate) 시작 시점 잔량을 qty로 설정(그 이전 데이터는 무시, 재실사 시 새 base 추가)
+-- kind='adj' : 실사 차이 등 ±증감(qty가 음수면 감소), note에 사유
+create table if not exists stock_base (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('base','adj')),
+  cat text not null default 'product' check (cat in ('product','material')),
+  item_code text not null default '',
+  name text not null default '',
+  spec text,
+  bdate date not null,
+  qty numeric not null default 0,
+  note text,
+  created_at timestamptz not null default now()
+);
+alter table stock_base enable row level security;
+drop policy if exists "stock_base_all" on stock_base;
+create policy "stock_base_all" on stock_base for all to authenticated using (true) with check (true);

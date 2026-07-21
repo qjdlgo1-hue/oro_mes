@@ -1,8 +1,9 @@
 import { errMsg } from "../lib/errmsg";
 import { thBase, tdBase } from "../lib/styles";
 import { useEffect, useMemo, useState } from "react";
-import { InoutKind, InoutRow, listInout, appendInout, deleteInoutMonth, listOrders, logAudit } from "../lib/db";
+import { InoutKind, InoutRow, inoutSig, listInout, appendInout, deleteInoutMonth, listOrders, logAudit } from "../lib/db";
 import { parseInout } from "../lib/parseInout";
+import { todayIso } from "../lib/fmt";
 import { toast } from "../lib/toast";
 import { can } from "../lib/perm";
 import { confirmDialog } from "../lib/confirm";
@@ -12,10 +13,11 @@ import { useSort } from "../lib/useSort";
 import { usePaged } from "../lib/usePaged";
 import MonthPicker from "./MonthPicker";
 
-type Cfg = { kind: InoutKind; title: string; source: string; accent: string };
+type Cfg = { kind: InoutKind; title: string; source: string; accent: string; audit: string };
 const CFG: Record<InoutKind, Cfg> = {
-  in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "var(--accent)" },
-  out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "var(--ok)" },
+  in: { kind: "in", title: "생산 가져오기", source: "이카운트 [생산입고 조회]", accent: "var(--accent)", audit: "생산입고" },
+  out: { kind: "out", title: "판매 가져오기", source: "이카운트 [판매현황]", accent: "var(--ok)", audit: "판매현황" },
+  purchase: { kind: "purchase", title: "구매 가져오기", source: "이카운트 [구매현황]", accent: "#8e5bd8", audit: "구매입고" },
 };
 
 export default function DataImport({ kind }: { kind: InoutKind }) {
@@ -80,7 +82,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
         } catch { /* 매핑 실패 시 원본 그대로 저장 */ }
       }
       await appendInout(rowsToAdd);
-      await logAudit(kind === "in" ? "생산입고 누적추가" : "판매현황 누적추가", "inout", "", { added: newRows.length, months: [...new Set(newRows.map(r => r.ym))] });
+      await logAudit(`${cfg.audit} 누적추가`, "inout", "", { added: newRows.length, months: [...new Set(newRows.map(r => r.ym))] });
       toast.success(`신규 ${newRows.length}건 추가 완료 (중복 ${dupCount}건 제외)`);
       setText(""); setPreview([]); load();
     } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
@@ -92,9 +94,33 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     setBusy(true);
     try {
       await deleteInoutMonth(kind, ym);
-      await logAudit(kind === "in" ? "생산입고 월삭제" : "판매현황 월삭제", "inout", ym, {});
+      await logAudit(`${cfg.audit} 월삭제`, "inout", ym, {});
       toast.success(`${ym} 삭제됨`); load();
     } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+
+  // ---- 직접 입력 (구매 탭 전용 — 급한 매입 건을 표 붙여넣기 없이 바로 추가) ----
+  const [man, setMan] = useState({ idate: todayIso(), item_code: "", name: "", spec: "", qty: "", amount: "", customer: "" });
+  const setM = (k: string, v: string) => setMan(o => ({ ...o, [k]: v }));
+  async function addManual() {
+    if (!man.name.trim() && !man.item_code.trim()) { toast.error("품목코드 또는 품목명을 입력하세요."); return; }
+    const qty = Number(String(man.qty).replace(/,/g, ""));
+    if (!man.idate || !qty) { toast.error("일자와 수량을 입력하세요."); return; }
+    const base = {
+      kind, ym: man.idate.slice(0, 7), idate: man.idate,
+      item_code: man.item_code.trim(), name: man.name.trim(), spec: man.spec.trim(), qty,
+      amount: man.amount ? Number(String(man.amount).replace(/,/g, "")) : null,
+      customer: man.customer.trim(), trade_type: "", gubun: "", cust_code: "", vat: null, total: null, currency: "", fx_rate: null, note: "직접입력",
+    };
+    setBusy(true);
+    try {
+      await appendInout([{ ...base, sig: inoutSig(base) }]);
+      await logAudit(`${cfg.audit} 직접입력`, "inout", "", { name: base.name || base.item_code, qty });
+      toast.success(`추가됨: ${base.name || base.item_code} ${qty.toLocaleString()}`);
+      setMan(o => ({ ...o, item_code: "", name: "", spec: "", qty: "", amount: "", customer: "" }));
+      load();
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
     setBusy(false);
   }
 
@@ -102,7 +128,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
   const th: React.CSSProperties = { ...thBase, borderBottom: "1px solid var(--line)" };
   const td: React.CSSProperties = tdBase;
   const tdL: React.CSSProperties = { ...td, textAlign: "left" };
-  const isOut = kind === "out";
+  const isOut = kind !== "in"; // 판매·구매는 금액/거래처 열 표시 (구매현황도 같은 열 구성)
+  const isIn = kind === "in";
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -146,6 +173,24 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
               {marked.length > 30 && <div className="muted" style={{ padding: "6px 8px", fontSize: 12 }}>… 외 {marked.length - 30}건 (전체는 추가 후 아래 표에서 확인)</div>}
             </div>
           </>}
+          {kind === "purchase" && canEdit && (() => {
+            const mi: React.CSSProperties = { padding: 6, border: "1px solid var(--line)", borderRadius: 6, width: "100%", boxSizing: "border-box" };
+            return (
+              <div style={{ marginTop: 14, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>✏️ 직접 입력 <span className="muted" style={{ fontWeight: 400 }}>— 급한 매입 건 1건씩 추가</span></div>
+                <div style={{ display: "grid", gap: 6, gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", fontSize: 12 }}>
+                  <label>일자<input type="date" value={man.idate} onChange={e => setM("idate", e.target.value)} style={mi} /></label>
+                  <label>품목코드<input value={man.item_code} onChange={e => setM("item_code", e.target.value)} style={mi} /></label>
+                  <label>품목명<input value={man.name} onChange={e => setM("name", e.target.value)} style={mi} /></label>
+                  <label>규격<input value={man.spec} onChange={e => setM("spec", e.target.value)} style={mi} /></label>
+                  <label>수량<input value={man.qty} onChange={e => setM("qty", e.target.value)} style={mi} placeholder="g" /></label>
+                  <label>공급가액<input value={man.amount} onChange={e => setM("amount", e.target.value)} style={mi} placeholder="원 (선택)" /></label>
+                  <label>거래처<input value={man.customer} onChange={e => setM("customer", e.target.value)} style={mi} placeholder="(선택)" /></label>
+                </div>
+                <button className="btn" style={{ marginTop: 8 }} onClick={addManual} disabled={busy}>+ 추가</button>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="card">
@@ -193,7 +238,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("name")}>품목명{arrow("name")}</th>
                 <th style={{ ...th, textAlign: "left" }}>규격</th>
                 <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("qty")}>수량{arrow("qty")}</th>
-                {!isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
+                {isIn && <th style={{ ...th, textAlign: "center" }}>구분</th>}
                 {isOut && <th style={{ ...th, cursor: "pointer" }} onClick={() => toggle("amount")}>공급가액{arrow("amount")}</th>}
                 {isOut && <th style={th}>부가세</th>}
                 {isOut && <th style={th}>합계</th>}
@@ -209,7 +254,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                     <td style={tdL}>{r.name || "-"}</td>
                     <td style={tdL}>{r.spec || ""}</td>
                     <td style={td}>{fmt(Number(r.qty) || 0)}</td>
-                    {!isOut && <td style={{ ...td, textAlign: "center" }}>{r.gubun || ""}</td>}
+                    {isIn && <td style={{ ...td, textAlign: "center" }}>{r.gubun || ""}</td>}
                     {isOut && <td style={td}>{r.amount != null ? Number(r.amount).toLocaleString() : ""}</td>}
                     {isOut && <td style={td}>{r.vat != null ? Number(r.vat).toLocaleString() : ""}</td>}
                     {isOut && <td style={td}>{r.total != null ? Number(r.total).toLocaleString() : ""}</td>}
