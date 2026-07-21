@@ -274,12 +274,13 @@ alter table app_settings add column if not exists label_packs jsonb;
 alter table inout_rows drop constraint if exists inout_rows_kind_check;
 alter table inout_rows add constraint inout_rows_kind_check check (kind in ('in','out','purchase'));
 
--- 기초재고/실사 조정 — 수불부의 시작 잔량과 실물 보정 기록.
+-- 기초재고/실사 조정/안전재고 — 수불부의 시작 잔량·실물 보정·발주점 기록.
 -- kind='base': 기준일(bdate) 시작 시점 잔량을 qty로 설정(그 이전 데이터는 무시, 재실사 시 새 base 추가)
 -- kind='adj' : 실사 차이 등 ±증감(qty가 음수면 감소), note에 사유
+-- kind='min' : 안전재고(발주점) — qty=하한선, 품목별 최신 bdate 값 사용 (잔량 계산에는 미포함)
 create table if not exists stock_base (
   id uuid primary key default gen_random_uuid(),
-  kind text not null check (kind in ('base','adj')),
+  kind text not null check (kind in ('base','adj','min')),
   cat text not null default 'product' check (cat in ('product','material')),
   item_code text not null default '',
   name text not null default '',

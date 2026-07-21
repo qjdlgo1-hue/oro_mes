@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { InoutRow, ProdConsume, StockBase, listInout, listProdConsume, listStockBase, addStockBase, deleteStockBase, logAudit } from "../lib/db";
-import { buildStock, balanceOf, monthLedger, stockMonths, ItemStock } from "../lib/stock";
+import { buildStock, balanceOf, monthLedger, stockMonths, stockMins, lowStock, ItemStock } from "../lib/stock";
 import { thBase, tdBase } from "../lib/styles";
 import { nf1, todayIso } from "../lib/fmt";
 import { toast } from "../lib/toast";
@@ -33,6 +33,8 @@ export default function Stock() {
   useEffect(() => { load(); }, []);
 
   const items = useMemo(() => buildStock(prodIn, sales, purchases, consumes, bases), [prodIn, sales, purchases, consumes, bases]);
+  const mins = useMemo(() => stockMins(bases), [bases]);
+  const low = useMemo(() => lowStock(items, mins), [items, mins]);
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return items;
@@ -52,11 +54,11 @@ export default function Stock() {
 
   // ---- 엑셀 내보내기 ----
   function exportNow() {
-    const aoa: any[][] = [["분류", "품목코드", "품목명", "규격", "기초(기준일)", "기초수량", "입고", "출고", "조정", "현재고"]];
+    const aoa: any[][] = [["분류", "품목코드", "품목명", "규격", "기초(기준일)", "기초수량", "입고", "출고", "조정", "현재고", "안전재고"]];
     filtered.forEach(it => {
       let inQ = 0, outQ = 0, adjQ = 0;
       it.moves.forEach(mv => { if (mv.src === "조정") adjQ += mv.qty; else if (mv.qty >= 0) inQ += mv.qty; else outQ += -mv.qty; });
-      aoa.push([CAT_LABEL[it.cat], it.code, it.name, it.spec, it.base?.bdate || "", it.base?.qty ?? "", inQ, outQ, adjQ, balanceOf(it)]);
+      aoa.push([CAT_LABEL[it.cat], it.code, it.name, it.spec, it.base?.bdate || "", it.base?.qty ?? "", inQ, outQ, adjQ, balanceOf(it), mins[it.key] ?? ""]);
     });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "재고현황");
@@ -77,8 +79,30 @@ export default function Stock() {
   // ---- 기초·조정 입력 상태 ----
   const [baseDate, setBaseDate] = useState(T);
   const [baseQty, setBaseQty] = useState<Record<string, string>>({});
+  const [minQty, setMinQty] = useState<Record<string, string>>({});
   const [adj, setAdj] = useState({ key: "", bdate: T, qty: "", note: "" });
   const [busy, setBusy] = useState(false);
+
+  // 안전재고(발주점) 저장 — 입력된 품목만, 오늘 날짜 기준(최신 값이 적용됨)
+  async function saveMins() {
+    const rows: StockBase[] = [];
+    for (const it of items) {
+      const v = (minQty[it.key] || "").trim();
+      if (v === "") continue;
+      const qty = Number(v.replace(/,/g, ""));
+      if (isNaN(qty) || qty < 0) { toast.error(`안전재고가 숫자가 아닙니다: ${it.name || it.code}`); return; }
+      rows.push({ kind: "min", cat: it.cat, item_code: it.code, name: it.name, spec: it.spec, bdate: T, qty });
+    }
+    if (!rows.length) { toast.error("입력된 안전재고가 없습니다."); return; }
+    setBusy(true);
+    try {
+      for (const r of rows) await addStockBase(r);
+      logAudit("안전재고 설정", "stock", "", { items: rows.length });
+      toast.success(`안전재고 ${rows.length}건 저장 — 현재고가 하한선 아래로 내려가면 '발주 필요'로 표시됩니다.`);
+      setMinQty({}); load();
+    } catch (e: any) { toast.error("저장 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
 
   async function saveBases() {
     const rows: StockBase[] = [];
@@ -114,7 +138,7 @@ export default function Stock() {
     setBusy(false);
   }
   async function delBase(r: StockBase) {
-    if (!(await confirmDialog({ title: "삭제", message: `${r.kind === "base" ? "기초재고" : "조정"} (${r.name || r.item_code}, ${r.bdate}, ${nf1(Number(r.qty))})를 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
+    if (!(await confirmDialog({ title: "삭제", message: `${r.kind === "base" ? "기초재고" : r.kind === "min" ? "안전재고" : "조정"} (${r.name || r.item_code}, ${r.bdate}, ${nf1(Number(r.qty))})를 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
     try { await deleteStockBase(r.id!); logAudit("기초/조정 삭제", "stock", r.id || "", { name: r.name }); load(); }
     catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
@@ -154,6 +178,12 @@ export default function Stock() {
 
       {view === "now" && (
         <div className="card" style={{ overflow: "auto" }}>
+          {low.length > 0 && (
+            <div style={{ background: "#fdf3e7", border: "1px solid #e6a23c", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 }}>
+              ⚠ <b>발주 필요 {low.length}품목</b> — {low.map(l => `${l.it.name || l.it.code} (${nf1(l.bal)}/${nf1(l.min)})`).join(" · ")}
+              <span className="muted" style={{ fontSize: 11.5 }}> (현재고/안전재고)</span>
+            </div>
+          )}
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead><tr>
               <th style={{ ...th, textAlign: "left" }}>품목코드</th>
@@ -161,6 +191,7 @@ export default function Stock() {
               <th style={{ ...th, textAlign: "left" }}>규격</th>
               <th style={th}>기초</th><th style={th}>입고</th><th style={th}>출고</th><th style={th}>조정</th>
               <th style={th}>현재고</th>
+              <th style={th}>안전재고</th>
             </tr></thead>
             <tbody>
               {(["product", "material"] as const).map(cat => (
@@ -168,8 +199,10 @@ export default function Stock() {
                   let inQ = 0, outQ = 0, adjQ = 0;
                   it.moves.forEach(mv => { if (mv.src === "조정") adjQ += mv.qty; else if (mv.qty >= 0) inQ += mv.qty; else outQ += -mv.qty; });
                   const bal = balanceOf(it);
+                  const min = mins[it.key];
+                  const isLow = !!min && bal < min;
                   return (
-                    <tr key={it.key}>
+                    <tr key={it.key} style={isLow ? { background: "#fdf6ec" } : undefined}>
                       <td style={tdL}><b>{it.code || "-"}</b></td>
                       <td style={tdL}>{it.name}</td>
                       <td style={tdL}>{it.spec}</td>
@@ -178,6 +211,7 @@ export default function Stock() {
                       <td style={td}>{num(outQ)}</td>
                       <td style={td}>{num(adjQ)}</td>
                       <td style={{ ...td, background: bal < 0 ? "#fdecea" : undefined }}>{num(bal, true)}{bal < 0 && " ⚠"}</td>
+                      <td style={td}>{min ? <>{nf1(min)}{isLow && <b style={{ color: "#b5720a" }}> 발주⚠</b>}</> : <span className="muted">-</span>}</td>
                     </tr>
                   );
                 })}</CatRows>
@@ -272,6 +306,7 @@ export default function Stock() {
                   <th style={{ ...th, textAlign: "left" }}>품목명</th>
                   <th style={th}>현재 계산 잔량</th>
                   <th style={{ ...th, textAlign: "left" }}>실사 수량 입력</th>
+                  <th style={{ ...th, textAlign: "left" }}>안전재고(발주점)</th>
                 </tr></thead>
                 <tbody>
                   {items.map(it => (
@@ -282,13 +317,19 @@ export default function Stock() {
                       <td style={td}>{num(balanceOf(it))}</td>
                       <td style={tdL}><input value={baseQty[it.key] || ""} onChange={e => setBaseQty(o => ({ ...o, [it.key]: e.target.value }))}
                         placeholder="비우면 저장 안 함" style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 6, width: 130 }} disabled={!canEdit} /></td>
+                      <td style={tdL}><input value={minQty[it.key] || ""} onChange={e => setMinQty(o => ({ ...o, [it.key]: e.target.value }))}
+                        placeholder={mins[it.key] ? `현재 ${nf1(mins[it.key])}` : "미설정"} style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 6, width: 110 }} disabled={!canEdit} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <button className="btn green" style={{ marginTop: 10 }} onClick={saveBases} disabled={busy || !canEdit}>기초재고 저장</button>
-            {!canEdit && <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>입력 권한이 없습니다 (관리자에게 재고 편집 권한 요청)</span>}
+            <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button className="btn green" onClick={saveBases} disabled={busy || !canEdit}>기초재고 저장</button>
+              <button className="btn" onClick={saveMins} disabled={busy || !canEdit}>안전재고 저장</button>
+              <span className="muted" style={{ fontSize: 12 }}>안전재고: 현재고가 이 값 아래로 내려가면 재고 현황·POP에 "발주 필요 ⚠"가 표시됩니다 (0 입력 = 해제).</span>
+            </div>
+            {!canEdit && <span className="muted" style={{ fontSize: 12 }}>입력 권한이 없습니다 (관리자에게 재고 편집 권한 요청)</span>}
           </div>
 
           <div className="card">
@@ -322,7 +363,7 @@ export default function Stock() {
                   <tbody>
                     {[...bases].sort((a, b) => a.bdate < b.bdate ? 1 : -1).map(r => (
                       <tr key={r.id}>
-                        <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: r.kind === "base" ? "var(--accent)" : "#8e5bd8" }}>{r.kind === "base" ? "기초" : "조정"}</span></td>
+                        <td style={{ ...td, textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 700, borderRadius: 4, padding: "1px 6px", color: "#fff", background: r.kind === "base" ? "var(--accent)" : r.kind === "min" ? "#e6a23c" : "#8e5bd8" }}>{r.kind === "base" ? "기초" : r.kind === "min" ? "안전" : "조정"}</span></td>
                         <td style={tdL}>{r.bdate}</td>
                         <td style={tdL}>{r.name || r.item_code}</td>
                         <td style={td}>{num(Number(r.qty))}</td>

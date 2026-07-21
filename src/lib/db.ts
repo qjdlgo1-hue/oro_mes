@@ -172,11 +172,12 @@ export async function saveSettings(s: Settings): Promise<void> {
   lsSet(LS_SETTINGS, s);
 }
 
-// ===== 재고: 기초재고('base') / 실사 조정('adj') =====
+// ===== 재고: 기초재고('base') / 실사 조정('adj') / 안전재고('min') =====
 // base = 기준일(bdate) 시작 시점 잔량을 qty로 설정 — 그 이전 입출고는 무시 (재실사 시 새 base 추가)
 // adj  = ±증감(실사 차이 보정 등), note에 사유
+// min  = 안전재고(발주점) 하한선 — 잔량 계산에는 안 들어가고 경고 기준으로만 사용 (품목별 최신 bdate 값)
 export type StockBase = {
-  id?: string; kind: "base" | "adj"; cat: "product" | "material";
+  id?: string; kind: "base" | "adj" | "min"; cat: "product" | "material";
   item_code: string; name: string; spec?: string;
   bdate: string; qty: number; note?: string; created_at?: string;
 };

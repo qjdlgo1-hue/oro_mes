@@ -2,7 +2,8 @@ import { errMsg } from "../lib/errmsg";
 import { todayIso } from "../lib/fmt";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Order, PlanEntry, CocData } from "../lib/types";
-import { listPlans, listCocs, upsertPlan, logAudit, getLabelPacks, saveLabelPacks } from "../lib/db";
+import { listPlans, listCocs, upsertPlan, logAudit, getLabelPacks, saveLabelPacks, listInout, listProdConsume, listStockBase } from "../lib/db";
+import { buildStock, stockMins, lowStock } from "../lib/stock";
 import { completionDate } from "../lib/plan";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
@@ -71,6 +72,17 @@ export default function Today({ orders }: { orders: Order[] }) {
   useEffect(() => { getLabelPacks().then(setPacks).catch(() => { /* 오프라인 등 — 기본 포장단위로 동작 */ }); }, []);
   const packOf = (o: Order) => packs[o.customer] || labelOpts.packDefault || 50;
   const qtyOf = (o: Order, pl?: PlanEntry) => (pl?.qty != null ? Number(pl.qty) : Number(o.qty)) || 0;
+
+  // 안전재고 경고 — 마운트 시 1회만 계산 (30초 주기 갱신에는 포함하지 않음, 실패는 조용히 무시)
+  const [lowItems, setLowItems] = useState<string[]>([]);
+  useEffect(() => {
+    Promise.all([listInout("in"), listInout("out"), listInout("purchase"), listProdConsume(), listStockBase()])
+      .then(([a, b, c, d, e]) => {
+        const its = buildStock(a, b, c, d, e);
+        setLowItems(lowStock(its, stockMins(e)).map(l => l.it.name || l.it.code));
+      })
+      .catch(() => { /* 오프라인 등 — 경고 배너 생략 */ });
+  }, []);
 
   // 🏷 인쇄 다이얼로그 — 포장단위·매수(자동계산, 수정 가능)·제조일 확인 후 인쇄
   const [labelDlg, setLabelDlg] = useState<{ o: Order; pl?: PlanEntry } | null>(null);
@@ -184,6 +196,13 @@ export default function Today({ orders }: { orders: Order[] }) {
         </div>
         );
       })()}
+
+      {lowItems.length > 0 && (
+        <div style={{ gridColumn: "1 / -1", background: "#fdf3e7", border: "1px solid #e6a23c", borderRadius: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer" }}
+          onClick={() => { window.location.hash = "stock"; }} title="재고 화면으로 이동">
+          ⚠ <b>재고 발주 필요 {lowItems.length}품목</b> — {lowItems.slice(0, 5).join(" · ")}{lowItems.length > 5 ? ` 외 ${lowItems.length - 5}품목` : ""} <span className="muted" style={{ fontSize: 12 }}>(안전재고 미달 · 눌러서 재고 확인)</span>
+        </div>
+      )}
 
       <Section title="🔴 지연 (완료일 지났는데 미완료)" color="#c0392b" count={groups.late.length}>
         {groups.late.map(g => <Row key={g.o.id} {...g} pl={g.p} late />)}
