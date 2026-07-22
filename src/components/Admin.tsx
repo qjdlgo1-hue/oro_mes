@@ -407,35 +407,50 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
             <tbody>
               {(() => {
                 const rows: React.ReactNode[] = [];
-                // 그룹핑은 위 '메뉴 구성'(menu_groups/menu_placement)을 그대로 따른다 —
-                // 메뉴에서 화면을 옮기면 권한 표에서도 같은 그룹 아래에 보이도록.
+                // 그룹핑·행 이름은 위 '메뉴 구성'(menu_groups/menu_placement)을 그대로 따른다 —
+                // 메뉴에서 화면을 옮기면 권한 표에서도 같은 그룹 아래·같은 이름(아이콘+라벨)으로 보이도록.
+                // 권한 항목이 없는 화면(관리자)은 master 전용 자리표시 행으로 넣어 그룹이 사라지지 않게 한다.
                 // 메뉴 구성이 없으면(로컬 모드 등) 기본 분류(s.group)로 폴백.
+                type TabDef = typeof TAB_DEFS[number];
+                type PermRow = { tab?: TabDef; s?: ScreenPerm };
                 const tabKeyOf = (s: ScreenPerm) => { const k = (s.view[0] || "").replace("menu.", ""); return k === "pop" ? "today" : k; };
                 const byTab = new Map(SCREEN_PERMS.map(s => [tabKeyOf(s), s] as const));
                 const seen = new Set<string>();
-                const collect = (ts: { key: string }[]) => ts
-                  .map(t => byTab.get(t.key))
-                  .filter((s): s is ScreenPerm => !!s && !seen.has(s.name) && (seen.add(s.name), true));
-                let grps: { label: string; items: ScreenPerm[] }[];
+                const collect = (ts: TabDef[]): PermRow[] => ts.map((t): PermRow | null => {
+                  const s = byTab.get(t.key);
+                  if (s) return !seen.has(s.name) && (seen.add(s.name), true) ? { tab: t, s } : null;
+                  return t.key === "admin" ? { tab: t } : null;
+                }).filter((r): r is PermRow => !!r);
+                let grps: { label: string; items: PermRow[] }[];
                 if (mgroups.length) {
                   grps = [...mgroups].sort((a, b) => a.sort - b.sort)
                     .map(g => ({ label: `${groupIcon(g.name, itemsOf(g.id)[0]?.icon)} ${g.name}`, items: collect(itemsOf(g.id)) }))
                     .filter(g => g.items.length > 0);
-                  const etc = [...collect(itemsOf(null)), ...SCREEN_PERMS.filter(s => !seen.has(s.name))];
-                  if (etc.length) grps.push({ label: "📂 기타", items: etc });
+                  const etc = [...collect(itemsOf(null)), ...SCREEN_PERMS.filter(s => !seen.has(s.name)).map(s => ({ s } as PermRow))];
+                  if (etc.length) grps.push({ label: "⚠️ 미분류", items: etc });
                 } else {
                   grps = [];
                   SCREEN_PERMS.forEach(s => {
                     const last = grps[grps.length - 1];
                     if (!last || last.label !== s.group) grps.push({ label: s.group, items: [] });
-                    grps[grps.length - 1].items.push(s);
+                    grps[grps.length - 1].items.push({ s, tab: TAB_DEFS.find(t => byTab.get(t.key) === s) });
                   });
+                  grps.push({ label: "📁 관리", items: [{ tab: TAB_DEFS.find(t => t.key === "admin")! }] });
                 }
-                const screenRow = (s: ScreenPerm) => {
+                const screenRow = (r: PermRow) => {
+                  const label = r.tab ? `${r.tab.icon} ${r.tab.label}` : r.s!.name;
+                  if (!r.s) return (
+                    <tr key={r.tab!.key}>
+                      <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }}>{label}</td>
+                      <td style={{ ...TD, textAlign: "center", color: "var(--ok)", fontWeight: 700 }}>✓</td>
+                      <td colSpan={2} style={{ ...TD, color: "var(--muted)", fontSize: 12 }}>🔒 master 전용 — 다른 역할은 권한 설정과 무관하게 접근할 수 없습니다</td>
+                    </tr>
+                  );
+                  const s = r.s;
                   const shared = s.acts.find(a => a.shared);
                   return (
                     <tr key={s.name}>
-                      <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }}>{s.name}
+                      <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }} title={s.name !== label ? s.name : undefined}>{label}
                         {shared && <span title={`'${shared.shared}'와 같은 권한을 사용합니다 — 한쪽을 바꾸면 함께 바뀝니다`}
                           style={{ fontWeight: 400, fontSize: 10.5, color: "var(--warn)", background: "#fff7e6", borderRadius: 5, padding: "0 6px", marginLeft: 6, cursor: "help" }}>공유</span>}
                       </td>
@@ -460,7 +475,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                 };
                 grps.forEach(g => {
                   rows.push(<tr key={"g" + g.label}><td colSpan={4} style={{ ...TD, background: "#eef2f6", fontWeight: 800, fontSize: 12 }}>{g.label}</td></tr>);
-                  g.items.forEach(s => rows.push(screenRow(s)));
+                  g.items.forEach(r => rows.push(screenRow(r)));
                 });
                 return rows;
               })()}
@@ -468,7 +483,8 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           </table>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-          그룹과 순서는 위 <b>'메뉴 구성'</b>을 그대로 따릅니다 — 메뉴에서 화면을 옮기면 이 표에서도 같은 그룹 아래로 이동합니다.
+          그룹·순서·화면 이름은 위 <b>'메뉴 구성'</b>을 그대로 따릅니다 — 메뉴에서 화면을 옮기면 이 표에서도 같은 그룹 아래로 이동합니다.
+          관리자 화면은 master 전용이라 권한 스위치가 없습니다.
           '보기'를 끄면 사이드바에서 화면이 숨겨지고 작업도 함께 비활성화됩니다. 리포트·기록은 보기 스위치 하나가 내부 권한까지 함께 처리합니다.
           COC는 '보기'만 켜면 읽기 전용으로 열람할 수 있습니다. 변경은 즉시 저장되며 대상자는 새로고침 후 반영됩니다.
         </p>
