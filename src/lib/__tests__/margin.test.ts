@@ -49,8 +49,8 @@ describe("원가·마진 (margin.ts — BOM 전개 기반)", () => {
   it("costPerG — 단일 BOM: 50g당 AgCN 2g + PGC 5g → 1g당 340원", () => {
     const idx = buildBomIndex([br("C1", "제품A", "A0012", "AgCN", 50, 2), br("C1", "제품A", "A0011", "PGC", 50, 5)]);
     const priceOf = (m: { code: string; name: string }) => matPriceFor(purchases, m);
-    expect(costPerG(idx, "제품A", priceOf)).toBeCloseTo(340);
-    expect(costPerG(idx, "미등록제품", priceOf)).toBeNull();
+    expect(costPerG(idx, { name: "제품A" }, priceOf)).toBeCloseTo(340);
+    expect(costPerG(idx, { name: "미등록제품" }, priceOf)).toBeNull();
   });
   it("costPerG — 다단계: 반제품 경유 원분말 단가까지 합산", () => {
     // 도금품 55g당: PGC 11 + 반제품 50 / 반제품(시빙) 1g당 슐츠 1g
@@ -61,11 +61,11 @@ describe("원가·마진 (margin.ts — BOM 전개 기반)", () => {
     ]);
     const priceOf = (m: { code: string; name: string }) => matPriceFor(purchases, m);
     // 1g당: PGC 0.2g×1000 + 슐츠 (50/55)g×3000 ≈ 2,927원 (전개 결과는 소수 3자리 반올림)
-    expect(costPerG(idx, "도금품", priceOf)).toBeCloseTo(200 + 50 / 55 * 3000, 0);
+    expect(costPerG(idx, { name: "도금품" }, priceOf)).toBeCloseTo(200 + 50 / 55 * 3000, 0);
   });
   it("costPerG — 사용 원재료 중 단가 없는 게 있으면 null (과소평가 방지)", () => {
     const idx = buildBomIndex([br("C1", "제품A", "A0012", "AgCN", 50, 2), br("C1", "제품A", "", "미지재료", 50, 3)]);
-    expect(costPerG(idx, "제품A", (m) => matPriceFor(purchases, m))).toBeNull();
+    expect(costPerG(idx, { name: "제품A" }, (m) => matPriceFor(purchases, m))).toBeNull();
   });
   it("marginByItem — BOM 없는 품목은 원가 null", () => {
     const idx = buildBomIndex([br("C1", "제품A", "A0012", "AgCN", 50, 2), br("C1", "제품A", "A0011", "PGC", 50, 5)]);

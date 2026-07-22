@@ -35,6 +35,7 @@ const Audit = lazy(() => import("./components/Audit"));
 const Receipts = lazy(() => import("./components/Receipts"));
 const MaterialBom = lazy(() => import("./components/MaterialBom"));
 const Stock = lazy(() => import("./components/Stock"));
+const Items = lazy(() => import("./components/Items"));
 const Admin = lazy(() => import("./components/Admin"));
 
 // 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시 — 스크롤 상태를 여기에 가둬서 앱 전체가 스크롤마다 리렌더되지 않게 함
@@ -138,6 +139,7 @@ export default function App() {
       case "sales": return can("menu.sales");
       case "purchase": return can("menu.purchase");
       case "stock": return can("menu.stock");
+      case "items": return can("menu.items");
       case "dash": return can("menu.dash");
       case "prodcon": return can("menu.prodcon");
       case "report": return can("menu.report"); // 보기 스위치가 report.view와 함께 토글됨
@@ -197,6 +199,7 @@ export default function App() {
       case "sales": return <DataImport kind="out" />;
       case "purchase": return <DataImport kind="purchase" />;
       case "stock": return <Stock />;
+      case "items": return <Items />;
       case "dash": return <Insights orders={orders} />;
       case "prodcon": return <ProdConsumeView />;
       case "report": return <Dashboard orders={orders} />;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { BomRow } from "../db";
-import { buildBomIndex, explode, explodeAll } from "../bom";
+import { buildBomIndex, explode, explodeAll, resolveProd, explodeByItem } from "../bom";
 import { parseBomText } from "../parseBom";
 
 const br = (prod_code: string, prod_name: string, process: string, mat_code: string, mat_name: string, batch_qty: number, qty: number): BomRow =>
@@ -72,5 +72,23 @@ describe("parseBomText — 이카운트 BOM(소요량)현황 붙여넣기", () =
   });
   it("머리글 없으면 빈 배열", () => {
     expect(parseBomText("아무 내용\t없음")).toEqual([]);
+  });
+});
+
+describe("resolveProd / explodeByItem — 품목코드 우선 매칭", () => {
+  const idx = buildBomIndex(ROWS);
+  it("코드 정확 일치 우선 (이름이 달라도 연동)", () => {
+    expect(resolveProd(idx, { code: "C0002", name: "표기다른이름" })).toBe("ACC2532-G20A");
+  });
+  it("코드 불일치 시 이름 폴백", () => {
+    expect(resolveProd(idx, { code: "X9999", name: "ACA2532" })).toBe("ACA2532");
+    expect(resolveProd(idx, { name: "ACA2532" })).toBe("ACA2532");
+  });
+  it("둘 다 불일치 → null / explodeByItem 빈 배열", () => {
+    expect(resolveProd(idx, { code: "X9999", name: "없는제품" })).toBeNull();
+    expect(explodeByItem(idx, { code: "X9999", name: "없는제품" }, 100)).toEqual([]);
+  });
+  it("explodeByItem 코드 진입 전개 = 이름 진입과 동일", () => {
+    expect(explodeByItem(idx, { code: "C0002", name: "" }, 55)).toEqual(explode(idx, "ACC2532-G20A", 55));
   });
 });

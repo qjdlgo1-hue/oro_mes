@@ -314,3 +314,22 @@ create table if not exists bom_rows (
 alter table bom_rows enable row level security;
 drop policy if exists "bom_rows_all" on bom_rows;
 create policy "bom_rows_all" on bom_rows for all to authenticated using (true) with check (true);
+
+-- ===== 품목 마스터 (items) =====
+-- 이카운트 품목등록 대응 — 코드/명/규격/구분/단위. '품목' 탭에서 자동 수집·붙여넣기 가져오기·수동 등록.
+create table if not exists items (
+  id uuid primary key default gen_random_uuid(),
+  code text not null default '',
+  name text not null,
+  spec text not null default '',
+  gubun text not null default '제품',   -- 제품/반제품/원재료/부재료/상품/무형상품
+  unit text not null default 'g',
+  note text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (code, name)
+);
+create unique index if not exists items_code_uniq on items (code) where code <> '';
+alter table items enable row level security;
+drop policy if exists "items_all" on items;
+create policy "items_all" on items for all to authenticated using (true) with check (true);

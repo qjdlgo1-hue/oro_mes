@@ -1,7 +1,8 @@
 import { errMsg } from "../lib/errmsg";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
-import { listPlans, upsertPlan, updateOrder, logAudit } from "../lib/db";
+import { listPlans, upsertPlan, updateOrder, logAudit, listBomRows, BomRow } from "../lib/db";
+import { buildBomIndex, resolveProd, explodeByItem } from "../lib/bom";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
 import { nextBusinessDay } from "../lib/holidays";
 import { can } from "../lib/perm";
@@ -38,6 +39,17 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   const canEdit = can("plan.edit");
   const isMobile = useIsMobile();
   const [loaded, setLoaded] = useState(false);
+
+  // BOM 연동(품목코드 우선 매칭) — 뱃지·소요 원재료 표시용. 실패해도 계획 화면은 동작
+  const [bomRows, setBomRows] = useState<BomRow[]>([]);
+  useEffect(() => { listBomRows().then(setBomRows).catch(() => { /* 뱃지 생략 */ }); }, []);
+  const bomIdx = useMemo(() => buildBomIndex(bomRows), [bomRows]);
+  const [bomFor, setBomFor] = useState<Order | null>(null);
+  // 다중 선택 → 일괄 일정 지정
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkStart, setBulkStart] = useState("");
+  const [bulkSpan, setBulkSpan] = useState(1);
 
   useEffect(() => { listPlans().then(setPlans).finally(() => setLoaded(true)); }, []);
   useEffect(() => {
@@ -145,6 +157,90 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
     );
   })() : null;
 
+  // BOM 뱃지 — 품목코드 우선 매칭(이름 폴백). 누르면 소요 원재료 모달
+  const bomBadge = (o: Order) => {
+    if (!bomRows.length) return null;
+    const prod = resolveProd(bomIdx, { code: o.item_code, name: o.name });
+    return prod
+      ? <button onClick={e => { e.stopPropagation(); setBomFor(o); }} title={`BOM 연동됨${prod !== o.name ? ` (${prod})` : ""} — 누르면 소요 원재료 보기`}
+          style={{ border: "1px solid var(--accent)", background: "#eef7f2", color: "var(--accent)", borderRadius: 4, fontSize: 10, fontWeight: 800, padding: "0 4px", cursor: "pointer", marginRight: 4, minHeight: 0 }}>BOM</button>
+      : <span title="BOM 미연동 — 원재료 탭에서 BOM을 등록/가져오면 소요량·원가가 계산됩니다" style={{ color: "#f59e0b", fontSize: 11, fontWeight: 800, marginRight: 4 }}>⚠</span>;
+  };
+  const bomModal = bomFor ? (() => {
+    const o = bomFor; const p = planOf(o); const qty = pqty(o, p);
+    const mats = explodeByItem(bomIdx, { code: o.item_code, name: o.name }, qty);
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setBomFor(null)}>
+        <div style={{ background: "#fff", borderRadius: 12, padding: 20, width: 400, maxWidth: "94vw", maxHeight: "88vh", overflow: "auto" }} onClick={e => e.stopPropagation()}>
+          <h3 style={{ marginTop: 0 }}>소요 원재료</h3>
+          <div style={{ fontWeight: 700 }}>{o.name}</div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>생산 {qty.toLocaleString()}g 기준 · 반제품은 원재료까지 전개(BOM)</div>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
+            <thead><tr>
+              <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "left", fontSize: 12 }}>원재료</th>
+              <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "left", fontSize: 12 }}>코드</th>
+              <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "right", fontSize: 12 }}>소요량(g)</th>
+            </tr></thead>
+            <tbody>
+              {mats.map(m => (
+                <tr key={m.key}>
+                  <td style={{ padding: "5px 8px", borderBottom: "1px solid #eef2f7", fontWeight: 600 }}>{m.name}</td>
+                  <td style={{ padding: "5px 8px", borderBottom: "1px solid #eef2f7" }}>{m.code || "-"}</td>
+                  <td style={{ padding: "5px 8px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>{(Math.round(m.qty * 100) / 100).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="btn ghost" onClick={() => setBomFor(null)}>닫기</button>
+          </div>
+        </div>
+      </div>
+    );
+  })() : null;
+
+  // 선택 건 일괄 일정 지정 — 시작일·기간을 한 번에 적용
+  async function bulkApply() {
+    if (!bulkStart) { toast.error("시작일을 선택하세요."); return; }
+    const targets = rows.filter(o => sel.has(o.id));
+    if (!targets.length) { toast.error("선택된 건이 없습니다."); return; }
+    const span = Math.max(1, Number(bulkSpan) || 1);
+    const prev = plans;
+    const updates = targets.map(o => {
+      const base = { ...planOf(o), start_date: bulkStart, span };
+      const comp = completionDate(base) || bulkStart;
+      return (base.deliver_date && base.deliver_date < comp) ? { ...base, deliver_date: null } : base;
+    });
+    setPlans(c => { const n = { ...c }; updates.forEach(u => { n[u.order_id] = u; }); return n; }); setTick(t => t + 1);
+    try {
+      for (const u of updates) await upsertPlan(u);
+      logAudit("생산일정 일괄 지정", "plan", "", { count: updates.length, start: bulkStart, span });
+      toast.success(`${updates.length}건 일정 일괄 지정 완료 (${bulkStart} · ${span}일)`);
+      setBulkOpen(false); setSel(new Set());
+    } catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일괄 저장 실패: " + errMsg(e)); }
+  }
+  const bulkModal = bulkOpen ? (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setBulkOpen(false)}>
+      <div style={{ background: "#fff", borderRadius: 12, padding: 20, width: 340, maxWidth: "92vw" }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>일정 일괄 지정</h3>
+        <p className="muted" style={{ fontSize: 12.5, margin: "0 0 10px" }}>선택한 <b>{sel.size}건</b>의 시작일·기간을 한 번에 설정합니다.</p>
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>시작일<input type="date" value={bulkStart} onChange={e => setBulkStart(e.target.value)} style={{ display: "block", padding: 8, border: "1px solid var(--line)", borderRadius: 6, marginTop: 2 }} /></label>
+        <label style={{ fontSize: 12, color: "var(--muted)", display: "block", marginTop: 8 }}>기간(일)<input type="number" min={1} value={bulkSpan} onChange={e => setBulkSpan(Math.max(1, Number(e.target.value) || 1))} style={{ display: "block", width: 90, padding: 8, border: "1px solid var(--line)", borderRadius: 6, marginTop: 2 }} /></label>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+          <button className="btn ghost" onClick={() => setBulkOpen(false)}>취소</button>
+          <button className="btn green" onClick={bulkApply}>적용</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  const bulkBar = canEdit && sel.size > 0 ? (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", background: "#eef7f2", border: "1px solid var(--accent)", borderRadius: 8, padding: "3px 8px" }}>
+      <b style={{ fontSize: 12.5 }}>선택 {sel.size}건</b>
+      <button className="btn" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => { setBulkStart(isoFor(cur.y, cur.m, 1)); setBulkOpen(true); }}>📅 일정 일괄 지정</button>
+      <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setSel(new Set())}>해제</button>
+    </span>
+  ) : null;
+
   // ---- drag (day view) ----
   function startMove(e: React.PointerEvent, o: Order, barEl: HTMLDivElement) {
     if (!canEdit) return; e.preventDefault();
@@ -189,7 +285,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
 
     return (
       <div>
-        {qModal}
+        {qModal}{bomModal}{bulkModal}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
           <MonthNav />
           <div className="seg">
@@ -244,10 +340,13 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
             </div>
           ) : (
             <div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{rows.length}개 · 시작일/기간을 정하면 생산완료일이 자동 계산됩니다.</div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span>{rows.length}개 · 시작일/기간을 정하면 생산완료일이 자동 계산됩니다.</span>{bulkBar}
+              </div>
               {rows.map((o, idx) => { const p = planOf(o); const cp = completionDate(p); return (
                 <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
-                  <div className="mrow"><span className="k">{idx + 1}. 품목</span><span className="v">{o.name}{p.done ? " ✅" : ""}</span></div>
+                  <div className="mrow"><span className="k">{canEdit && <input type="checkbox" checked={sel.has(o.id)}
+                    onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} style={{ marginRight: 6, verticalAlign: "middle" }} />}{idx + 1}. 품목</span><span className="v">{bomBadge(o)}{o.name}{p.done ? " ✅" : ""}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처 / 생산수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {pqty(o, p).toLocaleString()}g {canEdit && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 4 }} onClick={() => openQty(o)}>변경</button>}</span></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -267,11 +366,12 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   // ================= 데스크탑 =================
   return (
     <div>
-      {qModal}
+      {qModal}{bomModal}{bulkModal}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
         <MonthNav />
         <FilterSel />
         <SortSel />
+        {bulkBar}
         <div className="seg">
           <button className={view === "day" ? "on" : ""} onClick={() => setView("day")}>일별</button>
           <button className={view === "week" ? "on" : ""} onClick={() => setView("week")}>주별</button>
@@ -296,7 +396,10 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
             <thead>
               <tr>
                 <th className="fixcol c-no" style={{ cursor: "pointer" }} title="번호순 정렬" onClick={() => toggleSort("seq")}>NO{arrow("seq")}</th>
-                <th className="fixcol c-name" style={{ left: 34, cursor: "pointer" }} title="품목순 정렬" onClick={() => toggleSort("name")}>품목{arrow("name")}</th>
+                <th className="fixcol c-name" style={{ left: 34, cursor: "pointer" }} title="품목순 정렬" onClick={() => toggleSort("name")}>
+                  {canEdit && <input type="checkbox" title="전체 선택" checked={rows.length > 0 && sel.size === rows.length} onClick={e => e.stopPropagation()}
+                    onChange={e => setSel(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} style={{ marginRight: 4, verticalAlign: "middle" }} />}
+                  품목{arrow("name")}</th>
                 <th className="fixcol c-spec" style={{ left: 184 }}>규격</th>
                 <th className="fixcol c-cust" style={{ left: 344 }}>거래처</th>
                 <th className="fixcol c-qty" style={{ left: 464 }}>수량</th>
@@ -311,7 +414,10 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                 return (
                   <tr key={o.id}>
                     <td className="fixcol c-no">{idx + 1}</td>
-                    <td className="fixcol c-name" title={o.name}>{o.name}</td>
+                    <td className="fixcol c-name" title={o.name}>
+                      {canEdit && <input type="checkbox" checked={sel.has(o.id)} onClick={e => e.stopPropagation()}
+                        onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} style={{ marginRight: 4, verticalAlign: "middle" }} />}
+                      {bomBadge(o)}{o.name}</td>
                     <td className="fixcol c-spec" title={o.spec}>{o.spec}</td>
                     <td className="fixcol c-cust" title={o.customer}>{o.customer}</td>
                     <td className="fixcol c-qty" style={{ cursor: canEdit ? "pointer" : "default" }} title={canEdit ? `클릭: 생산수량 변경 (수주량 ${o.qty.toLocaleString()}g)` : ""} onClick={() => openQty(o)}>{pqty(o, p).toLocaleString()}{p.qty != null && Number(p.qty) !== o.qty ? <span style={{ color: "#f59e0b", fontSize: 11 }}> ✎</span> : null}</td>

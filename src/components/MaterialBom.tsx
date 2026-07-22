@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import { Order } from "../lib/types";
 import { BomRow, listBomRows, replaceBomRows, upsertBomRow, deleteBomRow, logAudit } from "../lib/db";
 import { parseBomText, parseBomCells } from "../lib/parseBom";
-import { buildBomIndex, explode } from "../lib/bom";
+import { buildBomIndex, explodeByItem, resolveProd } from "../lib/bom";
 import { can } from "../lib/perm";
 import { toast } from "../lib/toast";
 import { confirmDialog } from "../lib/confirm";
@@ -108,15 +108,17 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
   const months = useMemo(() => [...new Set(orders.map(o => o.ym))].sort((a, b) => a < b ? 1 : -1), [orders]);
   const curYm = ym || months[0] || "";
   const consume = useMemo(() => {
-    const g = new Map<string, { customer: string; name: string; qty: number }>();
+    const g = new Map<string, { customer: string; name: string; code: string; qty: number }>();
     prodOrders.filter(o => o.ym === curYm).forEach(o => {
       const key = o.customer + "|" + o.name;
-      const e = g.get(key) || { customer: o.customer, name: o.name, qty: 0 };
+      const e = g.get(key) || { customer: o.customer, name: o.name, code: (o.item_code || "").trim(), qty: 0 };
+      if (!e.code && o.item_code) e.code = o.item_code.trim();
       e.qty += o.qty; g.set(key, e);
     });
     const list = [...g.values()].sort((a, b) => a.customer < b.customer ? -1 : a.customer > b.customer ? 1 : (a.name < b.name ? -1 : 1));
     // 각 행을 BOM으로 전개 → 원재료별 소요량. 이 달에 등장한 원재료만 열로 쓴다.
-    const rowsX = list.map(r => ({ ...r, hasBom: idx.byProd.has(r.name), mats: new Map(explode(idx, r.name, r.qty).map(m => [m.name, m.qty])) }));
+    // 코드 우선 매칭(품목코드 == BOM 생산품목코드), 이름 폴백 — 표기가 달라도 코드만 맞으면 연동
+    const rowsX = list.map(r => ({ ...r, hasBom: !!resolveProd(idx, r), mats: new Map(explodeByItem(idx, r, r.qty).map(m => [m.name, m.qty])) }));
     const cols = [...new Set(rowsX.flatMap(r => [...r.mats.keys()]))].sort();
     const tot = new Map<string, number>();
     rowsX.forEach(r => r.mats.forEach((v, k) => tot.set(k, (tot.get(k) || 0) + v)));

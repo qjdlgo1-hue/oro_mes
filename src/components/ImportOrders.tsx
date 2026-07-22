@@ -122,6 +122,39 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     setBusy(false);
   }
 
+  // ---- 다중 선택 → 일괄 작업 (구분/거래처 일괄 변경, 일괄 삭제) ----
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const selRows = displayRows.filter(o => sel.has(o.id));
+  async function bulkPatch(patch: Partial<Order>, label: string) {
+    if (!selRows.length) return;
+    if (!(await confirmDialog({ title: "일괄 변경", message: `선택한 ${selRows.length}건의 ${label}을(를) 일괄 변경합니다.
+계속할까요?`, confirmLabel: "변경" }))) return;
+    setBusy(true);
+    try {
+      for (const o of selRows) await updateOrder(o.id, patch);
+      await logAudit("주문 일괄 변경", "order", "", { count: selRows.length, ...patch });
+      toast.success(`${selRows.length}건 일괄 변경 완료`);
+      setSel(new Set()); onChange();
+    } catch (e: any) { toast.error("일괄 변경 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+  async function bulkDelete() {
+    if (!canDelete) { toast.error("삭제 권한이 없습니다."); return; }
+    if (!selRows.length) return;
+    if (!(await confirmDialog({ title: "일괄 삭제", message: `선택한 ${selRows.length}건을 휴지통으로 이동합니다.
+관리자 페이지 휴지통에서 복구할 수 있습니다.`, danger: true, confirmLabel: `${selRows.length}건 삭제` }))) return;
+    setBusy(true);
+    try {
+      for (const o of selRows) await deleteOrder(o.id);
+      await logAudit("주문 일괄 삭제", "order", "", { count: selRows.length });
+      toast.success(`${selRows.length}건 휴지통으로 이동됨`);
+      setSel(new Set()); onChange();
+    } catch (e: any) { toast.error("일괄 삭제 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+  const [bulkGubun, setBulkGubun] = useState("제품");
+  const [bulkCust, setBulkCust] = useState("");
+
   function startEdit(o: Order) { setEditId(o.id); setDraft({ name: o.name, spec: o.spec, qty: o.qty, customer: o.customer, note: o.note, gubun: o.gubun }); }
   async function saveEdit(id: string) {
     setBusy(true);
@@ -275,6 +308,25 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           <span style={{ background: sumSa - sumSu === 0 ? "#f1f3f7" : sumSa - sumSu > 0 ? "#e8f6ee" : "#fdeaea", color: sumSa - sumSu > 0 ? "var(--ok)" : sumSa - sumSu < 0 ? "#c0392b" : "var(--muted)", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700 }}>차이 {sumSa - sumSu > 0 ? "+" : ""}{(sumSa - sumSu).toLocaleString()}g</span>
           <span style={{ background: "#fff7e6", color: "#9a6700", padding: "4px 10px", borderRadius: 6, fontSize: 12 }}>변동 {changedCnt}건</span>
         </div>
+        {canEdit && sel.size > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, background: "#eef7f2", border: "1px solid var(--accent)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5 }}>
+            <b>선택 {sel.size}건</b>
+            <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+              구분→
+              <select value={bulkGubun} onChange={e => setBulkGubun(e.target.value)} style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 5 }}>
+                <option>제품</option><option>무형상품</option><option>원재료</option>
+              </select>
+              <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12 }} disabled={busy} onClick={() => bulkPatch({ gubun: bulkGubun }, `구분(${bulkGubun})`)}>일괄 변경</button>
+            </span>
+            <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+              거래처→
+              <input value={bulkCust} onChange={e => setBulkCust(e.target.value)} placeholder="새 거래처명" style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 5, width: 130 }} />
+              <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12 }} disabled={busy || !bulkCust.trim()} onClick={() => bulkPatch({ customer: bulkCust.trim() }, `거래처(${bulkCust.trim()})`)}>일괄 변경</button>
+            </span>
+            {canDelete && <button className="btn danger" style={{ padding: "3px 10px", fontSize: 12 }} disabled={busy} onClick={bulkDelete}>🗑 일괄 삭제</button>}
+            <button className="btn ghost" style={{ padding: "3px 9px", fontSize: 12, marginLeft: "auto" }} onClick={() => setSel(new Set())}>선택 해제</button>
+          </div>
+        )}
         {displayRows.length === 0 ? <p className="muted">표시할 데이터가 없습니다.</p> :
           isMobile ? (
           <div>
@@ -297,7 +349,12 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
           ) : (
           <div style={{ overflow: "auto", maxHeight: "62vh" }}>
             <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
-              <thead><tr>{["주문일", "구분", "품목명", "규격", "수주(g)", "생산(g)", "차이", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
+              <thead><tr>
+                {canEdit && <th style={{ ...cell, background: "#f1f3f7", position: "sticky", top: 0, width: 30 }}>
+                  <input type="checkbox" title="전체 선택" checked={displayRows.length > 0 && sel.size === displayRows.length}
+                    onChange={e => setSel(e.target.checked ? new Set(displayRows.map(r => r.id)) : new Set())} />
+                </th>}
+                {["주문일", "구분", "품목명", "규격", "수주(g)", "생산(g)", "차이", "거래처", "생산완료일", "상태", "COC", "적요", "관리"].map(h =>
                 <th key={h} style={{ ...cell, background: "#f1f3f7", color: "#374151", position: "sticky", top: 0 }}>{h}</th>)}</tr></thead>
               <tbody>
                 {displayRows.map(o => {
@@ -305,7 +362,11 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
                   const editing = editId === o.id;
                   const pv = pqOf(o), diff = pv - (Number(o.qty) || 0);
                   return (
-                    <tr key={o.id}>
+                    <tr key={o.id} style={sel.has(o.id) ? { background: "#f2faf6" } : undefined}>
+                      {canEdit && <td style={{ ...cell, textAlign: "center" }}>
+                        <input type="checkbox" checked={sel.has(o.id)}
+                          onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} />
+                      </td>}
                       <td style={cell}>{o.order_date}</td>
                       <td style={cell}>{editing ? <input style={inp} value={draft.gubun ?? ""} onChange={e => setDraft(d => ({ ...d, gubun: e.target.value }))} /> : o.gubun}</td>
                       <td style={{ ...cell, fontWeight: 700 }}>{editing ? <input style={inp} value={draft.name ?? ""} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} /> : o.name}</td>
