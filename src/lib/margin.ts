@@ -2,7 +2,7 @@
 // 재료원가 = BOM 전개(반제품 → 말단 원재료까지 재귀, lib/bom.ts) × 원재료별 구매 평균 단가.
 // 판매액 = 판매현황 공급가액(amount). 인건비·경비는 포함하지 않는 '재료원가 기준' 마진이다.
 import { InoutRow } from "./db";
-import { BomIndex, explode } from "./bom";
+import { BomIndex, explodeByItem } from "./bom";
 
 // 구매 데이터에서 품목별 가중평균 단가(원/단위) — Σ공급가액 ÷ Σ수량 (금액·수량 있는 행만)
 export function avgPurchasePrice(purchases: InoutRow[]): Record<string, { price: number; qty: number; amount: number }> {
@@ -46,8 +46,8 @@ export function matPriceFor(purchases: InoutRow[], mat: { code?: string; name: s
 
 // 제품 1g당 재료원가 — BOM 전개 결과 × 원재료 단가.
 // BOM 미등록이면 null. 사용하는 원재료 중 하나라도 단가가 없으면 null (원가 과소평가 방지).
-export function costPerG(idx: BomIndex, prodName: string, priceOf: (mat: { code: string; name: string }) => number): number | null {
-  const mats = explode(idx, prodName, 1); // 1g 생산 기준 전개
+export function costPerG(idx: BomIndex, ref: { code?: string; name: string }, priceOf: (mat: { code: string; name: string }) => number): number | null {
+  const mats = explodeByItem(idx, ref, 1); // 1g 생산 기준 전개 (품목코드 우선 매칭, 이름 폴백)
   if (!mats.length) return null;
   let cost = 0;
   for (const m of mats) {
@@ -70,18 +70,19 @@ export type MarginRow = {
 
 // 품목별 판매액·재료원가·마진 집계 — 판매(kind='out') 행을 제품명으로 묶는다 (BOM 생산품목명과 매칭)
 export function marginByItem(sales: InoutRow[], idx: BomIndex, priceOf: (mat: { code: string; name: string }) => number): MarginRow[] {
-  const m = new Map<string, { qty: number; sales: number }>();
+  const m = new Map<string, { qty: number; sales: number; code: string }>();
   sales.forEach(r => {
     const name = (r.name || "").trim() || (r.item_code || "").trim();
     if (!name) return;
-    const e = m.get(name) || { qty: 0, sales: 0 };
+    const e = m.get(name) || { qty: 0, sales: 0, code: (r.item_code || "").trim() };
+    if (!e.code && r.item_code) e.code = r.item_code.trim();
     e.qty += Number(r.qty) || 0;
     e.sales += Number(r.amount) || 0;
     m.set(name, e);
   });
   const rows: MarginRow[] = [];
   for (const [name, e] of m) {
-    const cpg = costPerG(idx, name, priceOf);
+    const cpg = costPerG(idx, { code: e.code, name }, priceOf);
     const cost = cpg != null ? cpg * e.qty : null;
     const margin = cost != null ? e.sales - cost : null;
     rows.push({ name, qty: e.qty, sales: e.sales, cost, margin, rate: margin != null && e.sales > 0 ? margin / e.sales : null });

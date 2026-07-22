@@ -22,6 +22,15 @@ export function buildBomIndex(rows: BomRow[]): BomIndex {
   return { byProd, byCode, prodNames: new Set(byProd.keys()) };
 }
 
+// 제품 식별 → BOM 생산품목명 해석: ① 품목코드 == prod_code 정확 일치 우선 ② 이름 폴백.
+// 주문/판매의 item_code가 BOM 코드와 맞으면 품목명 표기가 달라도 연동된다. 미등록이면 null.
+export function resolveProd(idx: BomIndex, ref: { code?: string; name?: string }): string | null {
+  const code = (ref.code || "").trim();
+  if (code) { const byCode = idx.byCode.get(code); if (byCode) return byCode; }
+  const name = (ref.name || "").trim();
+  return name && idx.prodNames.has(name) ? name : null;
+}
+
 // 소모품목이 반제품인지 — 이름 또는 코드가 다른 BOM의 생산품목과 일치하면 반제품
 function subProdName(idx: BomIndex, r: BomRow): string | null {
   if (idx.prodNames.has(r.mat_name)) return r.mat_name;
@@ -30,6 +39,12 @@ function subProdName(idx: BomIndex, r: BomRow): string | null {
 }
 
 export type ExplodedMat = { key: string; code: string; name: string; qty: number };
+
+// 코드 우선 진입 전개 — 주문·판매처럼 {item_code, name}을 가진 데이터에서 사용
+export function explodeByItem(idx: BomIndex, ref: { code?: string; name?: string }, qtyG: number): ExplodedMat[] {
+  const prod = resolveProd(idx, ref);
+  return prod ? explode(idx, prod, qtyG) : [];
+}
 
 // 제품 prodName을 qtyG만큼 생산할 때 말단 원재료별 소요량.
 // 깊이 8 제한 + 방문 중 경로 추적으로 순환 참조 방지. BOM 미등록 제품이면 빈 배열.

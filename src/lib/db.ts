@@ -172,6 +172,46 @@ export async function saveSettings(s: Settings): Promise<void> {
   lsSet(LS_SETTINGS, s);
 }
 
+// ===== 품목 마스터 (items) =====
+// 이카운트 품목등록 대응 — 코드/명/규격/구분/단위. 자동 수집·붙여넣기 가져오기·수동 등록.
+export type Item = {
+  id?: string; code: string; name: string; spec: string;
+  gubun: string;   // 제품/반제품/원재료/부재료/상품/무형상품
+  unit: string; note?: string; active: boolean; created_at?: string;
+};
+const LS_ITEMS = "oro_items";
+export async function listItems(): Promise<Item[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("items").select("*").order("code");
+    if (error) throw error;
+    return (data || []) as Item[];
+  }
+  return lsGet<Item[]>(LS_ITEMS, []);
+}
+export async function upsertItems(rows: Item[]): Promise<void> {
+  if (!rows.length) return;
+  if (supabase) {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("items").upsert(rows.slice(i, i + 500), { onConflict: "code,name" });
+      if (error) throw error;
+    }
+    return;
+  }
+  const all = lsGet<Item[]>(LS_ITEMS, []);
+  const key = (r: Item) => `${r.code}|${r.name}`;
+  const m = new Map(all.map(r => [key(r), r]));
+  rows.forEach(r => m.set(key(r), { ...m.get(key(r)), ...r, id: m.get(key(r))?.id || "it-" + Date.now() + Math.random().toString(36).slice(2) }));
+  lsSet(LS_ITEMS, [...m.values()]);
+}
+export async function updateItem(id: string, patch: Partial<Item>): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("items").update(patch).eq("id", id); if (error) throw error; return; }
+  lsSet(LS_ITEMS, lsGet<Item[]>(LS_ITEMS, []).map(r => r.id === id ? { ...r, ...patch } : r));
+}
+export async function deleteItem(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("items").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_ITEMS, lsGet<Item[]>(LS_ITEMS, []).filter(r => r.id !== id));
+}
+
 // ===== 재고: 기초재고('base') / 실사 조정('adj') / 안전재고('min') =====
 // base = 기준일(bdate) 시작 시점 잔량을 qty로 설정 — 그 이전 입출고는 무시 (재실사 시 새 base 추가)
 // adj  = ±증감(실사 차이 보정 등), note에 사유
