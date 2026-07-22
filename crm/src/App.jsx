@@ -10,6 +10,7 @@ import { CompanyList } from "./screens/CompanyList";
 import { CompanyDetail } from "./screens/CompanyDetail";
 import { Pipeline } from "./screens/Pipeline";
 import { QuoteScreen } from "./screens/QuoteScreen";
+import { MailScreen } from "./screens/MailScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { cloudLoadAll, cloudLoadOne, cloudInsert, cloudUpdate, cloudDelete, cloudDeleteCompanyCascade, localLoad, localSave, getSavedMode, saveMode } from "./lib/db";
@@ -394,6 +395,13 @@ export default function OroCrmApp() {
               const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
               addActivity({ companyId, channel: "memo", direction: "sent", person: "견적 담당", title, body, dealId: "", date });
             }}
+          />
+        )}
+        {screen === "mail" && (
+          <MailScreen
+            activities={activities}
+            companies={companies}
+            openCompany={(id) => { setSelectedCompanyId(id); setScreen("company"); }}
           />
         )}
         {screen === "settings" && <SettingsScreen mode={mode} canEdit={canEdit} />}

@@ -12,8 +12,8 @@ export function normSubject(title) {
   return s.toLowerCase().trim();
 }
 
-// 첨부파일 열기 — 비공개 버킷이라 서명 URL 발급 후 새 탭
-async function openAttachment(att) {
+// 첨부파일 열기 — 비공개 버킷이라 서명 URL 발급 후 새 탭 (메일 화면에서도 사용)
+export async function openAttachment(att) {
   try {
     const { data, error } = await supabase.storage.from("crm-mail-files").createSignedUrl(att.path, 300);
     if (error) throw error;
@@ -21,7 +21,7 @@ async function openAttachment(att) {
   } catch (e) { alert(`파일 열기 실패: ${e.message}`); }
 }
 
-const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+export const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 // ===========================================================================
 // 화면 3: 거래처 상세 (CRM의 심장)
