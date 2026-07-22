@@ -9,7 +9,7 @@ import { ToastHost } from "./lib/toast";
 import { ConfirmHost } from "./lib/confirm";
 import ErrorBoundary from "./lib/ErrorBoundary";
 import { loadPerms, useCaps } from "./lib/perm";
-import { useIsMobile } from "./lib/useIsMobile";
+import { useIsMobile, isCoarse } from "./lib/useIsMobile";
 import { TAB_DEFS, TabKey, groupIcon } from "./lib/tabs";
 
 // URL 해시 ↔ 탭 동기화 (#plan, #coc/<주문id>) — 새로고침·뒤로가기·북마크 지원
@@ -70,7 +70,8 @@ export default function App() {
   const isMobile = useIsMobile();
 
   // 레일: 📌 고정(기억) + 호버 인텐트(스침 오작동 방지: 열림 150ms / 닫힘 300ms 지연)
-  const [pinned, setPinned] = useState(() => { try { return localStorage.getItem("oro_rail_pin") === "1"; } catch { return false; } });
+  // 터치 기기는 :hover 펼침이 불가능하므로 레일을 기본 고정(펼침) — 사용자가 접으면 그 선택 유지
+  const [pinned, setPinned] = useState(() => { try { const v = localStorage.getItem("oro_rail_pin"); return v == null ? isCoarse : v === "1"; } catch { return isCoarse; } });
   const [railOpen, setRailOpen] = useState(false);
   const tOpen = useRef<number | null>(null);
   const tClose = useRef<number | null>(null);

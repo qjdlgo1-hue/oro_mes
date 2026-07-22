@@ -317,3 +317,29 @@ button.btn.medit-mini{padding:2px 9px;font-size:12px;min-height:0;}
 .gpage{page-break-after:always;}
 .gdoc + .gdoc{margin-top:18px;}
 /* (인쇄 규칙은 상단 @media print 블록에 통합 — .printable) */
+
+/* ===== 터치 기기(태블릿·터치 모니터) 최적화 — 입력 방식 기준(@media pointer: coarse) =====
+   폭과 무관하게 '터치가 주 입력'인 기기에서만 적용. 데스크톱 마우스 화면은 그대로.
+   목표: 터치 타깃 44px 확보 · iPad 입력 자동확대 차단 · 표 밀도 완화 · 간트 터치 드래그. */
+@media (pointer: coarse) {
+  * { -webkit-tap-highlight-color: transparent; }
+  button, .btn, .seg button, .subnav > button, .monthnav button, .medit-mini {
+    min-height: 44px; touch-action: manipulation;
+  }
+  .btn, .seg button { padding-left: 16px; padding-right: 16px; }
+  .btn:active, .seg button:active, .subnav > button:active, .nav-item:active, .drawer-item:active {
+    transform: scale(0.97); filter: brightness(0.93);   /* 눌림 피드백 (hover 대체) */
+  }
+  /* 16px 미만 입력은 iPadOS Safari가 포커스 시 화면을 자동 확대함 */
+  input, select, textarea { font-size: 16px; }
+  input:not([type=checkbox]):not([type=radio]), select { min-height: 42px; }
+  input[type=checkbox], input[type=radio] { width: 20px; height: 20px; }
+  /* 표 밀도 완화 — 행을 손가락으로 짚기 쉽게 (인쇄 서식 .gt 등은 제외, .tbl 계열만) */
+  .tbl th, .tbl td { padding-top: 9px; padding-bottom: 9px; }
+  .nav-item, .drawer-item, .mrail-item { min-height: 46px; }
+  .mrail-pin button { min-height: 40px; min-width: 40px; }
+  .hamb { width: 44px; height: 44px; }
+  /* 간트: 터치 드래그가 페이지 스크롤로 먹히지 않게 + 리사이즈 핸들 확대 */
+  .bar { touch-action: none; }
+  .bar .handle { width: 22px; }
+}
