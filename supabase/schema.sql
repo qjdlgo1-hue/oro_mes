@@ -362,3 +362,8 @@ alter table ecount_log enable row level security;
 drop policy if exists "ecount_log_read" on ecount_log;
 create policy "ecount_log_read" on ecount_log for select to authenticated using (true);
 create index if not exists ecount_log_at_idx on ecount_log (at desc);
+
+-- 이카운트 전표 전송 표시 — 성공 즉시 전표번호를 기록해 중복 전송을 막는다.
+-- plans.ecount_slip: 생산입고 I 전송(생산계획 완료 건), inout_rows.ecount_slip: 구매입력 전송(구매 행)
+alter table plans add column if not exists ecount_slip text;
+alter table inout_rows add column if not exists ecount_slip text;

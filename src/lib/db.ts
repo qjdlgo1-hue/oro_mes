@@ -114,6 +114,7 @@ export type InoutRow = {
   id?: string; kind: InoutKind; ym: string; idate: string;
   item_code: string; name: string; spec?: string; qty: number;
   amount?: number | null; customer?: string; trade_type?: string; gubun?: string; cust_code?: string; vat?: number | null; total?: number | null; currency?: string; fx_rate?: number | null; note?: string; sig: string;
+  ecount_slip?: string | null; // 이카운트 구매입력 전송 완료 표시(전표번호) — 중복 전송 방지
 };
 // 중복 판별 키(같은 행 재붙여넣기 방지)
 export function inoutSig(r: Omit<InoutRow, "sig">): string {
@@ -142,6 +143,15 @@ export async function appendInout(rows: InoutRow[]): Promise<void> {
   const all = lsGet<InoutRow[]>(lsKeyOf(k), []);
   const seen = new Set(all.map(r => r.sig));
   lsSet(lsKeyOf(k), [...all, ...rows.filter(r => !seen.has(r.sig))]);
+}
+
+// 행 단위 갱신 (이카운트 전송 표시 등)
+export async function updateInoutRow(id: string, patch: Partial<InoutRow>): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("inout_rows").update(patch).eq("id", id); if (error) throw error; return; }
+  (["in", "out", "purchase"] as InoutKind[]).forEach(k => {
+    const all = lsGet<InoutRow[]>(lsKeyOf(k), []);
+    if (all.some(r => r.id === id)) lsSet(lsKeyOf(k), all.map(r => r.id === id ? { ...r, ...patch } : r));
+  });
 }
 
 export async function deleteInoutMonth(kind: InoutKind, ym: string): Promise<void> {

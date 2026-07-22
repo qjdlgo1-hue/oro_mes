@@ -1,7 +1,9 @@
 import { errMsg } from "../lib/errmsg";
 import { thBase, tdBase } from "../lib/styles";
 import { useEffect, useMemo, useState } from "react";
-import { InoutKind, InoutRow, inoutSig, listInout, appendInout, deleteInoutMonth, listOrders, logAudit } from "../lib/db";
+import { InoutKind, InoutRow, inoutSig, listInout, appendInout, deleteInoutMonth, updateInoutRow, listOrders, logAudit } from "../lib/db";
+import { buildPurchaseBulk, sendEcountPurchase } from "../lib/ecount";
+import { hasSupabase } from "../lib/supabase";
 import { parseInout } from "../lib/parseInout";
 import { todayIso } from "../lib/fmt";
 import { toast } from "../lib/toast";
@@ -124,6 +126,40 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
     setBusy(false);
   }
 
+  // ---- 이카운트 구매입력 전송 (kind='purchase' 전용) — 현재 목록의 미전송 건을 행별 개별 전송.
+  // 직접 입력·AI 인식으로 MES에만 있는 매입 건을 ERP에 반영하는 용도. 이카운트에서 가져온 데이터를
+  // 되보내면 중복 전표가 되므로, 반드시 확인 모달에서 건수를 보고 전송한다. 성공 즉시 전표번호 기록.
+  const [erpBusy, setErpBusy] = useState(false);
+  const erpTargets = useMemo(() => kind !== "purchase" ? [] :
+    detail.filter(r => !r.ecount_slip && (r.item_code || "").trim() && r.id), [kind, detail]);
+  async function sendErpPurchase() {
+    if (!erpTargets.length) return;
+    const ok = await confirmDialog({
+      title: "이카운트 구매입력 전송", confirmLabel: "전송",
+      message: `현재 목록의 미전송 ${erpTargets.length}건을 이카운트 [구매입력] 전표로 전송합니다.\n※ 이카운트 [구매현황]에서 가져온 데이터를 되보내면 중복 전표가 됩니다 — 직접 입력·AI 인식 건만 전송하세요.\n공급가액·부가세는 MES 값(없으면 10% 계산)으로 전송됩니다.`,
+    });
+    if (!ok) return;
+    setErpBusy(true);
+    let okCnt = 0; const errs: string[] = [];
+    for (const r of erpTargets) {
+      try {
+        const res = await sendEcountPurchase(buildPurchaseBulk([{
+          code: (r.item_code || "").trim(), qty: Number(r.qty) || 0, date: r.idate,
+          supply: r.amount != null ? Number(r.amount) : null, vat: r.vat != null ? Number(r.vat) : null,
+          cust: r.cust_code || undefined,
+        }]));
+        if (res.success < 1) throw new Error(res.details?.length ? JSON.stringify(res.details[0]).slice(0, 160) : "이카운트가 실패로 응답했습니다.");
+        await updateInoutRow(r.id!, { ecount_slip: res.slip_nos[0] || "sent" });
+        okCnt++;
+      } catch (e: any) { errs.push(`${r.name || r.item_code}: ${errMsg(e)}`); }
+    }
+    if (okCnt) logAudit("이카운트 구매입력 전송", "inout", "", { count: okCnt });
+    if (errs.length) toast.error(`구매입력 전송 — 성공 ${okCnt}건 · 실패 ${errs.length}건: ${errs[0]}${errs.length > 1 ? " 외" : ""}`);
+    else toast.success(`이카운트 구매입력 ${okCnt}건 전송 완료`);
+    load();
+    setErpBusy(false);
+  }
+
   const box: React.CSSProperties = { width: "100%", height: 130, fontSize: 12, padding: 8, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "monospace" };
   const th: React.CSSProperties = { ...thBase, borderBottom: "1px solid var(--line)" };
   const td: React.CSSProperties = tdBase;
@@ -228,6 +264,10 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
             <MonthPicker months={[...months].sort()} value={curYm} onChange={setSelYm} allowAll allValue="__all__" />}
           <input placeholder="🔍 품목/규격/거래처 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 170 }} />
           <span className="muted" style={{ fontSize: 12 }}>{detail.length}건 · 수량 합계 {fmt(detailQty)}</span>
+          {kind === "purchase" && hasSupabase && canEdit && erpTargets.length > 0 &&
+            <button className="btn ghost" style={{ marginLeft: "auto" }} disabled={erpBusy}
+              title="품목코드가 있는 미전송 건을 이카운트 [구매입력] 전표로 전송 (직접 입력·AI 인식 건 전용)"
+              onClick={sendErpPurchase}>{erpBusy ? "전송 중…" : `📡 이카운트 전송 (미전송 ${erpTargets.length}건)`}</button>}
         </div>
         {detail.length === 0 ? <p className="muted">{loaded ? "표시할 데이터가 없습니다. 위에서 붙여넣고 누적 추가하세요." : "불러오는 중…"}</p> :
           <div style={{ overflow: "auto", maxHeight: "58vh" }}>
@@ -245,6 +285,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                 {isOut && <th style={{ ...th, textAlign: "left", cursor: "pointer" }} onClick={() => toggle("customer")}>거래처{arrow("customer")}</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>구분</th>}
                 {isOut && <th style={{ ...th, textAlign: "center" }}>통화</th>}
+                {kind === "purchase" && hasSupabase && <th style={{ ...th, textAlign: "center" }} title="이카운트 구매입력 전송 여부">ERP</th>}
               </tr></thead>
               <tbody>
                 {detailPaged.map((r, i) => (
@@ -261,6 +302,7 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
                     {isOut && <td style={tdL}>{r.customer || ""}</td>}
                     {isOut && <td style={{ ...td, textAlign: "center" }}>{r.trade_type || ""}</td>}
                     {isOut && <td style={{ ...td, textAlign: "center" }}>{r.currency || ""}</td>}
+                    {kind === "purchase" && hasSupabase && <td style={{ ...td, textAlign: "center" }}>{r.ecount_slip ? <span title={"전표 " + r.ecount_slip} style={{ color: "var(--ok)", fontWeight: 700, fontSize: 11 }}>✓</span> : <span className="muted">-</span>}</td>}
                   </tr>
                 ))}
               </tbody>

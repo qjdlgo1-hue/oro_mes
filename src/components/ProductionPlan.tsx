@@ -5,6 +5,8 @@ import { listPlans, upsertPlan, updateOrder, logAudit, listBomRows, BomRow } fro
 import { buildBomIndex, resolveProd, explodeByItem } from "../lib/bom";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
 import { nextBusinessDay } from "../lib/holidays";
+import { buildProdBulk, sendEcountProd } from "../lib/ecount";
+import { hasSupabase } from "../lib/supabase";
 import { can } from "../lib/perm";
 import { useIsMobile } from "../lib/useIsMobile";
 import { toast } from "../lib/toast";
@@ -219,6 +221,38 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
       setBulkOpen(false); setSel(new Set());
     } catch (e: any) { setPlans(prev); setTick(t => t + 1); toast.error("일괄 저장 실패: " + errMsg(e)); }
   }
+  // 선택 건 이카운트 생산입고 전송 — 완료(✅)·품목코드 보유·미전송 건만.
+  // 행별 개별 전송이라 부분 실패 시 성공 건은 즉시 전표번호가 기록되어 재전송해도 중복되지 않는다.
+  const [erpBusy, setErpBusy] = useState(false);
+  async function sendErpProd() {
+    const targets = rows.filter(o => sel.has(o.id));
+    const ready = targets.filter(o => { const p = planOf(o); return p.done && !p.ecount_slip && (o.item_code || "").trim(); });
+    const skipped = targets.length - ready.length;
+    if (!ready.length) { toast.error("전송할 건이 없습니다 — 생산 완료(✅) 상태이고 품목코드가 있는 미전송 건만 보낼 수 있습니다."); return; }
+    const ok = await confirmDialog({
+      title: "이카운트 생산입고 전송", confirmLabel: "전송",
+      message: `완료된 생산 ${ready.length}건을 이카운트 [생산입고]로 전송합니다.${skipped ? `\n(미완료·품목코드 없음·기전송 ${skipped}건 제외)` : ""}\n이카운트에 전표가 실제로 생성됩니다 — 처음에는 테스트존에서 확인을 권장합니다.`,
+    });
+    if (!ok) return;
+    setErpBusy(true);
+    let okCnt = 0; const errs: string[] = [];
+    for (const o of ready) {
+      const p = planOf(o);
+      try {
+        const r = await sendEcountProd(buildProdBulk([{ code: o.item_code.trim(), qty: pqty(o, p), date: completionDate(p) || p.start_date }]));
+        if (r.success < 1) throw new Error(r.details?.length ? JSON.stringify(r.details[0]).slice(0, 160) : "이카운트가 실패로 응답했습니다.");
+        const np = { ...p, ecount_slip: r.slip_nos[0] || "sent" };
+        await upsertPlan(np);
+        setPlans(c => ({ ...c, [np.order_id]: np }));
+        okCnt++;
+      } catch (e: any) { errs.push(`${o.name}: ${errMsg(e)}`); }
+    }
+    setTick(t => t + 1);
+    if (okCnt) logAudit("이카운트 생산입고 전송", "plan", "", { count: okCnt });
+    if (errs.length) toast.error(`생산입고 전송 — 성공 ${okCnt}건 · 실패 ${errs.length}건: ${errs[0]}${errs.length > 1 ? " 외" : ""}`);
+    else { toast.success(`이카운트 생산입고 ${okCnt}건 전송 완료`); setSel(new Set()); }
+    setErpBusy(false);
+  }
   const bulkModal = bulkOpen ? (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setBulkOpen(false)}>
       <div style={{ background: "#fff", borderRadius: 12, padding: 20, width: 340, maxWidth: "92vw" }} onClick={e => e.stopPropagation()}>
@@ -237,6 +271,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
     <span style={{ display: "inline-flex", gap: 6, alignItems: "center", background: "#eef7f2", border: "1px solid var(--accent)", borderRadius: 8, padding: "3px 8px" }}>
       <b style={{ fontSize: 12.5 }}>선택 {sel.size}건</b>
       <button className="btn" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => { setBulkStart(isoFor(cur.y, cur.m, 1)); setBulkOpen(true); }}>📅 일정 일괄 지정</button>
+      {hasSupabase && <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} disabled={erpBusy} title="완료(✅)·품목코드 보유·미전송 건을 이카운트 [생산입고]로 전송" onClick={sendErpProd}>{erpBusy ? "전송 중…" : "📡 ERP 생산입고"}</button>}
       <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setSel(new Set())}>해제</button>
     </span>
   ) : null;
@@ -346,7 +381,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
               {rows.map((o, idx) => { const p = planOf(o); const cp = completionDate(p); return (
                 <div className="mcard" key={o.id} style={{ opacity: p.done ? 0.6 : 1 }}>
                   <div className="mrow"><span className="k">{canEdit && <input type="checkbox" checked={sel.has(o.id)}
-                    onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} style={{ marginRight: 6, verticalAlign: "middle" }} />}{idx + 1}. 품목</span><span className="v">{bomBadge(o)}{o.name}{p.done ? " ✅" : ""}</span></div>
+                    onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} style={{ marginRight: 6, verticalAlign: "middle" }} />}{idx + 1}. 품목</span><span className="v">{bomBadge(o)}{o.name}{p.done ? " ✅" : ""}{p.ecount_slip && <span title={"이카운트 전송됨 · " + p.ecount_slip} style={{ fontSize: 10, color: "var(--ok)", fontWeight: 700 }}> ERP✓</span>}</span></div>
                   <div className="mrow"><span className="k">규격</span><span className="v" style={{ fontWeight: 400 }}>{o.spec}</span></div>
                   <div className="mrow"><span className="k">거래처 / 생산수량</span><span className="v" style={{ fontWeight: 400 }}>{o.customer} · {pqty(o, p).toLocaleString()}g {canEdit && <button className="btn ghost" style={{ padding: "1px 8px", fontSize: 11, marginLeft: 4 }} onClick={() => openQty(o)}>변경</button>}</span></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -417,7 +452,7 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
                     <td className="fixcol c-name" title={o.name}>
                       {canEdit && <input type="checkbox" checked={sel.has(o.id)} onClick={e => e.stopPropagation()}
                         onChange={e => setSel(v => { const n = new Set(v); e.target.checked ? n.add(o.id) : n.delete(o.id); return n; })} style={{ marginRight: 4, verticalAlign: "middle" }} />}
-                      {bomBadge(o)}{o.name}</td>
+                      {bomBadge(o)}{o.name}{p.ecount_slip && <span title={"이카운트 생산입고 전송됨 · 전표 " + p.ecount_slip} style={{ fontSize: 10, color: "var(--ok)", fontWeight: 700 }}> ERP✓</span>}</td>
                     <td className="fixcol c-spec" title={o.spec}>{o.spec}</td>
                     <td className="fixcol c-cust" title={o.customer}>{o.customer}</td>
                     <td className="fixcol c-qty" style={{ cursor: canEdit ? "pointer" : "default" }} title={canEdit ? `클릭: 생산수량 변경 (수주량 ${o.qty.toLocaleString()}g)` : ""} onClick={() => openQty(o)}>{pqty(o, p).toLocaleString()}{p.qty != null && Number(p.qty) !== o.qty ? <span style={{ color: "#f59e0b", fontSize: 11 }}> ✎</span> : null}</td>
