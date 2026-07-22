@@ -43,6 +43,42 @@ export function erpBalanceMap(rows: Record<string, any>[]): Map<string, number> 
   return m;
 }
 
+// ---- 전표 전송 페이로드 (순수 함수, 쓰기 API) ----
+// 이카운트 벌크 규칙: 같은 UPLOAD_SER_NO = 한 전표. 여기서는 행마다 다른 번호(행별 개별 전표)로
+// 만들어 부분 실패 추적·재전송을 단순하게 유지한다. 날짜는 YYYYMMDD.
+const ymd = (iso: string) => (iso || "").replace(/-/g, "").slice(0, 8);
+
+export type ProdSlipRow = { code: string; qty: number; date: string };
+export function buildProdBulk(rows: ProdSlipRow[]): Record<string, string>[] {
+  return rows.map((r, i) => ({
+    UPLOAD_SER_NO: String(i + 1),
+    PROD_CD: r.code, QTY: String(r.qty), IO_DATE: ymd(r.date),
+  }));
+}
+
+export type PurchaseSlipRow = {
+  code: string; qty: number; date: string;
+  price?: number | null; supply?: number | null; vat?: number | null; cust?: string;
+};
+// 구매입력은 금액·부가세가 자동 계산되지 않음 → MES에서 산출해 전송
+// (공급가액 = 있으면 그대로, 없으면 수량×단가 반올림 / 부가세 = 있으면 그대로, 없으면 공급가액의 10% 반올림)
+export function buildPurchaseBulk(rows: PurchaseSlipRow[]): Record<string, string>[] {
+  return rows.map((r, i) => {
+    const supply = r.supply != null ? Math.round(r.supply)
+      : (r.price != null ? Math.round(r.qty * r.price) : null);
+    const vat = r.vat != null ? Math.round(r.vat) : (supply != null ? Math.round(supply * 0.1) : null);
+    const d: Record<string, string> = {
+      UPLOAD_SER_NO: String(i + 1),
+      PROD_CD: r.code, QTY: String(r.qty), IO_DATE: ymd(r.date),
+    };
+    if (r.price != null) d.PRICE = String(r.price);
+    if (supply != null) d.SUPPLY_AMT = String(supply);
+    if (vat != null) d.VAT_AMT = String(vat);
+    if (r.cust) d.CUST = r.cust;
+    return d;
+  });
+}
+
 // ---- Edge Function 호출 ----
 
 const OFFLINE = "이카운트 연동은 클라우드 연결에서만 사용할 수 있습니다.";
@@ -60,6 +96,10 @@ export const testEcount = () => call<{ ok: boolean; zone: string; use_test: bool
 export const fetchEcountItems = (codes?: string[]) => call<{ rows: EcountItemRow[] }>("items", { codes });
 export const fetchEcountStock = (baseDate?: string) =>
   call<{ rows: Record<string, any>[]; base_date: string }>("stock", baseDate ? { base_date: baseDate } : {});
+
+export type EcountSaveResult = { success: number; fail: number; slip_nos: string[]; details: any[] };
+export const sendEcountProd = (list: Record<string, string>[]) => call<EcountSaveResult>("save_prod", { list });
+export const sendEcountPurchase = (list: Record<string, string>[]) => call<EcountSaveResult>("save_purchase", { list });
 
 export type EcountLog = { id: string; at: string; action: string; ok: boolean; detail: any };
 export async function listEcountLogs(limit = 15): Promise<EcountLog[]> {

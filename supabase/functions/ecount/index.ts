@@ -1,7 +1,7 @@
 // 이카운트(ERP) OpenAPI 프록시 — MES ↔ 이카운트 연동의 유일한 통로.
 // 인증키(COM_CODE/USER_ID/API_CERT_KEY)는 service role만 접근하는 ecount_config 테이블에 보관되어
 // 브라우저(공개 저장소 SPA)로는 절대 내려가지 않는다. CORS·세션 발급/캐시/재시도도 여기서 처리.
-// actions: get_config / save_config / test (master 전용) · items / stock (로그인 사용자)
+// actions: get_config / save_config / test (master 전용) · items / stock / save_prod / save_purchase (로그인 사용자)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -194,6 +194,35 @@ Deno.serve(async (req: Request) => {
       await log(sb, "재고 조회", !err, { base_date: baseDate, got: rows.length, ...(err ? { error: err } : {}) });
       if (err) return json({ error: "재고 조회 실패: " + err }, 400);
       return json({ rows, base_date: baseDate });
+    }
+
+    // 쓰기 2종 — 생산입고 I / 구매입력. 클라이언트가 만든 BulkDatas 목록을 전표 형식으로 감싸 전송.
+    // 금액·부가세는 자동 계산되지 않으므로 클라이언트(MES)에서 산출해 온 값을 그대로 쓴다.
+    if (action === "save_prod" || action === "save_purchase") {
+      const cfg = await loadCfg(sb);
+      if (!cfg) return json({ error: "이카운트 연동이 설정되지 않았습니다." }, 400);
+      const list: Record<string, string>[] = Array.isArray(body.list) ? body.list.slice(0, 200) : [];
+      if (!list.length) return json({ error: "전송할 행이 없습니다." }, 400);
+      const isProd = action === "save_prod";
+      const path = isProd ? "/OAPI/V2/GoodsReceipt/SaveGoodsReceipt" : "/OAPI/V2/Purchases/SavePurchases";
+      const payload = isProd
+        ? { GoodsReceiptList: list.map(d => ({ BulkDatas: d })) }
+        : { PurchasesList: list.map(d => ({ BulkDatas: d })) };
+      const r = await callApi(sb, cfg, path, payload);
+      const err = ecountErr(r);
+      const d = r?.Data || {};
+      const success = Number(d.SuccessCnt ?? 0);
+      const fail = Number(d.FailCnt ?? 0);
+      const slips: string[] = (Array.isArray(d.SlipNos) ? d.SlipNos : []).map((s: unknown) => String(s));
+      const details = Array.isArray(d.ResultDetails) ? d.ResultDetails.slice(0, 50) : [];
+      const label = isProd ? "생산입고 전송" : "구매입력 전송";
+      const ok = !err && fail === 0 && success > 0;
+      await log(sb, label, ok, {
+        sent: list.length, success, fail, slips: slips.slice(0, 20),
+        ...(cfg.use_test ? { zone: "테스트존" } : {}), ...(err ? { error: err } : {}),
+      });
+      if (err && !success) return json({ error: label + " 실패: " + err }, 400);
+      return json({ success, fail, slip_nos: slips, details });
     }
 
     return json({ error: "알 수 없는 action: " + action }, 400);
