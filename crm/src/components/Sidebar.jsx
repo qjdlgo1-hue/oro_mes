@@ -11,6 +11,7 @@ export function Sidebar({ screen, setScreen, unreplied, mode, email, onLogout, o
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "영업 파이프라인", icon: "▤" },
     { key: "quotes", label: "견적", icon: "₩" },
+    { key: "mail", label: "메일", icon: "📧" },
     { key: "settings", label: "설정", icon: "⚙" },
   ];
 
@@ -127,6 +128,7 @@ export function MobileTabBar({ screen, setScreen }) {
     { key: "companies", label: "거래처", icon: "🏢" },
     { key: "pipeline", label: "파이프라인", icon: "▤" },
     { key: "quotes", label: "견적", icon: "₩" },
+    { key: "mail", label: "메일", icon: "📧" },
     { key: "settings", label: "설정", icon: "⚙" },
   ];
   return (
