@@ -1,6 +1,6 @@
 import { errMsg } from "../lib/errmsg";
 import { useEffect, useState } from "react";
-import { SCREEN_PERMS, SCREEN_PERM_KEYS, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
+import { SCREEN_PERMS, SCREEN_PERM_KEYS, ScreenPerm, listProfiles, setRole, getMatrix, setPermission, adminCreateUser, adminResetPassword, myRole } from "../lib/perm";
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
@@ -407,14 +407,33 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
             <tbody>
               {(() => {
                 const rows: React.ReactNode[] = [];
-                let lastGrp = "";
-                SCREEN_PERMS.forEach(s => {
-                  if (s.group !== lastGrp) {
-                    lastGrp = s.group;
-                    rows.push(<tr key={"g" + s.group}><td colSpan={4} style={{ ...TD, background: "#eef2f6", fontWeight: 800, fontSize: 12 }}>{s.group}</td></tr>);
-                  }
+                // 그룹핑은 위 '메뉴 구성'(menu_groups/menu_placement)을 그대로 따른다 —
+                // 메뉴에서 화면을 옮기면 권한 표에서도 같은 그룹 아래에 보이도록.
+                // 메뉴 구성이 없으면(로컬 모드 등) 기본 분류(s.group)로 폴백.
+                const tabKeyOf = (s: ScreenPerm) => { const k = (s.view[0] || "").replace("menu.", ""); return k === "pop" ? "today" : k; };
+                const byTab = new Map(SCREEN_PERMS.map(s => [tabKeyOf(s), s] as const));
+                const seen = new Set<string>();
+                const collect = (ts: { key: string }[]) => ts
+                  .map(t => byTab.get(t.key))
+                  .filter((s): s is ScreenPerm => !!s && !seen.has(s.name) && (seen.add(s.name), true));
+                let grps: { label: string; items: ScreenPerm[] }[];
+                if (mgroups.length) {
+                  grps = [...mgroups].sort((a, b) => a.sort - b.sort)
+                    .map(g => ({ label: `${groupIcon(g.name, itemsOf(g.id)[0]?.icon)} ${g.name}`, items: collect(itemsOf(g.id)) }))
+                    .filter(g => g.items.length > 0);
+                  const etc = [...collect(itemsOf(null)), ...SCREEN_PERMS.filter(s => !seen.has(s.name))];
+                  if (etc.length) grps.push({ label: "📂 기타", items: etc });
+                } else {
+                  grps = [];
+                  SCREEN_PERMS.forEach(s => {
+                    const last = grps[grps.length - 1];
+                    if (!last || last.label !== s.group) grps.push({ label: s.group, items: [] });
+                    grps[grps.length - 1].items.push(s);
+                  });
+                }
+                const screenRow = (s: ScreenPerm) => {
                   const shared = s.acts.find(a => a.shared);
-                  rows.push(
+                  return (
                     <tr key={s.name}>
                       <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }}>{s.name}
                         {shared && <span title={`'${shared.shared}'와 같은 권한을 사용합니다 — 한쪽을 바꾸면 함께 바뀝니다`}
@@ -438,6 +457,10 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                       })}
                     </tr>
                   );
+                };
+                grps.forEach(g => {
+                  rows.push(<tr key={"g" + g.label}><td colSpan={4} style={{ ...TD, background: "#eef2f6", fontWeight: 800, fontSize: 12 }}>{g.label}</td></tr>);
+                  g.items.forEach(s => rows.push(screenRow(s)));
                 });
                 return rows;
               })()}
@@ -445,6 +468,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           </table>
         </div>
         <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          그룹과 순서는 위 <b>'메뉴 구성'</b>을 그대로 따릅니다 — 메뉴에서 화면을 옮기면 이 표에서도 같은 그룹 아래로 이동합니다.
           '보기'를 끄면 사이드바에서 화면이 숨겨지고 작업도 함께 비활성화됩니다. 리포트·기록은 보기 스위치 하나가 내부 권한까지 함께 처리합니다.
           COC는 '보기'만 켜면 읽기 전용으로 열람할 수 있습니다. 변경은 즉시 저장되며 대상자는 새로고침 후 반영됩니다.
         </p>
