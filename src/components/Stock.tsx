@@ -10,6 +10,8 @@ import { toast } from "../lib/toast";
 import { errMsg } from "../lib/errmsg";
 import { can } from "../lib/perm";
 import { confirmDialog } from "../lib/confirm";
+import { fetchEcountStock, erpBalanceMap } from "../lib/ecount";
+import { hasSupabase } from "../lib/supabase";
 import MonthPicker from "./MonthPicker";
 
 type View = "now" | "ledger" | "adjust";
@@ -143,6 +145,21 @@ export default function Stock() {
     catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
 
+  // ---- ERP(이카운트) 재고 비교 — 버튼을 눌렀을 때만 OpenAPI 조회 (호출량 관리) ----
+  const [erpBal, setErpBal] = useState<Map<string, number> | null>(null);
+  const [erpDate, setErpDate] = useState("");
+  const [erpBusy, setErpBusy] = useState(false);
+  async function loadErp() {
+    setErpBusy(true);
+    try {
+      const r = await fetchEcountStock();
+      setErpBal(erpBalanceMap(r.rows));
+      setErpDate(r.base_date);
+      toast.success(`이카운트 재고 ${r.rows.length}건 조회 (${r.base_date} 기준) — 품목코드로 대조합니다.`);
+    } catch (e: any) { toast.error("ERP 재고 조회 실패: " + errMsg(e)); }
+    setErpBusy(false);
+  }
+
   // ---- 수불부 상세 펼침 ----
   const [openKey, setOpenKey] = useState("");
 
@@ -165,7 +182,10 @@ export default function Stock() {
         </div>
         {view === "ledger" && months.length > 0 && <MonthPicker months={months} value={curYm} onChange={setYm} />}
         {view !== "adjust" && <input placeholder="🔍 품목 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 160 }} />}
-        {view === "now" && <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportNow}>📊 엑셀 저장</button>}
+        {view === "now" && <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
+          {hasSupabase && <button className="btn ghost" disabled={erpBusy} onClick={loadErp} title="이카운트 OpenAPI로 현재 재고를 조회해 MES 계산 재고와 나란히 비교합니다">{erpBusy ? "조회 중…" : "🔗 ERP 재고 비교"}</button>}
+          <button className="btn ghost" onClick={exportNow}>📊 엑셀 저장</button>
+        </span>}
         {view === "ledger" && <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportLedger}>📊 엑셀 저장</button>}
       </div>
 
@@ -192,6 +212,10 @@ export default function Stock() {
               <th style={th}>기초</th><th style={th}>입고</th><th style={th}>출고</th><th style={th}>조정</th>
               <th style={th}>현재고</th>
               <th style={th}>안전재고</th>
+              {erpBal && <>
+                <th style={th} title={`이카운트 재고현황 ${erpDate} 기준`}>ERP 재고</th>
+                <th style={th}>차이</th>
+              </>}
             </tr></thead>
             <tbody>
               {(["product", "material"] as const).map(cat => (
@@ -212,6 +236,15 @@ export default function Stock() {
                       <td style={td}>{num(adjQ)}</td>
                       <td style={{ ...td, background: bal < 0 ? "#fdecea" : undefined }}>{num(bal, true)}{bal < 0 && " ⚠"}</td>
                       <td style={td}>{min ? <>{nf1(min)}{isLow && <b style={{ color: "#b5720a" }}> 발주⚠</b>}</> : <span className="muted">-</span>}</td>
+                      {erpBal && (() => {
+                        const e = it.code ? erpBal.get(it.code) : undefined;
+                        const diff = e == null ? null : e - bal;
+                        const off = diff != null && Math.abs(diff) > 0.001;
+                        return <>
+                          <td style={td}>{e == null ? <span className="muted" title="이카운트에서 이 품목코드를 찾지 못함">-</span> : num(e)}</td>
+                          <td style={{ ...td, background: off ? "#fdf6ec" : undefined }}>{diff == null ? <span className="muted">-</span> : <span style={{ fontWeight: off ? 700 : 400, color: off ? "#b5720a" : "var(--muted)" }}>{diff > 0 ? "+" : ""}{nf1(diff)}</span>}</td>
+                        </>;
+                      })()}
                     </tr>
                   );
                 })}</CatRows>
@@ -221,6 +254,7 @@ export default function Stock() {
           <p className="muted" style={{ fontSize: 11.5, marginTop: 8, lineHeight: 1.7 }}>
             제품 = 생산입고 − 판매출고, 원재료 = 구매입고 − 생산소모 (± 조정, 기초재고 기준일 이후 누적). 현재고가 <b style={{ color: "#c0392b" }}>음수(⚠)</b>면
             기초재고 미입력이나 데이터 누락 가능성이 큽니다 — <b>기초·조정</b>에서 실사값을 입력하세요. 수량 단위는 이카운트 원본 그대로입니다.
+            {erpBal && <> <b>ERP 재고</b>는 이카운트 재고현황({erpDate} 기준)을 품목코드로 대조한 값이며, <b>차이</b> = ERP − MES 입니다. 차이가 크면 기초재고·전표 누락을 점검하세요.</>}
           </p>
         </div>
       )}
