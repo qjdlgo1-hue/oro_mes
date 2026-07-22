@@ -8,6 +8,7 @@ import { TAB_DEFS, groupIcon } from "../lib/tabs";
 import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow, listTrash, restoreOrder, restoreReceipt, purgeOrder, purgeReceipt } from "../lib/db";
 import { confirmDialog, promptDialog } from "../lib/confirm";
 import { money } from "../lib/fmt";
+import EcountSettings from "./EcountSettings";
 
 const ROLES = ["master", "manager", "user"];
 
@@ -488,6 +489,10 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           '보기'를 끄면 사이드바에서 화면이 숨겨지고 작업도 함께 비활성화됩니다. 리포트·기록은 보기 스위치 하나가 내부 권한까지 함께 처리합니다.
           COC는 '보기'만 켜면 읽기 전용으로 열람할 수 있습니다. 변경은 즉시 저장되며 대상자는 새로고침 후 반영됩니다.
         </p>
+      </Sec>
+
+      <Sec title="🔗 이카운트(ERP) 연동" sub="(API 인증키 — master 전용, 서버에만 저장)">
+        <EcountSettings />
       </Sec>
     </div>
   );

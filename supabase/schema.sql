@@ -333,3 +333,32 @@ create unique index if not exists items_code_uniq on items (code) where code <> 
 alter table items enable row level security;
 drop policy if exists "items_all" on items;
 create policy "items_all" on items for all to authenticated using (true) with check (true);
+
+-- ===== 이카운트(ERP) OpenAPI 연동 =====
+-- Edge Function 'ecount'가 프록시 — 인증키는 ecount_config(service role 전용)에만 보관, 브라우저 미노출.
+-- actions: get_config/save_config/test(master) · items(품목조회)/stock(재고현황). 세션ID는 12h 캐시.
+create table if not exists ecount_config (
+  id int primary key default 1 check (id = 1),
+  com_code text not null default '',
+  user_id text not null default '',
+  api_cert_key text not null default '',
+  use_test boolean not null default true,   -- 테스트존(sboapi) / 운영존(oapi)
+  zone text not null default '',            -- Zone API로 자동 확인·캐시
+  session_id text,
+  session_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table ecount_config enable row level security;
+-- 정책 없음(의도적): 클라이언트 직접 접근 전면 차단 — Edge Function(service role)만 접근
+
+create table if not exists ecount_log (
+  id uuid primary key default gen_random_uuid(),
+  at timestamptz not null default now(),
+  action text not null,
+  ok boolean not null default false,
+  detail jsonb
+);
+alter table ecount_log enable row level security;
+drop policy if exists "ecount_log_read" on ecount_log;
+create policy "ecount_log_read" on ecount_log for select to authenticated using (true);
+create index if not exists ecount_log_at_idx on ecount_log (at desc);

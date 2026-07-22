@@ -374,7 +374,7 @@ export async function receiptImageBlob(path: string): Promise<Blob | null> {
   if (error) throw error; return data;
 }
 // Edge Function 호출 공통 — FunctionsHttpError의 본문 {error}를 언랩해 사람이 읽을 메시지로 throw
-async function invokeFn<T = any>(name: string, body: Record<string, any>, offlineMsg: string): Promise<T> {
+export async function invokeFn<T = any>(name: string, body: Record<string, any>, offlineMsg: string): Promise<T> {
   if (!supabase) throw new Error(offlineMsg);
   const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {

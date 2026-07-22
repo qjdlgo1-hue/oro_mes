@@ -1,11 +1,14 @@
 // 품목 — 품목 마스터 등록/관리 (이카운트 품목등록 대응).
 // ① 목록: 검색·구분 필터 + 인라인 수정  ② 미등록 후보 자동 수집 → 체크 선택 → 일괄 등록
-// ③ 이카운트 [품목등록 리스트] 붙여넣기 가져오기  ④ 수동 등록
+// ③ 이카운트 [품목등록 리스트] 붙여넣기 가져오기  ④ 수동 등록  ⑤ ERP 동기화(OpenAPI 직접 조회)
 import { useEffect, useMemo, useState } from "react";
-import { Item, InoutRow, BomRow, listItems, upsertItems, updateItem, deleteItem, listOrders, listInout, listBomRows, logAudit } from "../lib/db";
+import { Item, InoutRow, BomRow, StockBase, listItems, upsertItems, updateItem, deleteItem, listOrders, listInout, listBomRows, addStockBase, logAudit } from "../lib/db";
 import { Order } from "../lib/types";
 import { collectItemCandidates, parseItemsText } from "../lib/items";
+import { fetchEcountItems, ecountItemToItem, ecountSafeQty } from "../lib/ecount";
+import { hasSupabase } from "../lib/supabase";
 import { thBase, tdBase } from "../lib/styles";
+import { todayIso } from "../lib/fmt";
 import { toast } from "../lib/toast";
 import { errMsg } from "../lib/errmsg";
 import { can } from "../lib/perm";
@@ -17,7 +20,7 @@ export default function Items() {
   const canEdit = can("item.edit");
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [view, setView] = useState<"list" | "collect" | "import">("list");
+  const [view, setView] = useState<"list" | "collect" | "import" | "erp">("list");
   const [q, setQ] = useState("");
   const [gubunF, setGubunF] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,6 +92,74 @@ export default function Items() {
     setBusy(false);
   }
 
+  // ---- ERP 동기화 (이카운트 OpenAPI 직접 조회) ----
+  type ErpRow = { item: Item; safe: number; status: "new" | "diff" | "same" };
+  const [erp, setErp] = useState<ErpRow[]>([]);
+  const [erpSel, setErpSel] = useState<Set<string>>(new Set());
+  const [erpBusy, setErpBusy] = useState(false);
+  const [applySafe, setApplySafe] = useState(true);
+  const ek = (r: ErpRow) => r.item.code || r.item.name;
+  const STATUS_LABEL = { new: "🆕 신규", diff: "✏️ 변경", same: "동일" } as const;
+  async function pullErp() {
+    setErpBusy(true);
+    try {
+      // 1차: 전체 조회 → 안 되면 등록 품목 코드 목록으로 재시도
+      let rows: any[] = [];
+      let firstErr = "";
+      try { rows = (await fetchEcountItems()).rows; } catch (e: any) { firstErr = errMsg(e); }
+      if (!rows.length) {
+        const codes = [...new Set(items.map(i => i.code).filter(Boolean))];
+        if (!codes.length) throw new Error(firstErr || "이카운트에서 받은 품목이 없습니다. 먼저 품목을 등록해 코드 목록을 만들거나 연동 설정을 확인하세요.");
+        rows = (await fetchEcountItems(codes)).rows;
+      }
+      const byKey = new Map(items.map(i => [i.code || i.name, i]));
+      const list = rows.map((r): ErpRow | null => {
+        const it = ecountItemToItem(r);
+        if (!it) return null;
+        const cur = byKey.get(it.code || it.name);
+        const status = !cur ? "new"
+          : (cur.name !== it.name || cur.spec !== it.spec || cur.gubun !== it.gubun || cur.unit !== it.unit || cur.active !== it.active) ? "diff" : "same";
+        return { item: it, safe: ecountSafeQty(r), status };
+      }).filter((x): x is ErpRow => !!x);
+      setErp(list);
+      setErpSel(new Set(list.filter(x => x.status !== "same").map(ek))); // 신규·변경만 기본 선택
+      const nNew = list.filter(x => x.status === "new").length, nDiff = list.filter(x => x.status === "diff").length;
+      toast.success(`이카운트 품목 ${list.length}건 조회 — 신규 ${nNew} · 변경 ${nDiff} · 동일 ${list.length - nNew - nDiff}`);
+    } catch (e: any) { toast.error("ERP 조회 실패: " + errMsg(e)); }
+    setErpBusy(false);
+  }
+  async function applyErp() {
+    const rows = erp.filter(x => erpSel.has(ek(x)));
+    if (!rows.length) { toast.error("선택된 품목이 없습니다."); return; }
+    setBusy(true);
+    try {
+      // 코드가 이미 등록돼 있으면 그 행을 갱신(코드 유니크 충돌 방지), 새 코드는 일괄 등록
+      const byCode = new Map(items.filter(i => i.code && i.id).map(i => [i.code, i]));
+      const inserts: Item[] = [];
+      for (const x of rows) {
+        const cur = x.item.code ? byCode.get(x.item.code) : undefined;
+        if (cur) await updateItem(cur.id!, { name: x.item.name, spec: x.item.spec, gubun: x.item.gubun, unit: x.item.unit, active: x.item.active });
+        else inserts.push(x.item);
+      }
+      if (inserts.length) await upsertItems(inserts);
+      // 안전재고(SAFE_QTY>0) → 재고 하한선(stock_base kind='min')으로도 반영 (선택)
+      let minCnt = 0;
+      if (applySafe) {
+        const T = todayIso();
+        for (const x of rows) {
+          if (!(x.safe > 0)) continue;
+          const cat: StockBase["cat"] = (x.item.gubun === "원재료" || x.item.gubun === "부재료") ? "material" : "product";
+          await addStockBase({ kind: "min", cat, item_code: x.item.code, name: x.item.name, spec: x.item.spec, bdate: T, qty: x.safe });
+          minCnt++;
+        }
+      }
+      logAudit("품목 ERP 동기화", "item", "", { count: rows.length, safe: minCnt });
+      toast.success(`반영 완료: 품목 ${rows.length}건${minCnt ? ` · 안전재고 ${minCnt}건` : ""}`);
+      setErp([]); setErpSel(new Set()); load();
+    } catch (e: any) { toast.error("반영 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+
   // ---- 이카운트 붙여넣기 가져오기 ----
   const [text, setText] = useState("");
   async function importText() {
@@ -117,6 +188,7 @@ export default function Items() {
           <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>품목 목록</button>
           <button className={view === "collect" ? "on" : ""} onClick={() => { setView("collect"); if (!cands.length) collect(); }}>미등록 후보 수집</button>
           <button className={view === "import" ? "on" : ""} onClick={() => setView("import")}>이카운트 가져오기</button>
+          {hasSupabase && <button className={view === "erp" ? "on" : ""} onClick={() => setView("erp")}>🔗 ERP 동기화</button>}
         </div>
         {view === "list" && <>
           <input placeholder="🔍 코드/품목명/규격 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 180 }} />
@@ -213,6 +285,62 @@ export default function Items() {
                           {GUBUNS.map(g => <option key={g}>{g}</option>)}
                         </select>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "erp" && (
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <h4 style={{ margin: 0 }}>이카운트 품목 직접 조회 <span className="muted" style={{ fontSize: 12, fontWeight: 400 }}>— OpenAPI로 품목명·규격·구분·단위·안전재고를 가져와 반영</span></h4>
+            <button className="btn" onClick={pullErp} disabled={erpBusy}>{erpBusy ? "조회 중…" : "📡 이카운트에서 불러오기"}</button>
+            {canEdit && erp.length > 0 && <>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5 }}>
+                <input type="checkbox" checked={applySafe} onChange={e => setApplySafe(e.target.checked)} />안전재고도 반영
+              </label>
+              <button className="btn green" style={{ marginLeft: "auto" }} disabled={busy || erpSel.size === 0} onClick={applyErp}>선택 {erpSel.size}건 반영</button>
+            </>}
+          </div>
+          {erp.length === 0 ? (
+            <p className="muted" style={{ lineHeight: 1.8 }}>
+              {erpBusy ? "조회 중…" : <>관리자 화면의 <b>이카운트(ERP) 연동</b>에서 인증키를 등록하고 연결 테스트를 통과한 뒤 사용할 수 있습니다.
+                신규·변경 품목만 기본 선택되며, '안전재고도 반영'을 켜면 이카운트 SAFE_QTY가 재고 하한선(발주점)으로 함께 저장됩니다.</>}
+            </p>
+          ) : (
+            <div style={{ overflow: "auto", maxHeight: "60vh" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 700 }}>
+                <thead><tr>
+                  <th style={{ ...th, textAlign: "center", width: 40 }}>
+                    <input type="checkbox" checked={erpSel.size === erp.length && erp.length > 0}
+                      onChange={e => setErpSel(e.target.checked ? new Set(erp.map(ek)) : new Set())} />
+                  </th>
+                  <th style={{ ...th, textAlign: "center" }}>상태</th>
+                  <th style={{ ...th, textAlign: "left" }}>코드</th>
+                  <th style={{ ...th, textAlign: "left" }}>품목명</th>
+                  <th style={{ ...th, textAlign: "left" }}>규격</th>
+                  <th style={{ ...th, textAlign: "center" }}>구분</th>
+                  <th style={{ ...th, textAlign: "center" }}>단위</th>
+                  <th style={{ ...th, textAlign: "right" }}>안전재고</th>
+                </tr></thead>
+                <tbody>
+                  {erp.map(r => (
+                    <tr key={ek(r)} style={r.status === "same" ? { opacity: .55 } : undefined}>
+                      <td style={{ ...td, textAlign: "center" }}>
+                        <input type="checkbox" checked={erpSel.has(ek(r))}
+                          onChange={e => setErpSel(s => { const n = new Set(s); e.target.checked ? n.add(ek(r)) : n.delete(ek(r)); return n; })} />
+                      </td>
+                      <td style={{ ...td, textAlign: "center", whiteSpace: "nowrap" }}>{STATUS_LABEL[r.status]}</td>
+                      <td style={{ ...tdL, fontWeight: 700, whiteSpace: "nowrap" }}>{r.item.code || "-"}</td>
+                      <td style={tdL}>{r.item.name}{!r.item.active && <span className="muted"> (중단)</span>}</td>
+                      <td style={tdL}>{r.item.spec}</td>
+                      <td style={{ ...td, textAlign: "center" }}>{r.item.gubun}</td>
+                      <td style={{ ...td, textAlign: "center" }}>{r.item.unit}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.safe > 0 ? r.safe.toLocaleString() : <span className="muted">-</span>}</td>
                     </tr>
                   ))}
                 </tbody>
