@@ -392,6 +392,59 @@ export async function downscaleImage(file: File, maxW = 1600, quality = 0.85): P
 }
 
 // ---- 원재료(BOM) ----
+// ===== BOM 정규화 (bom_rows — 이카운트 BOM(소요량)현황 행 단위) =====
+// 완제품 1개 → 원재료 N행. 소모품목이 다른 행의 생산품목이면 반제품(다단계) — 전개는 lib/bom.ts.
+export type BomRow = {
+  id?: string;
+  prod_code: string; prod_name: string;
+  process: string;                 // 생산공정명 (시빙/도금)
+  version?: string;                // BOM버전 (현재 '기본'만)
+  mat_code: string; mat_name: string;
+  batch_qty: number;               // 생산수량(기준수량)
+  qty: number;                     // 소요량(기준수량당)
+  created_at?: string;
+};
+const LS_BOM_ROWS = "oro_bom_rows";
+export async function listBomRows(): Promise<BomRow[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("bom_rows").select("*").order("prod_code");
+    if (error) throw error;
+    return (data || []) as BomRow[];
+  }
+  return lsGet<BomRow[]>(LS_BOM_ROWS, []);
+}
+// 가져오기 = 전체 교체 (이카운트가 원본이므로 마스터 성격 — 호출부에서 확인 모달 필수)
+export async function replaceBomRows(rows: BomRow[]): Promise<void> {
+  if (supabase) {
+    const { error: de } = await supabase.from("bom_rows").delete().neq("prod_name", "");
+    if (de) throw de;
+    // 대량 insert는 500행씩 분할
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("bom_rows").insert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+    return;
+  }
+  lsSet(LS_BOM_ROWS, rows);
+}
+export async function upsertBomRow(row: BomRow): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("bom_rows").upsert(row, { onConflict: "prod_code,prod_name,mat_code,mat_name" });
+    if (error) throw error;
+    return;
+  }
+  const all = lsGet<BomRow[]>(LS_BOM_ROWS, []);
+  const key = (r: BomRow) => `${r.prod_code}|${r.prod_name}|${r.mat_code}|${r.mat_name}`;
+  const i = all.findIndex(r => key(r) === key(row));
+  if (i >= 0) all[i] = { ...all[i], ...row }; else all.push({ ...row, id: "br-" + Date.now() + Math.random().toString(36).slice(2) });
+  lsSet(LS_BOM_ROWS, all);
+}
+export async function deleteBomRow(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.from("bom_rows").delete().eq("id", id); if (error) throw error; return; }
+  lsSet(LS_BOM_ROWS, lsGet<BomRow[]>(LS_BOM_ROWS, []).filter(r => r.id !== id));
+}
+
+// (구) AgCN/PGC 2열 고정 BOM — bom_rows로 대체됨. 테이블·데이터는 보존하되 화면에서는 사용 안 함.
 export type BomMap = Record<string, { agcn: number; pgc: number; note?: string }>;
 const LS_BOM = "oro_bom";
 export async function listBom(): Promise<BomMap> {

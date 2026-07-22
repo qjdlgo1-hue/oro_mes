@@ -293,3 +293,24 @@ create table if not exists stock_base (
 alter table stock_base enable row level security;
 drop policy if exists "stock_base_all" on stock_base;
 create policy "stock_base_all" on stock_base for all to authenticated using (true) with check (true);
+
+-- ===== BOM 정규화 (이카운트 BOM(소요량)현황) =====
+-- 완제품 → 원재료 N행 구조. 원재료 탭 'BOM 가져오기'로 이카운트 내보내기를 통째로 임포트.
+-- 다단계 지원: 소모품목이 다른 행의 생산품목(반제품)이면 소요량 전개 시 재귀 계산 (src/lib/bom.ts).
+-- 기존 bom(agcn/pgc 2열) 테이블은 사용 중단(데이터는 보존).
+create table if not exists bom_rows (
+  id uuid primary key default gen_random_uuid(),
+  prod_code text not null default '',
+  prod_name text not null,
+  process text not null default '',      -- 생산공정명 (시빙/도금)
+  version text not null default '기본',   -- BOM버전 (현재 전부 '기본', UI 미노출)
+  mat_code text not null default '',
+  mat_name text not null,
+  batch_qty numeric not null default 50, -- 생산수량(기준수량)
+  qty numeric not null default 0,        -- 소요량(기준수량당)
+  created_at timestamptz not null default now(),
+  unique (prod_code, prod_name, mat_code, mat_name)
+);
+alter table bom_rows enable row level security;
+drop policy if exists "bom_rows_all" on bom_rows;
+create policy "bom_rows_all" on bom_rows for all to authenticated using (true) with check (true);
