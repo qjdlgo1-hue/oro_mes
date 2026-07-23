@@ -136,7 +136,7 @@ export default function CocIssue({ orders, focusOrderId }: { orders: Order[]; fo
   function setLogo() { pickDataUrl(400, d => { persistSettings({ ...settings, logo: d }, "로고"); }); }
   function setStamp() { pickDataUrl(300, d => { persistSettings({ ...settings, stamp: d }, "도장"); }); }
   // 서식 문구는 키 입력마다 바뀌므로 저장은 0.8s 디바운스 (화면 반영은 즉시)
-  const fmtTimer = useRef<number | undefined>(undefined);
+  const fmtTimer = useRef<number>();
   function setFmt(patch: any) {
     const s = { ...settings, format: { ...fmt, ...patch } };
     setSettings(s);
