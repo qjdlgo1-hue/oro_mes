@@ -2,7 +2,7 @@
 // 인증키는 Edge Function(service role)만 접근하는 서버 테이블에 저장되고 브라우저로는 내려오지 않는다
 // (저장된 여부 has_key 만 표시). 연결 테스트로 존(Zone) 확인 + 로그인까지 왕복 검증.
 import { useEffect, useState } from "react";
-import { getEcountConfig, saveEcountConfig, testEcount, listEcountLogs, EcountLog } from "../lib/ecount";
+import { getEcountConfig, saveEcountConfig, testEcount, checkEcountIp, listEcountLogs, EcountLog } from "../lib/ecount";
 import { hasSupabase } from "../lib/supabase";
 import { toast } from "../lib/toast";
 import { errMsg } from "../lib/errmsg";
@@ -14,6 +14,14 @@ export default function EcountSettings() {
   const [logs, setLogs] = useState<EcountLog[]>([]);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [myIp, setMyIp] = useState("");
+  const [ipBusy, setIpBusy] = useState(false);
+  async function fetchIp() {
+    setIpBusy(true);
+    try { setMyIp((await checkEcountIp()).ip); }
+    catch (e: any) { toast.error("발신 IP 확인 실패: " + errMsg(e)); }
+    setIpBusy(false);
+  }
 
   function loadAll() {
     if (!hasSupabase) { setLoaded(true); return; }
@@ -51,8 +59,23 @@ export default function EcountSettings() {
   const inp: React.CSSProperties = { padding: 8, border: "1px solid var(--line)", borderRadius: 6 };
   return (
     <div style={{ display: "grid", gap: 10 }}>
+      <details style={{ background: "var(--tint2)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, lineHeight: 1.8 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700 }}>📘 이카운트 연동 절차 (처음 설정할 때 순서대로)</summary>
+        <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+          <li>ERP(login.ecount.com) 마스터 ID로 <b>Self-Customizing → 정보관리 → API인증키발급</b>에서 <b>테스트 인증키</b> 발급 (2주 유효)</li>
+          <li>같은 화면 <b>[IP등록]</b>에 아래 <b>발신 IP</b>를 등록 (최대 20개){" "}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {myIp && <code style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 5, padding: "1px 8px", fontWeight: 700 }}>{myIp}</code>}
+              <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} disabled={ipBusy} onClick={fetchIp}>{ipBusy ? "확인 중…" : "발신 IP 확인"}</button>
+              {myIp && <button className="btn ghost" style={{ padding: "2px 10px", fontSize: 12 }} onClick={() => { navigator.clipboard?.writeText(myIp); toast.success("복사됨: " + myIp); }}>복사</button>}
+            </span>
+            <br /><span className="muted">연동 서버의 발신 IP는 바뀔 수 있습니다 — 연결이 거부되면 다시 확인해 추가 등록하세요.</span></li>
+          <li>아래에 테스트 인증키 입력 + <b>테스트존 체크</b> → 저장 → <b>[연결 테스트]</b> → 품목/재고 조회를 1회씩 실행 (테스트존 요청이 곧 이카운트의 <b>개발 검증</b>입니다)</li>
+          <li>검증 완료 후 <b>정식 인증키</b>(1년 유효)를 발급받아 교체 입력하고 테스트존 체크를 해제</li>
+          <li>생산입고·구매입력 전표 전송을 쓰려면 ERP 각 입력메뉴 하단 <b>웹자료올리기 → 자료올리기 항목추가</b>가 선행돼야 합니다</li>
+        </ol>
+      </details>
       <p className="muted" style={{ fontSize: 12.5, margin: 0, lineHeight: 1.7 }}>
-        이카운트 <b>[Self-Service → API 인증키 발급]</b>에서 발급한 키를 등록하면 품목·재고를 이카운트에서 직접 가져올 수 있습니다.
         인증키는 서버에만 저장되며 화면에 다시 표시되지 않습니다.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", fontSize: 12.5 }}>
@@ -86,8 +109,9 @@ export default function EcountSettings() {
         </div>
       )}
       <p className="muted" style={{ fontSize: 11.5, margin: 0, lineHeight: 1.6 }}>
-        호출량 한도(조회 시간당 약 6,000건)가 있어 조회는 버튼을 눌렀을 때만 실행됩니다.
-        처음에는 <b>테스트존</b>으로 연결을 확인한 뒤 운영존으로 전환하는 것을 권장합니다.
+        이카운트 공식 전송 제한(운영서버: 조회·로그인 <b>10분에 1회</b>, 전표 저장 10초에 1회 / 테스트서버: 10초에 1회)에 맞춰
+        MES가 호출 간격을 자동으로 지켜줍니다 — 간격이 안 지났으면 남은 시간을 알려주고 호출하지 않습니다.
+        1일 최대 5,000건·1회 최대 300건 한도도 있으니 조회는 필요할 때만 실행하세요.
       </p>
     </div>
   );

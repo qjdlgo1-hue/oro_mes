@@ -103,15 +103,11 @@ export default function Items() {
   async function pullErp() {
     setErpBusy(true);
     try {
-      // 1차: 전체 조회 → 안 되면 등록 품목 코드 목록으로 재시도
-      let rows: any[] = [];
-      let firstErr = "";
-      try { rows = (await fetchEcountItems()).rows; } catch (e: any) { firstErr = errMsg(e); }
-      if (!rows.length) {
-        const codes = [...new Set(items.map(i => i.code).filter(Boolean))];
-        if (!codes.length) throw new Error(firstErr || "이카운트에서 받은 품목이 없습니다. 먼저 품목을 등록해 코드 목록을 만들거나 연동 설정을 확인하세요.");
-        rows = (await fetchEcountItems(codes)).rows;
-      }
+      // 이카운트 전송 제한(조회 1회/10분) 때문에 호출은 딱 1번 — 등록 품목 코드가 있으면
+      // ∬ 묶음 조회, 없으면 전체 조회를 시도한다 (실패 시 재시도는 제한 시간 후에)
+      const codes = [...new Set(items.map(i => i.code).filter(Boolean))];
+      const rows: any[] = (await fetchEcountItems(codes.length ? codes : undefined)).rows;
+      if (!rows.length) throw new Error("이카운트에서 받은 품목이 없습니다 — 연동 설정과 이카운트 품목 등록 상태를 확인하세요.");
       const byKey = new Map(items.map(i => [i.code || i.name, i]));
       const list = rows.map((r): ErpRow | null => {
         const it = ecountItemToItem(r);
