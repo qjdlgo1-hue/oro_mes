@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { supabase, hasSupabase } from "./supabase";
 
 export const MENUS: { key: string; label: string }[] = [
@@ -60,33 +60,38 @@ export const SCREEN_PERMS: ScreenPerm[] = [
 ];
 export const SCREEN_PERM_KEYS: string[] = [...new Set(SCREEN_PERMS.flatMap(s => [...s.view, ...s.acts.map(a => a.k)]))];
 
-let _role = "user";
-let _caps: Record<string, boolean> = {};
-let _loaded = false;
+// 권한 스토어 — useSyncExternalStore 규약(subscribe + 불변 스냅샷).
+// 주의: 렌더 중 모듈 전역(let)을 직접 읽는 패턴은 React Compiler가 값을 메모이제이션해
+// 갱신이 무시된다("권한 확인 중" 멈춤 장애의 원인). 반드시 스냅샷 객체를 통째로 교체할 것.
+type PermSnap = { role: string; caps: Record<string, boolean>; loaded: boolean };
+let snap: PermSnap = { role: "user", caps: {}, loaded: false };
 let subs: (() => void)[] = [];
-const emit = () => subs.forEach(f => f());
+const subscribe = (f: () => void) => { subs.push(f); return () => { subs = subs.filter(x => x !== f); }; };
+const getSnap = () => snap;
+function setSnap(role: string, caps: Record<string, boolean>) {
+  snap = { role, caps, loaded: true };
+  subs.forEach(f => f());
+}
 
 export async function loadPerms(): Promise<void> {
   if (!hasSupabase || !supabase) {
-    _role = "master"; _caps = Object.fromEntries(CAPS.map(c => [c.key, true])); _loaded = true; emit(); return;
+    setSnap("master", Object.fromEntries(CAPS.map(c => [c.key, true]))); return;
   }
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) { _role = "user"; _caps = {}; _loaded = true; emit(); return; }
+  if (!user) { setSnap("user", {}); return; }
   const { data: prof } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  _role = (prof as any)?.role || "user";
-  if (_role === "master") _caps = Object.fromEntries(CAPS.map(c => [c.key, true]));
-  else {
-    const { data } = await supabase.from("role_permissions").select("capability,allowed").eq("role", _role);
-    _caps = {}; (data || []).forEach((r: any) => { _caps[r.capability] = r.allowed; });
-  }
-  _loaded = true; emit();
+  const role = (prof as any)?.role || "user";
+  if (role === "master") { setSnap(role, Object.fromEntries(CAPS.map(c => [c.key, true]))); return; }
+  const { data } = await supabase.from("role_permissions").select("capability,allowed").eq("role", role);
+  const caps: Record<string, boolean> = {};
+  (data || []).forEach((r: any) => { caps[r.capability] = r.allowed; });
+  setSnap(role, caps);
 }
-export function can(cap: string) { return _role === "master" || !!_caps[cap]; }
-export function myRole() { return _role; }
+export function can(cap: string) { return snap.role === "master" || !!snap.caps[cap]; }
+export function myRole() { return snap.role; }
 export function useCaps() {
-  const [, setN] = useState(0);
-  useEffect(() => { const f = () => setN(n => n + 1); subs.push(f); return () => { subs = subs.filter(x => x !== f); }; }, []);
-  return { can, role: _role, loaded: _loaded };
+  const s = useSyncExternalStore(subscribe, getSnap);
+  return { can: (cap: string) => s.role === "master" || !!s.caps[cap], role: s.role, loaded: s.loaded };
 }
 
 // ---- 관리자 작업 ----
