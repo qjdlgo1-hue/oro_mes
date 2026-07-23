@@ -79,6 +79,18 @@ export function buildPurchaseBulk(rows: PurchaseSlipRow[]): Record<string, strin
   });
 }
 
+// ---- 전송 제한 가드 (Edge Function과 동일 로직 사본 — 테스트는 이쪽에서) ----
+// 공식 기준: 실서버 Zone·로그인·조회 1회/10분, 저장 1회/10초, 테스트서버 1회/10초.
+// ※ supabase/functions/ecount/index.ts의 cooldownLeftMs와 반드시 함께 수정할 것.
+export function cooldownLeftMs(lastIso: string | null | undefined, action: string, useTest: boolean, now: number): number {
+  const isSave = action === "save_prod" || action === "save_purchase";
+  const min = useTest ? 10_000 : (isSave ? 10_000 : 10 * 60_000);
+  if (!lastIso) return 0;
+  const t = new Date(lastIso).getTime();
+  if (isNaN(t)) return 0;
+  return Math.max(0, t + min - now);
+}
+
 // ---- Edge Function 호출 ----
 
 const OFFLINE = "이카운트 연동은 클라우드 연결에서만 사용할 수 있습니다.";
@@ -93,6 +105,7 @@ export const getEcountConfig = () => call<EcountConfigView>("get_config");
 export const saveEcountConfig = (c: { com_code: string; user_id: string; api_cert_key?: string; use_test: boolean }) =>
   call<{ ok: boolean }>("save_config", c);
 export const testEcount = () => call<{ ok: boolean; zone: string; use_test: boolean }>("test");
+export const checkEcountIp = () => call<{ ip: string }>("my_ip"); // 이카운트 [IP등록]에 넣을 발신 IP
 export const fetchEcountItems = (codes?: string[]) => call<{ rows: EcountItemRow[] }>("items", { codes });
 export const fetchEcountStock = (baseDate?: string) =>
   call<{ rows: Record<string, any>[]; base_date: string }>("stock", baseDate ? { base_date: baseDate } : {});

@@ -367,3 +367,7 @@ create index if not exists ecount_log_at_idx on ecount_log (at desc);
 -- plans.ecount_slip: 생산입고 I 전송(생산계획 완료 건), inout_rows.ecount_slip: 구매입력 전송(구매 행)
 alter table plans add column if not exists ecount_slip text;
 alter table inout_rows add column if not exists ecount_slip text;
+
+-- 이카운트 전송 제한 보호 — 액션별 마지막 호출 시각. Edge Function이 공식 전송 기준
+-- (실서버 조회·로그인 1회/10분, 저장 1회/10초, 테스트서버 1회/10초)에 맞춰 선제 차단에 사용.
+alter table ecount_config add column if not exists last_calls jsonb not null default '{}'::jsonb;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ecountItemToItem, ecountSafeQty, erpBalanceMap, PROD_TYPE_GUBUN, buildProdBulk, buildPurchaseBulk } from "../ecount";
+import { ecountItemToItem, ecountSafeQty, erpBalanceMap, PROD_TYPE_GUBUN, buildProdBulk, buildPurchaseBulk, cooldownLeftMs } from "../ecount";
 
 describe("ecountItemToItem — 이카운트 품목 응답 → MES Item", () => {
   it("필드 매핑 + 품목구분 코드 변환", () => {
@@ -57,5 +57,24 @@ describe("전표 전송 페이로드 빌더", () => {
     expect(b.SUPPLY_AMT).toBeUndefined();
     expect(b.VAT_AMT).toBeUndefined();
     expect(b.CUST).toBeUndefined();
+  });
+});
+
+describe("cooldownLeftMs — 이카운트 전송 제한 가드", () => {
+  const T0 = Date.parse("2026-07-23T09:00:00Z");
+  const at = (secAgo: number) => new Date(T0 - secAgo * 1000).toISOString();
+  it("운영서버: 조회·로그인 10분, 저장 10초", () => {
+    expect(cooldownLeftMs(at(60), "items", false, T0)).toBe(9 * 60_000);   // 1분 경과 → 9분 남음
+    expect(cooldownLeftMs(at(601), "stock", false, T0)).toBe(0);           // 10분 지남 → 통과
+    expect(cooldownLeftMs(at(3), "save_prod", false, T0)).toBe(7_000);     // 저장은 10초 기준
+    expect(cooldownLeftMs(at(11), "save_purchase", false, T0)).toBe(0);
+  });
+  it("테스트서버: 전부 10초", () => {
+    expect(cooldownLeftMs(at(3), "items", true, T0)).toBe(7_000);
+    expect(cooldownLeftMs(at(11), "test", true, T0)).toBe(0);
+  });
+  it("기록 없음/깨진 값은 통과", () => {
+    expect(cooldownLeftMs(undefined, "items", false, T0)).toBe(0);
+    expect(cooldownLeftMs("not-a-date", "items", false, T0)).toBe(0);
   });
 });

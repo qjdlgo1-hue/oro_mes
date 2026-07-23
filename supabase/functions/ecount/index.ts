@@ -1,7 +1,7 @@
 // 이카운트(ERP) OpenAPI 프록시 — MES ↔ 이카운트 연동의 유일한 통로.
 // 인증키(COM_CODE/USER_ID/API_CERT_KEY)는 service role만 접근하는 ecount_config 테이블에 보관되어
 // 브라우저(공개 저장소 SPA)로는 절대 내려가지 않는다. CORS·세션 발급/캐시/재시도도 여기서 처리.
-// actions: get_config / save_config / test (master 전용) · items / stock / save_prod / save_purchase (로그인 사용자)
+// actions: get_config / save_config / test / my_ip (master 전용) · items / stock / save_prod / save_purchase (로그인 사용자)
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -15,7 +15,21 @@ const json = (body: unknown, status = 200) =>
 type Cfg = {
   id: number; com_code: string; user_id: string; api_cert_key: string;
   use_test: boolean; zone: string; session_id: string | null; session_at: string | null;
+  last_calls?: Record<string, string> | null;
 };
+
+// 이카운트 전송 제한 보호 — 공식 기준: 실서버 Zone·로그인·조회 1회/10분, 저장 1회/10초,
+// 테스트서버 1회/10초. 여기서 선제 차단해 이카운트 측 통보 없는 차단(연속 오류 30건/시간)을 예방.
+// ※ src/lib/ecount.ts의 cooldownLeftMs와 동일 로직 — 수정 시 양쪽을 함께 바꿀 것 (테스트는 클라이언트 사본에)
+function cooldownLeftMs(lastIso: string | null | undefined, action: string, useTest: boolean, now: number): number {
+  const isSave = action === "save_prod" || action === "save_purchase";
+  const min = useTest ? 10_000 : (isSave ? 10_000 : 10 * 60_000);
+  if (!lastIso) return 0;
+  const t = new Date(lastIso).getTime();
+  if (isNaN(t)) return 0;
+  return Math.max(0, t + min - now);
+}
+const fmtLeft = (ms: number) => ms >= 60_000 ? `${Math.ceil(ms / 60_000)}분` : `${Math.ceil(ms / 1000)}초`;
 
 const db = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -25,6 +39,8 @@ const apiHost = (cfg: Cfg) => cfg.use_test ? `https://sboapi${cfg.zone}.ecount.c
 
 async function post(url: string, body: unknown): Promise<any> {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // 302/412 = API 전송 횟수 초과 (공식 상태코드 표)
+  if (r.status === 302 || r.status === 412) throw new Error(`이카운트 전송 한도 초과(HTTP ${r.status}) — 잠시 후 다시 시도하세요.`);
   const text = await r.text();
   try { return JSON.parse(text); } catch { throw new Error(`이카운트 응답 해석 실패 (HTTP ${r.status}): ${text.slice(0, 200)}`); }
 }
@@ -48,6 +64,18 @@ async function loadCfg(sb: ReturnType<typeof db>): Promise<Cfg | null> {
 
 async function log(sb: ReturnType<typeof db>, action: string, ok: boolean, detail: Record<string, unknown>) {
   await sb.from("ecount_log").insert({ action, ok, detail }).then(() => {}, () => {});
+}
+
+// 간격 가드: 위반이면 남은 시간 문자열 반환(호출 안 함), 통과면 이번 시각을 last_calls에 기록
+async function guard(sb: ReturnType<typeof db>, cfg: Cfg, action: string): Promise<string | null> {
+  const lc = cfg.last_calls || {};
+  const left = cooldownLeftMs(lc[action], action, cfg.use_test, Date.now());
+  if (left > 0) {
+    return `이카운트 전송 제한 보호 — ${fmtLeft(left)} 후 다시 시도하세요. (공식 기준: ${cfg.use_test ? "테스트서버 10초" : "운영서버 조회·로그인 10분 / 저장 10초"} 간격)`;
+  }
+  // 실패해도 시각을 기록 — 연속 오류 재시도 폭주(시간당 30건 차단)를 예방
+  await sb.from("ecount_config").update({ last_calls: { ...lc, [action]: new Date().toISOString() } }).eq("id", 1);
+  return null;
 }
 
 // 존 확인 + 로그인 → SESSION_ID 발급, config에 캐시
@@ -112,7 +140,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action || "");
 
-    const isAdminAction = ["get_config", "save_config", "test"].includes(action);
+    const isAdminAction = ["get_config", "save_config", "test", "my_ip"].includes(action);
     if (isAdminAction) {
       const { data: prof } = await sb.from("profiles").select("role").eq("id", claims.sub).maybeSingle();
       if ((prof as any)?.role !== "master") return json({ error: "이카운트 연동 설정은 master만 할 수 있습니다." }, 403);
@@ -148,9 +176,20 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    // Edge Function의 현재 발신 IP — 이카운트 [IP등록]에 등록할 값 (발신 IP는 바뀔 수 있어
+    // 연결이 거부되면 다시 확인해 추가 등록, 최대 20개)
+    if (action === "my_ip") {
+      const r = await fetch("https://api.ipify.org?format=json");
+      const j = await r.json().catch(() => ({}));
+      if (!j?.ip) return json({ error: "발신 IP 확인 실패 — 잠시 후 다시 시도하세요." }, 400);
+      return json({ ip: String(j.ip) });
+    }
+
     if (action === "test") {
       const cfg = await loadCfg(sb);
       if (!cfg) return json({ error: "연동 정보가 없습니다. 먼저 저장하세요." }, 400);
+      const cool = await guard(sb, cfg, action);
+      if (cool) return json({ error: cool }, 429);
       try {
         const { cfg: c2 } = await login(sb, { ...cfg, zone: "", session_id: null, session_at: null }); // 존부터 새로 확인
         await log(sb, "연결 테스트", true, { zone: c2.zone, use_test: c2.use_test });
@@ -164,34 +203,31 @@ Deno.serve(async (req: Request) => {
     if (action === "items") {
       const cfg = await loadCfg(sb);
       if (!cfg) return json({ error: "이카운트 연동이 설정되지 않았습니다." }, 400);
+      const cool = await guard(sb, cfg, action);
+      if (cool) return json({ error: cool }, 429);
       const codes: string[] = Array.isArray(body.codes) ? body.codes.map((c: unknown) => String(c).trim()).filter(Boolean) : [];
-      // 1차: 코드 미지정(전체) 또는 ∬로 묶은 복수 코드 한 번에
-      let r = await callApi(sb, cfg, "/OAPI/V2/InventoryBasic/ViewBasicProduct", { PROD_CD: codes.join("∬") });
-      let rows = ecountErr(r) ? [] : resultRows(r);
-      // 2차 폴백: 묶음 조회 실패 시 코드별 개별 조회 (호출량 보호를 위해 최대 300)
-      if (!rows.length && codes.length) {
-        rows = [];
-        for (const c of codes.slice(0, 300)) {
-          const one = await callApi(sb, cfg, "/OAPI/V2/InventoryBasic/ViewBasicProduct", { PROD_CD: c });
-          if (!ecountErr(one)) rows.push(...resultRows(one));
-        }
-      }
-      const firstErr = rows.length ? null : ecountErr(r);
-      await log(sb, "품목 조회", !firstErr, { requested: codes.length || "전체", got: rows.length, ...(firstErr ? { error: firstErr } : {}) });
-      if (firstErr && !rows.length) return json({ error: "품목 조회 실패: " + firstErr }, 400);
+      // 단 1회 호출: 코드 미지정(전체) 또는 ∬로 묶은 복수 코드 — 코드별 개별 재시도는
+      // 이카운트 전송 제한(조회 1회/10분, 연속 오류 30건 차단) 때문에 하지 않는다
+      const r = await callApi(sb, cfg, "/OAPI/V2/InventoryBasic/ViewBasicProduct", { PROD_CD: codes.join("∬") });
+      const err = ecountErr(r);
+      const rows = err ? [] : resultRows(r);
+      await log(sb, "품목 조회", !err, { requested: codes.length || "전체", got: rows.length, trace: r?.Data?.TRACE_ID, ...(err ? { error: err } : {}) });
+      if (err) return json({ error: "품목 조회 실패: " + err + " — 테스트 인증키 사용 중이라면 이카운트 개발 검증(품목조회 API)이 먼저 통과되어야 합니다." }, 400);
       return json({ rows });
     }
 
     if (action === "stock") {
       const cfg = await loadCfg(sb);
       if (!cfg) return json({ error: "이카운트 연동이 설정되지 않았습니다." }, 400);
+      const cool = await guard(sb, cfg, action);
+      if (cool) return json({ error: cool }, 429);
       const baseDate = String(body.base_date || kstToday()).replace(/-/g, "");
       const r = await callApi(sb, cfg, "/OAPI/V2/InventoryBalance/ViewInventoryBalanceStatus", {
         BASE_DATE: baseDate, PROD_CD: "", WH_CD: "", ZERO_FLAG: "Y",
       });
       const err = ecountErr(r);
       const rows = err ? [] : resultRows(r);
-      await log(sb, "재고 조회", !err, { base_date: baseDate, got: rows.length, ...(err ? { error: err } : {}) });
+      await log(sb, "재고 조회", !err, { base_date: baseDate, got: rows.length, trace: r?.Data?.TRACE_ID, ...(err ? { error: err } : {}) });
       if (err) return json({ error: "재고 조회 실패: " + err }, 400);
       return json({ rows, base_date: baseDate });
     }
@@ -201,6 +237,8 @@ Deno.serve(async (req: Request) => {
     if (action === "save_prod" || action === "save_purchase") {
       const cfg = await loadCfg(sb);
       if (!cfg) return json({ error: "이카운트 연동이 설정되지 않았습니다." }, 400);
+      const cool = await guard(sb, cfg, action);
+      if (cool) return json({ error: cool }, 429);
       const list: Record<string, string>[] = Array.isArray(body.list) ? body.list.slice(0, 200) : [];
       if (!list.length) return json({ error: "전송할 행이 없습니다." }, 400);
       const isProd = action === "save_prod";
@@ -218,7 +256,7 @@ Deno.serve(async (req: Request) => {
       const label = isProd ? "생산입고 전송" : "구매입력 전송";
       const ok = !err && fail === 0 && success > 0;
       await log(sb, label, ok, {
-        sent: list.length, success, fail, slips: slips.slice(0, 20),
+        sent: list.length, success, fail, slips: slips.slice(0, 20), trace: r?.Data?.TRACE_ID,
         ...(cfg.use_test ? { zone: "테스트존" } : {}), ...(err ? { error: err } : {}),
       });
       if (err && !success) return json({ error: label + " 실패: " + err }, 400);
