@@ -45,13 +45,16 @@ async function post(url: string, body: unknown): Promise<any> {
   try { return JSON.parse(text); } catch { throw new Error(`이카운트 응답 해석 실패 (HTTP ${r.status}): ${text.slice(0, 200)}`); }
 }
 
-// 이카운트 오류 메시지 추출 — Error 단건/Errors 배열/Status 비정상 모두 커버
+// 이카운트 오류 메시지 추출 — Error 단건/Errors 배열/Data.Message(로그인 등)/Status 비정상 모두 커버
+// 실측: OAPILogin 실패는 {"Data":{"Code":"201","Message":"API_CERT_KEY가 유효하지 않습니다.",...}} 형태
 function ecountErr(r: any): string | null {
   if (!r) return "빈 응답";
-  const one = r.Error?.Message || r.Error?.MessageDetail;
+  const one = r.Error?.Message || r.Error?.MessageDetail || r.Data?.Error?.Message;
   if (one) return String(one);
   const many = Array.isArray(r.Errors) ? r.Errors.map((e: any) => e?.Message || e?.MessageDetail || JSON.stringify(e)).join(" / ") : "";
   if (many) return many;
+  // Data.Code가 200이 아니고 Message가 있으면 그 사유를 그대로 (로그인 API 오류 형태)
+  if (r.Data?.Message && String(r.Data?.Code ?? "") !== "200" && String(r.Data?.Code ?? "") !== "00") return String(r.Data.Message);
   if (r.Status && String(r.Status) !== "200") return `Status ${r.Status}`;
   return null;
 }
@@ -159,6 +162,10 @@ Deno.serve(async (req: Request) => {
       const com_code = String(body.com_code ?? prev?.com_code ?? "").trim();
       const user_id = String(body.user_id ?? prev?.user_id ?? "").trim();
       const key = String(body.api_cert_key ?? "").trim(); // 빈 값이면 기존 키 유지
+      // 인증키 형식 검증 — 오류 메시지 등 엉뚱한 텍스트를 붙여넣는 실수 차단 (실제 키는 공백·한글 없음)
+      if (key && (/[\s가-힣]/.test(key) || key.length < 16)) {
+        return json({ error: "API 인증키 형식이 아닙니다 — 이카운트 [API인증키발급]에서 발급된 키만 붙여넣으세요. (공백·한글 불가)" }, 400);
+      }
       const use_test = body.use_test ?? prev?.use_test ?? true;
       const changed = !prev || prev.com_code !== com_code || !!key || prev.use_test !== !!use_test;
       const row = {
