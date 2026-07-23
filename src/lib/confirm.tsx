@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 type ConfirmOpts = { title?: string; message: string; danger?: boolean; confirmLabel?: string; cancelLabel?: string };
 type PromptOpts = { title?: string; label: string; type?: "text" | "password"; placeholder?: string; initial?: string };
@@ -6,8 +6,12 @@ type Req =
   | { kind: "confirm"; opts: ConfirmOpts; resolve: (ok: boolean) => void }
   | { kind: "prompt"; opts: PromptOpts; resolve: (val: string | null) => void };
 
+// 확인/입력 모달 스토어 — useSyncExternalStore 규약(subscribe + 스냅샷).
+// 렌더 중 모듈 전역을 직접 읽으면 React Compiler가 값을 캐시해 모달이 열리지 않는다(perm 장애와 동일 위험).
 let current: Req | null = null;
 let subs: (() => void)[] = [];
+const subscribe = (f: () => void) => { subs.push(f); return () => { subs = subs.filter(x => x !== f); }; };
+const getSnap = () => current;
 function emit() { subs.forEach(f => f()); }
 
 export function confirmDialog(opts: ConfirmOpts): Promise<boolean> {
@@ -18,13 +22,12 @@ export function promptDialog(opts: PromptOpts): Promise<string | null> {
 }
 
 export function ConfirmHost() {
-  const [, setN] = useState(0);
+  const req = useSyncExternalStore(subscribe, getSnap);
   const [val, setVal] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { const f = () => { setVal((current?.kind === "prompt" && current.opts.initial) || ""); setN(n => n + 1); }; subs.push(f); return () => { subs = subs.filter(x => x !== f); }; }, []);
-  const req = current;
   useEffect(() => {
     if (!req) return;
+    setVal((req.kind === "prompt" && req.opts.initial) || "");
     if (req.kind === "prompt") setTimeout(() => inputRef.current?.focus(), 0);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(false); };
     window.addEventListener("keydown", onKey);
