@@ -1,13 +1,19 @@
-// 원재료(BOM) — 이카운트 [BOM(소요량)현황] 기반 행 단위 BOM.
-// · 가져오기: 이카운트 내보내기(붙여넣기/엑셀)를 통째로 임포트 (전체 교체 — 이카운트가 원본)
-// · 제품별 원재료 행 조회/수정/추가/삭제 (공정·기준수량·소요량)
-// · 월별 소비: 수주량을 BOM으로 전개(반제품 → 원분말까지 재귀) → 원재료별 동적 열
+// 원재료(BOM) — BOM 등록 시트 + 리비전(Rev 1→2→3) 이력 관리.
+// · 리비전 원칙: 확정본(active/obsolete)은 불변 — 수정하려면 [새 리비전으로 편집](draft 복제) 후 [확정].
+//   품목당 active는 1개(DB 부분 유니크 인덱스). 확정/발행은 RPC 한 트랜잭션.
+// · 신규 등록: 품목 마스터(제품/반제품)에서 선택하거나 직접 입력 → Rev 1 draft → 자재 입력 → 확정.
+// · 가져오기: 이카운트 [BOM(소요량)현황] — 파일에 포함된 제품마다 새 리비전 발행(이력 보존, 미포함 제품 유지)
+// · 월별 소비: 수주량을 BOM으로 전개(반제품 → 원분말까지 재귀) → 원재료별 동적 열 (active 리비전 기준)
 import { errMsg } from "../lib/errmsg";
 import { useAsyncList } from "../lib/useAsyncList";
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order } from "../lib/types";
-import { BomRow, listBomRows, replaceBomRows, upsertBomRow, deleteBomRow, logAudit } from "../lib/db";
+import {
+  BomRow, BomRev, Item, listBomRows, listBomRevs, listBomRowsByRev,
+  bomNextRev, bomPublish, discardBomRev, importBomRevs,
+  upsertBomRow, deleteBomRow, listItems, logAudit,
+} from "../lib/db";
 import { parseBomText, parseBomCells } from "../lib/parseBom";
 import { buildBomIndex, explodeByItem, resolveProd } from "../lib/bom";
 import { can } from "../lib/perm";
@@ -18,13 +24,21 @@ import MonthPicker from "./MonthPicker";
 
 const num = (n: number) => (Math.round(n * 100) / 100).toLocaleString("ko-KR");
 
+function RevBadge({ s }: { s: BomRev["status"] }) {
+  if (s === "active") return <b style={{ color: "#15663f", fontSize: 12 }}>● active (사용 중)</b>;
+  if (s === "draft") return <b style={{ color: "#b5720a", fontSize: 12 }}>✏ draft (편집 중)</b>;
+  return <span className="muted" style={{ fontSize: 12 }}>obsolete (이력)</span>;
+}
+
 export default function MaterialBom({ orders }: { orders: Order[] }) {
   const canEdit = can("bom.edit");
-  const { data: rows, setData: setRows, reload } = useAsyncList<BomRow[]>(listBomRows, [], "BOM");
+  const { data: rows, reload } = useAsyncList<BomRow[]>(listBomRows, [], "BOM"); // active 리비전 행 (전개·소비 계산의 원천)
+  const [revs, setRevs] = useState<BomRev[]>([]);
+  const loadRevs = () => listBomRevs().then(setRevs).catch(e => toast.error("리비전 불러오기 실패: " + errMsg(e)));
+  useEffect(() => { loadRevs(); }, []);
   const [ym, setYm] = usePersistState("bom.ym", "");
   const [q, setQ] = useState("");
   const [proc, setProc] = useState("");        // 공정 필터
-  const [openProd, setOpenProd] = useState(""); // 펼친 제품
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -33,8 +47,14 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
   const idx = useMemo(() => buildBomIndex(rows), [rows]);
   const procs = useMemo(() => [...new Set(rows.map(r => r.process).filter(Boolean))].sort(), [rows]);
   const matCount = useMemo(() => new Set(rows.map(r => r.mat_code || r.mat_name)).size, [rows]);
+  const revsByProd = useMemo(() => {
+    const m = new Map<string, BomRev[]>();
+    revs.forEach(v => { const a = m.get(v.prod_name) || []; a.push(v); m.set(v.prod_name, a); });
+    m.forEach(a => a.sort((x, y) => y.revision - x.revision));
+    return m;
+  }, [revs]);
 
-  // 제품 목록 (BOM에 등록된 생산품목 기준 + 검색/공정 필터)
+  // 제품 목록 = active 행의 생산품목 + 리비전 보유 품목(draft만 있는 신규 포함)
   const products = useMemo(() => {
     const m = new Map<string, { code: string; name: string; process: string; batch: number; mats: BomRow[] }>();
     rows.forEach(r => {
@@ -43,29 +63,156 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
       if (!e.code && r.prod_code) e.code = r.prod_code;
       m.set(r.prod_name, e);
     });
+    revsByProd.forEach((vs, name) => {
+      if (!m.has(name)) m.set(name, { code: vs[0].prod_code || "", name, process: "", batch: 50, mats: [] });
+    });
     let arr = [...m.values()];
     if (proc) arr = arr.filter(p => p.process === proc);
     const s = q.trim().toLowerCase();
     if (s) arr = arr.filter(p => (p.code + " " + p.name).toLowerCase().includes(s));
     return arr.sort((a, b) => (a.code || a.name).localeCompare(b.code || b.name));
-  }, [rows, q, proc]);
+  }, [rows, revsByProd, q, proc]);
 
-  // ---- 가져오기 ----
+  // ---- 리비전 패널 (펼친 제품) ----
+  const [openProd, setOpenProd] = useState("");
+  const [panelRevId, setPanelRevId] = useState("");
+  const [panelRows, setPanelRows] = useState<BomRow[]>([]);
+  const [desc, setDesc] = useState("");       // 확정 시 저장할 변경 사유
+  const [add, setAdd] = useState({ mat_code: "", mat_name: "", qty: "" });
+  const panelRevs = revsByProd.get(openProd) || [];
+  const panelRev = panelRevs.find(v => v.id === panelRevId);
+  const editable = canEdit && panelRev?.status === "draft";
+
+  function openPanel(name: string) {
+    if (openProd === name) { setOpenProd(""); setPanelRevId(""); return; }
+    const vs = revsByProd.get(name) || [];
+    const def = vs.find(v => v.status === "draft") || vs.find(v => v.status === "active") || vs[0];
+    setOpenProd(name); setPanelRevId(def?.id || ""); setDesc(""); setAdd({ mat_code: "", mat_name: "", qty: "" });
+  }
+  useEffect(() => {
+    if (!panelRevId) { setPanelRows([]); return; }
+    listBomRowsByRev(panelRevId).then(setPanelRows).catch(e => toast.error("BOM 상세 불러오기 실패: " + errMsg(e)));
+  }, [panelRevId]);
+
+  // ---- 리비전 동작 ----
+  async function newRevision(p: { code: string; name: string }) {
+    setBusy(true);
+    try {
+      const id = await bomNextRev(p.code, p.name);
+      logAudit("BOM 새 리비전 발행", "bom", p.name, {});
+      await loadRevs();
+      setOpenProd(p.name); setPanelRevId(id); setDesc("");
+      toast.success("새 리비전(draft)이 만들어졌습니다 — 편집 후 [확정]하면 적용됩니다.");
+    } catch (e: any) { toast.error("리비전 발행 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+  async function publish() {
+    if (!panelRev) return;
+    if (!panelRows.length) { toast.error("자재가 없습니다 — 소모품목을 먼저 추가하세요."); return; }
+    if (!(await confirmDialog({
+      title: "BOM 리비전 확정",
+      message: `${openProd} Rev ${panelRev.revision}을 확정(active)합니다.\n기존 사용 중 리비전은 이력(obsolete)으로 남고, 이후 소요량 전개·원가 계산은 이 리비전 기준으로 바뀝니다.`,
+      confirmLabel: "확정",
+    }))) return;
+    setBusy(true);
+    try {
+      await bomPublish(panelRev.id, desc.trim() || undefined);
+      logAudit("BOM 리비전 확정", "bom", openProd, { rev: panelRev.revision });
+      await Promise.all([loadRevs(), reload()]);
+      toast.success(`Rev ${panelRev.revision} 확정 — 지금부터 이 리비전이 사용됩니다.`);
+    } catch (e: any) { toast.error("확정 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+  async function discard() {
+    if (!panelRev) return;
+    if (!(await confirmDialog({ title: "draft 폐기", danger: true, confirmLabel: "폐기", message: `${openProd} Rev ${panelRev.revision} (draft)를 폐기할까요?\n이 리비전의 자재 행이 삭제됩니다. (확정된 리비전은 영향 없음)` }))) return;
+    setBusy(true);
+    try {
+      await discardBomRev(panelRev.id);
+      logAudit("BOM draft 폐기", "bom", openProd, { rev: panelRev.revision });
+      await loadRevs();
+      const left = (revsByProd.get(openProd) || []).filter(v => v.id !== panelRev.id);
+      if (left.length) setPanelRevId((left.find(v => v.status === "active") || left[0]).id);
+      else { setOpenProd(""); setPanelRevId(""); }
+      toast.success("draft 폐기됨");
+    } catch (e: any) { toast.error("폐기 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+
+  // ---- draft 행 편집 ----
+  function setQty(r: BomRow, v: string) {
+    const qty = Number(v) || 0;
+    setPanelRows(list => list.map(x => x.id === r.id ? { ...x, qty } : x));
+    upsertBomRow({ ...r, qty }).then(() => logAudit("BOM 수정", "bom", r.prod_name, { mat: r.mat_name, qty, rev: panelRev?.revision }))
+      .catch(e => toast.error("저장 실패: " + errMsg(e)));
+  }
+  async function delRow(r: BomRow) {
+    if (!(await confirmDialog({ title: "원재료 행 삭제", message: `${r.prod_name} ← ${r.mat_name} (${num(r.qty)}) 행을 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
+    try {
+      await deleteBomRow(r.id!);
+      logAudit("BOM 행 삭제", "bom", r.prod_name, { mat: r.mat_name, rev: panelRev?.revision });
+      setPanelRows(list => list.filter(x => x.id !== r.id));
+    } catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
+  }
+  async function addRow(p: { code: string; name: string; process: string; batch: number }) {
+    if (!panelRev || panelRev.status !== "draft") return;
+    const matName = add.mat_name.trim();
+    if (!matName) { toast.error("원재료명을 입력하세요."); return; }
+    if (matName === p.name || (add.mat_code.trim() && add.mat_code.trim() === p.code)) { toast.error("자기 자신을 소모품목으로 넣을 수 없습니다."); return; }
+    const qty = Number(add.qty) || 0;
+    if (qty <= 0) { toast.error("소요량을 입력하세요."); return; }
+    const base = panelRows[0];
+    try {
+      await upsertBomRow({
+        prod_code: p.code, prod_name: p.name, process: base?.process ?? p.process ?? "", version: "기본",
+        mat_code: add.mat_code.trim(), mat_name: matName, batch_qty: base?.batch_qty ?? p.batch ?? 50, qty, rev_id: panelRev.id,
+      });
+      logAudit("BOM 행 추가", "bom", p.name, { mat: matName, qty, rev: panelRev.revision });
+      setAdd({ mat_code: "", mat_name: "", qty: "" });
+      setPanelRows(await listBomRowsByRev(panelRev.id));
+    } catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
+  }
+  const matNames = useMemo(() => [...new Set(rows.map(r => r.mat_name))].sort(), [rows]);
+
+  // ---- 신규 BOM 등록 ----
+  const [newOpen, setNewOpen] = useState(false);
+  const [items, setItems] = useState<Item[] | null>(null);
+  useEffect(() => { if (newOpen && items === null) listItems().then(setItems).catch(() => setItems([])); }, [newOpen, items]);
+  const [nb, setNb] = useState({ code: "", name: "" });
+  const prodItems = useMemo(() => (items || []).filter((i: any) => i.active && (i.gubun === "제품" || i.gubun === "반제품")), [items]);
+  async function createBom() {
+    const name = nb.name.trim();
+    if (!name) { toast.error("품목명을 입력하세요."); return; }
+    if (revsByProd.has(name)) { toast.error("이미 BOM이 있는 품목입니다 — 목록에서 [새 리비전으로 편집]을 사용하세요."); return; }
+    setBusy(true);
+    try {
+      const id = await bomNextRev(nb.code.trim(), name);
+      logAudit("BOM 신규 등록", "bom", name, {});
+      await loadRevs();
+      setNewOpen(false); setNb({ code: "", name: "" }); setQ("");
+      setOpenProd(name); setPanelRevId(id); setDesc("");
+      toast.success("Rev 1 (draft) 생성 — 소모품목을 추가하고 [확정]하세요.");
+    } catch (e: any) { toast.error("등록 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+
+  // ---- 가져오기 (제품별 새 리비전 발행) ----
   async function doImport(parsed: BomRow[]) {
     if (!parsed.length) { toast.error("인식된 BOM 행이 없습니다. 머리글(생산품목명·소요량 포함)까지 복사했는지 확인하세요."); return; }
     const prodN = new Set(parsed.map(r => r.prod_name)).size;
     const matN = new Set(parsed.map(r => r.mat_code || r.mat_name)).size;
     if (!(await confirmDialog({
-      title: "BOM 전체 교체",
-      message: `인식: ${parsed.length}행 · 생산품목 ${prodN}종 · 소모품목 ${matN}종\n\n기존 BOM을 전부 지우고 이 데이터로 교체합니다 (이카운트가 원본).\n계속할까요?`,
-      confirmLabel: "교체 가져오기",
+      title: "BOM 가져오기 (리비전 발행)",
+      message: `인식: ${parsed.length}행 · 생산품목 ${prodN}종 · 소모품목 ${matN}종\n\n파일에 포함된 제품마다 새 리비전을 발행해 바로 적용(active)합니다.\n기존 리비전은 이력으로 보존되고, 파일에 없는 제품은 그대로 유지됩니다.`,
+      confirmLabel: "가져오기",
     }))) return;
     setBusy(true);
     try {
-      await replaceBomRows(parsed);
-      await logAudit("BOM 가져오기(전체 교체)", "bom", "", { rows: parsed.length, products: prodN, materials: matN });
-      toast.success(`BOM 가져오기 완료 — ${parsed.length}행 (제품 ${prodN} · 원재료 ${matN})`);
-      setText(""); setImportOpen(false); reload();
+      const res = await importBomRevs(parsed);
+      await logAudit("BOM 가져오기(리비전 발행)", "bom", "", { rows: parsed.length, products: res.products });
+      toast.success(`BOM 가져오기 완료 — 제품 ${res.products}종에 새 리비전 발행 (${parsed.length}행)`);
+      setText(""); setImportOpen(false);
+      await Promise.all([reload(), loadRevs()]);
     } catch (e: any) { toast.error("가져오기 실패: " + errMsg(e)); }
     setBusy(false);
   }
@@ -77,31 +224,6 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
     } catch (e: any) { toast.error("엑셀 읽기 실패: " + errMsg(e)); }
     if (fileRef.current) fileRef.current.value = "";
   }
-
-  // ---- 행 수정/추가/삭제 ----
-  function setQty(r: BomRow, v: string) {
-    const qty = Number(v) || 0;
-    setRows(list => list.map(x => x.id === r.id ? { ...x, qty } : x));
-    upsertBomRow({ ...r, qty }).then(() => logAudit("BOM 수정", "bom", r.prod_name, { mat: r.mat_name, qty }))
-      .catch(e => toast.error("저장 실패: " + errMsg(e)));
-  }
-  async function delRow(r: BomRow) {
-    if (!(await confirmDialog({ title: "원재료 행 삭제", message: `${r.prod_name} ← ${r.mat_name} (${num(r.qty)}) 행을 삭제할까요?`, danger: true, confirmLabel: "삭제" }))) return;
-    try { await deleteBomRow(r.id!); logAudit("BOM 행 삭제", "bom", r.prod_name, { mat: r.mat_name }); reload(); }
-    catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
-  }
-  const [add, setAdd] = useState({ mat_code: "", mat_name: "", qty: "" });
-  async function addRow(p: { code: string; name: string; process: string; batch: number }) {
-    if (!add.mat_name.trim()) { toast.error("원재료명을 입력하세요."); return; }
-    const qty = Number(add.qty) || 0;
-    if (qty <= 0) { toast.error("소요량을 입력하세요."); return; }
-    try {
-      await upsertBomRow({ prod_code: p.code, prod_name: p.name, process: p.process, version: "기본", mat_code: add.mat_code.trim(), mat_name: add.mat_name.trim(), batch_qty: p.batch, qty });
-      logAudit("BOM 행 추가", "bom", p.name, { mat: add.mat_name, qty });
-      setAdd({ mat_code: "", mat_name: "", qty: "" }); reload();
-    } catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
-  }
-  const matNames = useMemo(() => [...new Set(rows.map(r => r.mat_name))].sort(), [rows]);
 
   // ---- 월별 소비 (BOM 전개, 원재료별 동적 열) ----
   const prodOrders = useMemo(() => orders.filter(o => o.gubun === "제품" || o.gubun === "무형상품"), [orders]);
@@ -134,15 +256,34 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
           <h3 style={{ margin: 0 }}>제품별 원재료 (BOM)</h3>
-          <span className="muted" style={{ fontSize: 12 }}>제품 {idx.byProd.size}종 · 원재료 {matCount}종 · {rows.length}행{procs.length > 0 && ` · 공정: ${procs.join("/")}`}</span>
-          {canEdit && <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setImportOpen(v => !v)}>📥 BOM 가져오기</button>}
+          <span className="muted" style={{ fontSize: 12 }}>제품 {revsByProd.size || idx.byProd.size}종 · 원재료 {matCount}종 · {rows.length}행{procs.length > 0 && ` · 공정: ${procs.join("/")}`}</span>
+          {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <button className="btn" onClick={() => { setNewOpen(v => !v); setImportOpen(false); }}>➕ BOM 신규 등록</button>
+            <button className="btn ghost" onClick={() => { setImportOpen(v => !v); setNewOpen(false); }}>📥 BOM 가져오기</button>
+          </span>}
         </div>
+
+        {newOpen && canEdit && (
+          <div style={{ background: "var(--tint2)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <label style={{ fontSize: 12.5 }}>품목 선택 (제품/반제품)<br />
+              <select value="" onChange={e => { const it = prodItems.find(x => x.code === e.target.value); if (it) setNb({ code: it.code, name: it.name }); }}
+                style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, maxWidth: 240 }}>
+                <option value="">직접 입력…</option>
+                {prodItems.map(it => <option key={it.code + it.name} value={it.code}>[{it.code}] {it.name}</option>)}
+              </select>
+            </label>
+            <label style={{ fontSize: 12.5 }}>코드<br /><input value={nb.code} onChange={e => setNb(o => ({ ...o, code: e.target.value }))} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, width: 110 }} /></label>
+            <label style={{ fontSize: 12.5 }}>생산품목명<br /><input value={nb.name} onChange={e => setNb(o => ({ ...o, name: e.target.value }))} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, width: 180 }} /></label>
+            <button className="btn green" disabled={busy} onClick={createBom}>Rev 1 만들기</button>
+            <span className="muted" style={{ fontSize: 11.5 }}>만들면 draft 상태로 열립니다 — 자재 입력 후 [확정]해야 전개·원가에 반영됩니다.</span>
+          </div>
+        )}
 
         {importOpen && canEdit && (
           <div style={{ background: "var(--tint2)", border: "1px solid var(--line)", borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <p style={{ margin: "0 0 8px", fontSize: 12.5, lineHeight: 1.6 }}>
               이카운트 <b>[생산/외주 → BOM(소요량)현황]</b> 을 조회 → 표 전체 복사(머리글 포함) 후 붙여넣거나, 내보낸 엑셀 파일을 올리세요.
-              <b> 가져오기는 기존 BOM을 전부 교체</b>합니다 (이카운트가 원본).
+              파일에 포함된 제품마다 <b>새 리비전을 발행해 바로 적용</b>하고, 기존 리비전은 이력으로 남습니다 (파일에 없는 제품은 유지).
             </p>
             <textarea value={text} onChange={e => setText(e.target.value)} placeholder="생산품목코드	생산품목명	생산공정명	BOM버전	소모품목코드	소모품목명	생산수량	소요량 ..."
               style={{ width: "100%", height: 110, fontSize: 12, padding: 8, border: "1px solid var(--line)", borderRadius: 8, fontFamily: "monospace", boxSizing: "border-box" }} />
@@ -165,10 +306,10 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
           )}
         </div>
 
-        {rows.length === 0 ? (
-          <p className="muted" style={{ lineHeight: 1.8 }}>등록된 BOM이 없습니다. {canEdit ? "위 📥 BOM 가져오기로 이카운트 [BOM(소요량)현황]을 통째로 넣으세요 — 한 번이면 끝납니다." : ""}</p>
+        {products.length === 0 ? (
+          <p className="muted" style={{ lineHeight: 1.8 }}>등록된 BOM이 없습니다. {canEdit ? "➕ BOM 신규 등록으로 직접 입력하거나, 📥 BOM 가져오기로 이카운트 [BOM(소요량)현황]을 넣으세요." : ""}</p>
         ) : (
-          <div style={{ overflow: "auto", maxHeight: "50vh" }}>
+          <div style={{ overflow: "auto", maxHeight: "60vh" }}>
             <table style={{ borderCollapse: "collapse", width: "100%" }}>
               <thead><tr>
                 <th style={{ ...TH, textAlign: "left" }}>품목코드</th>
@@ -176,47 +317,77 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
                 <th style={{ ...TH, textAlign: "center" }}>공정</th>
                 <th style={{ ...TH, textAlign: "right" }}>기준수량</th>
                 <th style={{ ...TH, textAlign: "right" }}>원재료 수</th>
+                <th style={{ ...TH, textAlign: "center" }}>리비전</th>
                 <th style={{ ...TH, textAlign: "center" }}>상세</th>
               </tr></thead>
               <tbody>
                 {products.map(p => {
                   const opened = openProd === p.name;
+                  const vs = revsByProd.get(p.name) || [];
+                  const act = vs.find(v => v.status === "active");
+                  const hasDraft = vs.some(v => v.status === "draft");
                   return (
                     <Fragment key={p.name}>
                       <tr style={opened ? { background: "var(--tint2)" } : undefined}>
                         <td style={{ ...TD, fontWeight: 700 }}>{p.code || "-"}</td>
                         <td style={TD}>{p.name}</td>
                         <td style={{ ...TD, textAlign: "center" }}>{p.process}</td>
-                        <td style={{ ...TD, textAlign: "right" }}>{num(p.batch)}</td>
+                        <td style={{ ...TD, textAlign: "right" }}>{p.mats.length ? num(p.batch) : "-"}</td>
                         <td style={{ ...TD, textAlign: "right" }}>{p.mats.length}</td>
+                        <td style={{ ...TD, textAlign: "center", whiteSpace: "nowrap", fontSize: 12 }}>
+                          {act ? <b>Rev {act.revision}</b> : <span className="muted">-</span>}
+                          {hasDraft && <span title="편집 중인 draft 리비전이 있습니다" style={{ color: "#b5720a", fontWeight: 700 }}> ✏</span>}
+                        </td>
                         <td style={{ ...TD, textAlign: "center" }}>
-                          <button className="btn ghost" style={{ padding: "2px 9px", fontSize: 12 }} onClick={() => { setOpenProd(opened ? "" : p.name); setAdd({ mat_code: "", mat_name: "", qty: "" }); }}>{opened ? "닫기" : "보기"}</button>
+                          <button className="btn ghost" style={{ padding: "2px 9px", fontSize: 12 }} onClick={() => openPanel(p.name)}>{opened ? "닫기" : "보기"}</button>
                         </td>
                       </tr>
                       {opened && (
-                        <tr><td colSpan={6} style={{ padding: "4px 10px 12px" }}>
+                        <tr><td colSpan={7} style={{ padding: "4px 10px 12px" }}>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
+                            {panelRevs.length > 0 && (
+                              <select value={panelRevId} onChange={e => setPanelRevId(e.target.value)} style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 6, fontSize: 12.5 }}>
+                                {panelRevs.map(v => <option key={v.id} value={v.id}>Rev {v.revision} — {v.status === "active" ? "사용 중" : v.status === "draft" ? "편집 중" : "이력"}{v.effective_from ? ` (${v.effective_from}~)` : ""}</option>)}
+                              </select>
+                            )}
+                            {panelRev && <RevBadge s={panelRev.status} />}
+                            {panelRev?.description && <span className="muted" style={{ fontSize: 12 }}>· {panelRev.description}</span>}
+                            <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {canEdit && panelRev && panelRev.status !== "draft" && !hasDraft &&
+                                <button className="btn" style={{ padding: "3px 10px", fontSize: 12 }} disabled={busy} onClick={() => newRevision(p)}>✏️ 새 리비전으로 편집 (Rev {Math.max(...vs.map(v => v.revision)) + 1})</button>}
+                              {canEdit && panelRev && panelRev.status !== "draft" && hasDraft &&
+                                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12 }} onClick={() => setPanelRevId(vs.find(v => v.status === "draft")!.id)}>✏ 편집 중인 draft 열기</button>}
+                              {editable && <>
+                                <input placeholder="변경 사유 (선택)" value={desc} onChange={e => setDesc(e.target.value)} style={{ padding: 5, border: "1px solid var(--line)", borderRadius: 6, fontSize: 12, width: 160 }} />
+                                <button className="btn green" style={{ padding: "3px 10px", fontSize: 12 }} disabled={busy} onClick={publish}>✔ 확정 (적용)</button>
+                                <button className="btn ghost" style={{ padding: "3px 10px", fontSize: 12, color: "#c0392b" }} disabled={busy} onClick={discard}>draft 폐기</button>
+                              </>}
+                            </span>
+                          </div>
+                          {panelRev && panelRev.status !== "draft" && <p className="muted" style={{ fontSize: 11.5, margin: "0 0 6px" }}>확정된 리비전은 수정할 수 없습니다 — 변경하려면 [새 리비전으로 편집]으로 복제본(draft)을 만들어 편집 후 확정하세요.</p>}
                           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5 }}>
                             <thead><tr>
                               <th style={{ ...TH, textAlign: "left" }}>소모품목코드</th>
                               <th style={{ ...TH, textAlign: "left" }}>소모품목명</th>
-                              <th style={{ ...TH, textAlign: "right" }}>소요량 ({num(p.batch)} 생산당)</th>
+                              <th style={{ ...TH, textAlign: "right" }}>소요량 ({num(panelRows[0]?.batch_qty ?? p.batch)} 생산당)</th>
                               <th style={{ ...TH, textAlign: "center" }}>구분</th>
-                              {canEdit && <th style={{ ...TH, textAlign: "center" }}>관리</th>}
+                              {editable && <th style={{ ...TH, textAlign: "center" }}>관리</th>}
                             </tr></thead>
                             <tbody>
-                              {p.mats.map(r => {
+                              {panelRows.map(r => {
                                 const isSub = idx.prodNames.has(r.mat_name) || (r.mat_code && idx.byCode.has(r.mat_code));
                                 return (
                                   <tr key={r.id || r.mat_code + r.mat_name}>
                                     <td style={TD}>{r.mat_code || "-"}</td>
                                     <td style={{ ...TD, fontWeight: 600 }}>{r.mat_name}</td>
-                                    <td style={{ ...TD, textAlign: "right" }}>{canEdit ? <input type="number" inputMode="decimal" style={inp} value={r.qty || ""} onChange={e => setQty(r, e.target.value)} /> : num(r.qty)}</td>
+                                    <td style={{ ...TD, textAlign: "right" }}>{editable ? <input type="number" inputMode="decimal" style={inp} value={r.qty || ""} onChange={e => setQty(r, e.target.value)} /> : num(r.qty)}</td>
                                     <td style={{ ...TD, textAlign: "center" }}>{isSub ? <span title="다른 BOM의 생산품목 — 소요량 전개 시 하위 BOM으로 재귀 계산" style={{ fontSize: 11, fontWeight: 700, color: "#8e5bd8" }}>반제품↳</span> : <span className="muted" style={{ fontSize: 11 }}>원재료</span>}</td>
-                                    {canEdit && <td style={{ ...TD, textAlign: "center" }}><button className="btn ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => delRow(r)}>삭제</button></td>}
+                                    {editable && <td style={{ ...TD, textAlign: "center" }}><button className="btn ghost" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => delRow(r)}>삭제</button></td>}
                                   </tr>
                                 );
                               })}
-                              {canEdit && (
+                              {panelRows.length === 0 && <tr><td colSpan={editable ? 5 : 4} style={{ ...TD, textAlign: "center" }} className="muted">자재가 없습니다{editable ? " — 아래에서 추가하세요" : ""}.</td></tr>}
+                              {editable && (
                                 <tr>
                                   <td style={TD}><input placeholder="코드(선택)" value={add.mat_code} onChange={e => setAdd(o => ({ ...o, mat_code: e.target.value }))} style={{ width: 90, padding: 5, border: "1px solid var(--line)", borderRadius: 5 }} /></td>
                                   <td style={TD}>
@@ -239,6 +410,9 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
             </table>
           </div>
         )}
+        <p className="muted" style={{ fontSize: 11, marginTop: 8, marginBottom: 0 }}>
+          리비전 원칙: 확정본은 바꾸지 않고 <b>새 리비전 발행 → 편집(draft) → 확정</b>으로 이력을 남깁니다. 소요량 전개·원가 계산은 항상 <b>사용 중(active)</b> 리비전 기준입니다.
+        </p>
       </div>
 
       <div className="card">
@@ -272,7 +446,7 @@ export default function MaterialBom({ orders }: { orders: Order[] }) {
               </tbody>
             </table>
           </div>}
-        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>※ ⚠BOM미입력 품목은 소비 계산에서 제외됩니다 — BOM 가져오기 또는 위 표에서 원재료 행을 추가하세요.</p>
+        <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>※ ⚠BOM미입력 품목은 소비 계산에서 제외됩니다 — BOM 신규 등록/가져오기로 입력하세요.</p>
       </div>
     </div>
   );
