@@ -10,7 +10,7 @@ import { ConfirmHost } from "./lib/confirm";
 import ErrorBoundary from "./lib/ErrorBoundary";
 import { loadPerms, useCaps } from "./lib/perm";
 import { useIsMobile, isCoarse } from "./lib/useIsMobile";
-import { TAB_DEFS, TabKey, groupIcon } from "./lib/tabs";
+import { TAB_DEFS, TabKey, groupIcon, labelOf } from "./lib/tabs";
 
 // URL 해시 ↔ 탭 동기화 (#plan, #coc/<주문id>) — 새로고침·뒤로가기·북마크 지원
 const TAB_KEY_SET = new Set<string>(TAB_DEFS.map(t => t.key));
@@ -113,7 +113,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
 
-  const curLabel = (TAB_DEFS.find(t => t.key === tab)?.label) || "";
+  const curLabel = TAB_DEFS.some(t => t.key === tab) ? labelOf(tab, placement) : "";
   useEffect(() => { document.title = curLabel ? `${curLabel} · ORO MES` : "ORO MES"; }, [curLabel]);
 
   // 지연 생산 배지(현장): 완료 전인데 완료예정일이 지난 계획 수
@@ -170,7 +170,7 @@ export default function App() {
           <div className="nav-group">{g.name}</div>
           {g.items.map(t => (
             <button key={t.key} className={"nav-item" + (tab === t.key ? " active" : "")} onClick={() => { nav(t.key); onPick(); }}>
-              <span className="ic">{t.icon}</span> {t.label}
+              <span className="ic">{t.icon}</span> {labelOf(t.key, placement)}
             </button>
           ))}
         </div>
@@ -182,7 +182,7 @@ export default function App() {
     <>
       <span className="subnav-grp">{iconOf(curGroup)} {curGroup?.name}</span>
       {curGroup?.items.map(t => (
-        <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => nav(t.key)}>{t.label}</button>
+        <button key={t.key} className={tab === t.key ? "on" : ""} onClick={() => nav(t.key)}>{labelOf(t.key, placement)}</button>
       ))}
     </>
   );

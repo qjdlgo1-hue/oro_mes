@@ -522,25 +522,37 @@ export async function setMenuOrder(arr: string[]): Promise<void> {
 
 // ---- 메뉴 그룹/배치 ----
 export type MenuGroupRow = { id: string; name: string; sort: number };
-export type MenuPlacement = Record<string, { group_id: string | null; sort: number }>;
+export type MenuPlacement = Record<string, { group_id: string | null; sort: number; label?: string | null }>;
+const LS_MENU = "oro_menu_cfg";
 export async function getMenuConfig(): Promise<{ groups: MenuGroupRow[]; placement: MenuPlacement }> {
-  if (!supabase) return { groups: [], placement: {} };
+  if (!supabase) return lsGet(LS_MENU, { groups: [], placement: {} });
   const [{ data: gs, error: ge }, { data: ps, error: pe }] = await Promise.all([
     supabase.from("menu_groups").select("*").order("sort"),
     supabase.from("menu_placement").select("*"),
   ]);
   if (ge) throw ge; if (pe) throw pe;
   const placement: MenuPlacement = {};
-  (ps || []).forEach((p: any) => { placement[p.item_key] = { group_id: p.group_id, sort: p.sort }; });
+  (ps || []).forEach((p: any) => { placement[p.item_key] = { group_id: p.group_id, sort: p.sort, label: p.label ?? null }; });
   return { groups: (gs || []) as MenuGroupRow[], placement };
 }
-export async function saveMenuConfig(groups: MenuGroupRow[], placements: { item_key: string; group_id: string | null; sort: number }[]): Promise<void> {
-  if (!supabase) return;
+export async function saveMenuConfig(groups: MenuGroupRow[], placements: { item_key: string; group_id: string | null; sort: number; label?: string | null }[]): Promise<void> {
+  if (!supabase) {
+    const placement: MenuPlacement = {};
+    placements.forEach(p => { placement[p.item_key] = { group_id: p.group_id, sort: p.sort, label: p.label ?? null }; });
+    lsSet(LS_MENU, { groups, placement });
+    return;
+  }
   if (groups.length) { const { error } = await supabase.from("menu_groups").upsert(groups); if (error) throw error; }
   if (placements.length) { const { error } = await supabase.from("menu_placement").upsert(placements, { onConflict: "item_key" }); if (error) throw error; }
 }
 export async function deleteMenuGroup(id: string): Promise<void> {
-  if (!supabase) return;
+  if (!supabase) {
+    const c = lsGet<{ groups: MenuGroupRow[]; placement: MenuPlacement }>(LS_MENU, { groups: [], placement: {} });
+    c.groups = c.groups.filter(g => g.id !== id);
+    Object.values(c.placement).forEach(p => { if (p.group_id === id) p.group_id = null; });
+    lsSet(LS_MENU, c);
+    return;
+  }
   const { error } = await supabase.from("menu_groups").delete().eq("id", id); if (error) throw error;
   const { error: pe } = await supabase.from("menu_placement").update({ group_id: null }).eq("group_id", id); if (pe) throw pe;
 }
