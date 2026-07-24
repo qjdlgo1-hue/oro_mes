@@ -2,7 +2,8 @@
 // ③ 기초·조정(기준일 실사값, 실사 차이 보정). 계산 규칙은 lib/stock.ts 참고.
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
-import { InoutRow, ProdConsume, StockBase, listInout, listProdConsume, listStockBase, addStockBase, deleteStockBase, logAudit } from "../lib/db";
+import { InoutRow, ProdConsume, StockBase, listInout, listProdConsume, listStockBase, addStockBase, deleteStockBase, appendInout, appendProdConsume, logAudit } from "../lib/db";
+import { parseEcountLedger, LedgerParsed } from "../lib/parseLedger";
 import { buildStock, balanceOf, monthLedger, stockMonths, stockMins, lowStock, ItemStock } from "../lib/stock";
 import { thBase, tdBase } from "../lib/styles";
 import { nf1, todayIso } from "../lib/fmt";
@@ -14,7 +15,7 @@ import { fetchEcountStock, erpBalanceMap } from "../lib/ecount";
 import { hasSupabase } from "../lib/supabase";
 import MonthPicker from "./MonthPicker";
 
-type View = "now" | "ledger" | "adjust";
+type View = "now" | "ledger" | "adjust" | "import";
 const CAT_LABEL = { product: "제품", material: "원재료" } as const;
 
 export default function Stock() {
@@ -145,6 +146,62 @@ export default function Stock() {
     catch (e: any) { toast.error("삭제 실패: " + errMsg(e)); }
   }
 
+  // ---- 수불부 엑셀 가져오기 — 이카운트 [재고수불부] 원본을 파싱해 과거 이력 일괄 반영.
+  // 이미 데이터가 있는 월(ym)은 유형별로 건너뛰어(기본 정책) 기존 입력을 보존하고 재실행에도 안전.
+  const [ledger, setLedger] = useState<LedgerParsed | null>(null);
+  const [ledgerName, setLedgerName] = useState("");
+  const existYm = useMemo(() => ({
+    in: new Set(prodIn.map(r => r.ym)), out: new Set(sales.map(r => r.ym)), purchase: new Set(purchases.map(r => r.ym)),
+    consume: new Set(consumes.map(r => r.ym)), adj: new Set(bases.filter(b => b.kind === "adj").map(b => (b.bdate || "").slice(0, 7))),
+  }), [prodIn, sales, purchases, consumes, bases]);
+  const ledgerNew = useMemo(() => {
+    if (!ledger) return null;
+    return {
+      inout: ledger.inout.filter(r => !existYm[r.kind].has(r.ym)),
+      consumes: ledger.consumes.filter(r => !existYm.consume.has(r.ym)),
+      adjs: ledger.adjs.filter(r => !existYm.adj.has((r.bdate || "").slice(0, 7))),
+    };
+  }, [ledger, existYm]);
+  function pickLedger() {
+    const fi = document.createElement("input"); fi.type = "file"; fi.accept = ".xlsx,.xls";
+    fi.onchange = async () => {
+      const f = fi.files?.[0]; if (!f) return;
+      setBusy(true);
+      try {
+        const wb = XLSX.read(await f.arrayBuffer());
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" }) as any[][];
+        const p = parseEcountLedger(aoa);
+        if (!p.inout.length && !p.consumes.length && !p.adjs.length) toast.error("인식된 수불부 데이터가 없습니다 — 이카운트 [재고수불부] 원본(엑셀)인지 확인하세요.");
+        else { setLedger(p); setLedgerName(f.name); }
+      } catch (e: any) { toast.error("엑셀 읽기 실패: " + errMsg(e)); }
+      setBusy(false);
+    };
+    fi.click();
+  }
+  async function applyLedger() {
+    if (!ledger || !ledgerNew) return;
+    const total = ledgerNew.inout.length + ledgerNew.consumes.length + ledgerNew.adjs.length;
+    if (!total) { toast.error("반영할 신규 데이터가 없습니다 — 모든 월에 이미 데이터가 있습니다."); return; }
+    const skipped = (ledger.inout.length + ledger.consumes.length + ledger.adjs.length) - total;
+    if (!(await confirmDialog({
+      title: "수불부 반영", confirmLabel: `${total.toLocaleString()}건 반영`,
+      message: `신규 ${total.toLocaleString()}건을 반영합니다.${skipped ? `\n(이미 데이터가 있는 월의 ${skipped.toLocaleString()}건은 건너뜀 — 기존 입력 보존)` : ""}\n생산입고·판매·구매·소모·조정으로 나뉘어 저장되며, 재고 현황·수불부에 즉시 반영됩니다.`,
+    }))) return;
+    setBusy(true);
+    try {
+      for (const kind of ["in", "out", "purchase"] as const) {
+        const rows = ledgerNew.inout.filter(r => r.kind === kind);
+        if (rows.length) await appendInout(rows);
+      }
+      if (ledgerNew.consumes.length) await appendProdConsume(ledgerNew.consumes);
+      for (const a of ledgerNew.adjs) await addStockBase(a);
+      logAudit("수불부 가져오기", "stock", "", { file: ledgerName, added: total, skipped });
+      toast.success(`수불부 ${total.toLocaleString()}건 반영 완료${skipped ? ` (겹치는 월 ${skipped.toLocaleString()}건 건너뜀)` : ""}`);
+      setLedger(null); load();
+    } catch (e: any) { toast.error("반영 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+
   // ---- ERP(이카운트) 재고 비교 — 버튼을 눌렀을 때만 OpenAPI 조회 (호출량 관리) ----
   const [erpBal, setErpBal] = useState<Map<string, number> | null>(null);
   const [erpDate, setErpDate] = useState("");
@@ -179,6 +236,7 @@ export default function Stock() {
           <button className={view === "now" ? "on" : ""} onClick={() => setView("now")}>재고 현황</button>
           <button className={view === "ledger" ? "on" : ""} onClick={() => setView("ledger")}>재고 수불부</button>
           <button className={view === "adjust" ? "on" : ""} onClick={() => setView("adjust")}>기초·조정</button>
+          {canEdit && <button className={view === "import" ? "on" : ""} onClick={() => setView("import")}>📥 수불부 가져오기</button>}
         </div>
         {view === "ledger" && months.length > 0 && <MonthPicker months={months} value={curYm} onChange={setYm} />}
         {view !== "adjust" && <input placeholder="🔍 품목 검색" value={q} onChange={e => setQ(e.target.value)} style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 160 }} />}
@@ -189,7 +247,49 @@ export default function Stock() {
         {view === "ledger" && <button className="btn ghost" style={{ marginLeft: "auto" }} onClick={exportLedger}>📊 엑셀 저장</button>}
       </div>
 
-      {!loaded ? <p className="muted">불러오는 중…</p> : items.length === 0 ? (
+      {view === "import" && (
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <h4 style={{ margin: 0 }}>📥 이카운트 [재고수불부] 가져오기</h4>
+            <button className="btn" onClick={pickLedger} disabled={busy}>📄 엑셀 파일 선택</button>
+            {ledger && ledgerNew && <button className="btn green" onClick={applyLedger} disabled={busy}>신규 월만 반영</button>}
+          </div>
+          <p className="muted" style={{ fontSize: 12.5, lineHeight: 1.7, marginTop: 0 }}>
+            이카운트 <b>재고수불부</b>(품목별 일자·입고·출고 원본, 기간 전체)를 엑셀로 내려받아 그대로 올리면
+            생산입고·판매·구매·소모·조정으로 자동 분류해 일괄 반영합니다.
+            <b> 이미 데이터가 있는 월은 유형별로 건너뛰므로</b> 기존 입력이 보존되고 여러 번 실행해도 안전합니다.
+          </p>
+          {ledger && ledgerNew && (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className="muted" style={{ fontSize: 12 }}>{ledgerName} · 연도별 행수: {Object.entries(ledger.years).sort().map(([y, n]) => `${y}년 ${n}`).join(" · ")}{ledger.skipped ? ` · 해석 불가 ${ledger.skipped}행` : ""}</div>
+              <div style={{ overflow: "auto" }}>
+                <table style={{ borderCollapse: "collapse", minWidth: 440 }}>
+                  <thead><tr>{["유형", "전체", "신규(반영 대상)", "수량 합계"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {ledger.summary.map(sm => {
+                      const nw = sm.kind === "생산입고" ? ledgerNew.inout.filter(r => r.kind === "in").length
+                        : sm.kind === "판매출고" ? ledgerNew.inout.filter(r => r.kind === "out").length
+                        : sm.kind === "구매입고" ? ledgerNew.inout.filter(r => r.kind === "purchase").length
+                        : sm.kind === "생산소모" ? ledgerNew.consumes.length : ledgerNew.adjs.length;
+                      return (
+                        <tr key={sm.kind}>
+                          <td style={tdL}><b>{sm.kind}</b></td>
+                          <td style={td}>{sm.count.toLocaleString()}</td>
+                          <td style={{ ...td, fontWeight: 700, color: nw < sm.count ? "#b5720a" : "var(--ok)" }}>{nw.toLocaleString()}</td>
+                          <td style={td}>{sm.qty.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted" style={{ fontSize: 11.5, margin: 0 }}>신규가 전체보다 적으면 그 차이만큼은 이미 데이터가 있는 월이라 건너뜁니다.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {view !== "import" && (!loaded ? <p className="muted">불러오는 중…</p> : items.length === 0 ? (
         <div className="card"><p className="muted" style={{ margin: 0, lineHeight: 1.8 }}>
           아직 재고 데이터가 없습니다. <b>생산 가져오기</b>(생산입고)·<b>판매 가져오기</b>(출고)·<b>구매 가져오기</b>(원재료 매입)·<b>생산·소모</b>(원재료 소모)에서 데이터를 쌓으면
           제품 = 생산입고 − 판매, 원재료 = 구매 − 소모로 재고가 자동 계산됩니다. 시작 잔량은 <b>기초·조정</b> 탭에서 실사값으로 입력하세요.
@@ -411,7 +511,7 @@ export default function Stock() {
           </div>
         </div>
       )}
-      </>}
+      </>)}
     </div>
   );
 }
