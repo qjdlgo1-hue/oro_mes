@@ -68,6 +68,7 @@ export default function GrantDocs() {
   // ---- 회사 프로필 ----
   const [prof, setProf] = useState<GrantProfile>({});
   const [profOpen, setProfOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false); // 과제 정보 카드 (회사 정보와 분리 입력)
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     getGrantProfile().then(p => { setProf(p); if (!p.company) setProfOpen(true); })
@@ -428,10 +429,10 @@ export default function GrantDocs() {
         </div>
       </div>
 
-      {/* ===== 회사 정보 (1회 저장) ===== */}
+      {/* ===== 회사 정보 (공통, 1회 저장) — 과제 정보는 아래 별도 카드에서 입력 ===== */}
       <div className="card grant-side">
         <h4 style={{ margin: 0, cursor: "pointer" }} onClick={() => setProfOpen(o => !o)}>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>{profOpen ? "▼" : "▶"}</span> 🏢 회사 정보 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(모든 서류에 자동 반영 — 1회만 입력)</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{profOpen ? "▼" : "▶"}</span> 🏢 회사 정보 <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>(모든 공고 공통 — 1회만 입력)</span>
           {prof.company && <span style={{ marginLeft: 8, fontSize: 13 }}>{prof.company} / {prof.ceo}</span>}
         </h4>
         {profOpen && (
@@ -440,10 +441,6 @@ export default function GrantDocs() {
               <Field label="기업명(창업기업명)"><input style={inp} value={prof.company || ""} onChange={e => setProf({ ...prof, company: e.target.value })} /></Field>
               <Field label="대표자"><input style={inp} value={prof.ceo || ""} onChange={e => setProf({ ...prof, ceo: e.target.value })} /></Field>
               <Field label="사업자번호"><input style={inp} value={prof.bizno || ""} onChange={e => setProf({ ...prof, bizno: e.target.value })} /></Field>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Field label="과제명"><input style={inp} value={prof.project || ""} onChange={e => setProf({ ...prof, project: e.target.value })} /></Field>
-              <Field label="과제번호" w={140}><input style={inp} value={prof.projectNo || ""} onChange={e => setProf({ ...prof, projectNo: e.target.value })} /></Field>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Field label="은행명" w={120}><input style={inp} value={prof.bank || ""} onChange={e => setProf({ ...prof, bank: e.target.value })} /></Field>
@@ -455,9 +452,38 @@ export default function GrantDocs() {
               <Field label="주소"><input style={inp} value={prof.address || ""} onChange={e => setProf({ ...prof, address: e.target.value })} /></Field>
               <Field label="법인등록번호(각서용)" w={170}><input style={inp} value={prof.corpNo || ""} onChange={e => setProf({ ...prof, corpNo: e.target.value })} /></Field>
             </div>
+            <div>
+              <label style={lbl}>서명(도장) 이미지 — 배경이 투명한 PNG 권장, 한 번 등록하면 모든 서식의 (인) 위에 자동 표시</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button className="btn ghost" disabled={busy} onClick={uploadSign}>🖋 서명 올리기 (PNG)</button>
+                {signUrl && <img src={signUrl} alt="서명" style={{ height: 40, border: "1px dashed var(--line)", borderRadius: 4, padding: 2, background: "#fff" }} />}
+                {prof.signPath && <button className="btn danger" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => setSignPath("")}>서명 삭제</button>}
+              </div>
+            </div>
+            <div><button className="btn green" disabled={busy} onClick={saveProf}>회사 정보 저장</button></div>
+          </div>
+        )}
+      </div>
+
+      {/* ===== 과제 정보 (공고별 — 회사 정보와 분리 입력) ===== */}
+      <div className="card grant-side">
+        <h4 style={{ margin: 0, cursor: "pointer" }} onClick={() => setTaskOpen(o => !o)}>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{taskOpen ? "▼" : "▶"}</span> 📋 과제 정보 — {progDef.short}
+          <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}> (이 공고의 서식에만 반영)</span>
+          {prog === "cud" && prof.project && <span style={{ marginLeft: 8, fontSize: 13 }}>{prof.project}</span>}
+          {prog === "td" && prof.td?.project && <span style={{ marginLeft: 8, fontSize: 13 }}>{prof.td.project}</span>}
+          {isSsp && sspP.taskName && <span style={{ marginLeft: 8, fontSize: 13 }}>{sspP.taskName}</span>}
+        </h4>
+        {taskOpen && (
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {prog === "cud" && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Field label="과제명"><input style={inp} value={prof.project || ""} onChange={e => setProf({ ...prof, project: e.target.value })} /></Field>
+                <Field label="과제번호" w={140}><input style={inp} value={prof.projectNo || ""} onChange={e => setProf({ ...prof, projectNo: e.target.value })} /></Field>
+              </div>
+            )}
             {prog === "td" && (
-              <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700 }}>🔧 기술닥터 상용화지원 과제 정보 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>(서식 공통 반영)</span></div>
+              <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Field label="과제명"><input style={inp} value={prof.td?.project || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, project: e.target.value } })} /></Field>
                   <Field label="기술닥터" w={130}><input style={inp} value={prof.td?.doctor || ""} onChange={e => setProf({ ...prof, td: { ...prof.td, doctor: e.target.value } })} /></Field>
@@ -483,8 +509,7 @@ export default function GrantDocs() {
               </div>
             )}
             {isSsp && (
-              <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 8, display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{prog === "ysc" ? "🚀 딥테크 1기" : "🌍 글창사"} 과제 정보 <span className="muted" style={{ fontWeight: 400, fontSize: 11.5 }}>(서식 공통 반영)</span></div>
+              <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <Field label="입교자명 (보통 대표자)" w={150}><input style={inp} value={sspP.trainee || ""} placeholder={prof.ceo || ""} onChange={e => setSspP({ trainee: e.target.value })} /></Field>
                   <Field label="사업화 과제명"><input style={inp} value={sspP.taskName || ""} onChange={e => setSspP({ taskName: e.target.value })} /></Field>
@@ -499,15 +524,7 @@ export default function GrantDocs() {
                 </div>
               </div>
             )}
-            <div>
-              <label style={lbl}>서명(도장) 이미지 — 배경이 투명한 PNG 권장, 한 번 등록하면 모든 서식의 (인) 위에 자동 표시</label>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <button className="btn ghost" disabled={busy} onClick={uploadSign}>🖋 서명 올리기 (PNG)</button>
-                {signUrl && <img src={signUrl} alt="서명" style={{ height: 40, border: "1px dashed var(--line)", borderRadius: 4, padding: 2, background: "#fff" }} />}
-                {prof.signPath && <button className="btn danger" style={{ padding: "2px 10px", fontSize: 12 }} disabled={busy} onClick={() => setSignPath("")}>서명 삭제</button>}
-              </div>
-            </div>
-            <div><button className="btn green" disabled={busy} onClick={saveProf}>회사 정보 저장</button></div>
+            <div><button className="btn green" disabled={busy} onClick={saveProf}>과제 정보 저장</button></div>
           </div>
         )}
       </div>
