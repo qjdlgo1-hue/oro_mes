@@ -115,6 +115,7 @@ export type InoutRow = {
   item_code: string; name: string; spec?: string; qty: number;
   amount?: number | null; customer?: string; trade_type?: string; gubun?: string; cust_code?: string; vat?: number | null; total?: number | null; currency?: string; fx_rate?: number | null; note?: string; sig: string;
   ecount_slip?: string | null; // 이카운트 구매입력 전송 완료 표시(전표번호) — 중복 전송 방지
+  receipt_id?: string | null;  // 생산입고 전표 소속 (production_receipts.id) — 전표 취소 시 함께 삭제
 };
 // 중복 판별 키(같은 행 재붙여넣기 방지)
 export function inoutSig(r: Omit<InoutRow, "sig">): string {
@@ -581,7 +582,7 @@ export async function deleteInspection(id: string): Promise<void> {
 
 
 // ===== 생산·소모 (생산입고/소모현황) =====
-export type ProdConsume = { id?: string; ym: string; idate?: string | null; prod_code: string; prod_name: string; mat_code?: string; mat_name?: string; prod_qty?: number; std_qty?: number; act_qty?: number; mat_price?: number; diff?: number; amount?: number; sig: string; created_at?: string };
+export type ProdConsume = { id?: string; ym: string; idate?: string | null; prod_code: string; prod_name: string; mat_code?: string; mat_name?: string; prod_qty?: number; std_qty?: number; act_qty?: number; mat_price?: number; diff?: number; amount?: number; sig: string; created_at?: string; receipt_id?: string | null };
 export function pcSig(r: Omit<ProdConsume, "sig" | "id">): string {
   return [r.idate ?? "", r.prod_code, r.mat_code || "", r.prod_qty ?? "", r.std_qty ?? "", r.act_qty ?? "", r.amount ?? ""].join("|");
 }
@@ -610,6 +611,43 @@ export async function appendProdConsume(rows: ProdConsume[]): Promise<void> {
   }
   const all = lsGet<ProdConsume[]>("oro_prodconsume", []); const seen = new Set(all.map(r => r.sig)); lsSet("oro_prodconsume", [...all, ...rows.filter(r => !seen.has(r.sig))]);
 }
+
+// ===== 생산입고 전표 (생산입고II — 완제품 입고 + BOM 소모를 전표 1건으로 원자 저장) =====
+export type ProductionReceipt = { id?: string; rdate: string; note?: string | null; status?: string; created_at?: string };
+const LS_PRCPT = "oro_prod_receipts";
+export async function listProductionReceipts(): Promise<ProductionReceipt[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("production_receipts").select("*").order("created_at", { ascending: false }).limit(30);
+    if (error) throw error; return (data || []) as ProductionReceipt[];
+  }
+  return lsGet<ProductionReceipt[]>(LS_PRCPT, []);
+}
+// 저장: 클라우드는 RPC(fn_save_production_receipt) 안에서 전표+입고+소모가 한 트랜잭션 —
+// 하나라도 실패하면 전체 롤백(부분 반영 방지). 로컬 모드는 데모용 순차 저장.
+export async function saveProductionReceipt(payload: {
+  rdate: string; note?: string;
+  prods: { item_code: string; name: string; spec?: string; qty: number; gubun?: string; sig: string }[];
+  consumes: { prod_code: string; prod_name: string; mat_code: string; mat_name: string; prod_qty: number; act_qty: number; sig: string }[];
+}): Promise<string> {
+  if (supabase) {
+    const { data, error } = await supabase.rpc("fn_save_production_receipt", { payload });
+    if (error) throw error; return data as string;
+  }
+  const id = "pr-" + Date.now();
+  const ym = payload.rdate.slice(0, 7);
+  await appendInout(payload.prods.map(p => ({ kind: "in" as const, ym, idate: payload.rdate, item_code: p.item_code || "", name: p.name, spec: p.spec || "", qty: p.qty, gubun: p.gubun || "제품", note: "생산입고 전표", sig: p.sig, receipt_id: id })));
+  await appendProdConsume(payload.consumes.map(c => ({ ym, idate: payload.rdate, prod_code: c.prod_code, prod_name: c.prod_name, mat_code: c.mat_code, mat_name: c.mat_name, prod_qty: c.prod_qty, act_qty: c.act_qty, sig: c.sig, receipt_id: id })));
+  lsSet(LS_PRCPT, [{ id, rdate: payload.rdate, note: payload.note || "", status: "CONFIRMED", created_at: new Date().toISOString() }, ...lsGet<ProductionReceipt[]>(LS_PRCPT, [])]);
+  return id;
+}
+// 취소: 이 전표가 만든 입고·소모 행을 삭제(RPC)하고 전표를 CANCELED로 표시
+export async function cancelProductionReceipt(id: string): Promise<void> {
+  if (supabase) { const { error } = await supabase.rpc("fn_cancel_production_receipt", { p_id: id }); if (error) throw error; return; }
+  lsSet(LS.inout_in, lsGet<InoutRow[]>(LS.inout_in, []).filter(r => r.receipt_id !== id));
+  lsSet("oro_prodconsume", lsGet<ProdConsume[]>("oro_prodconsume", []).filter(r => r.receipt_id !== id));
+  lsSet(LS_PRCPT, lsGet<ProductionReceipt[]>(LS_PRCPT, []).map(r => r.id === id ? { ...r, status: "CANCELED" } : r));
+}
+
 export async function clearProdConsume(): Promise<void> {
   if (supabase) { const { error } = await supabase.from("prod_consume").delete().neq("id", "00000000-0000-0000-0000-000000000000"); if (error) throw error; return; }
   lsSet("oro_prodconsume", []);
