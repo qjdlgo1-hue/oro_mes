@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { Order, PlanEntry, CocData } from "../lib/types";
 import { parsePaste, parseRows } from "../lib/parseOrders";
-import { appendOrders, dupKey, updateOrder, deleteOrder, logAudit, listPlans, listCocs, replaceMonth } from "../lib/db";
+import { appendOrders, dupKey, updateOrder, deleteOrder, logAudit, listPlans, listCocs, replaceMonth, listItems, Item } from "../lib/db";
+import { buildManualOrders, mapItemGubun } from "../lib/manualOrders";
 import { completionDate } from "../lib/plan";
 import { sampleOrders } from "../lib/sampleOrders";
 import { toast } from "../lib/toast";
@@ -27,6 +28,58 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
     setBusy(true);
     try { await appendOrders([ord]); await logAudit("주문 직접추가", "order", id, { name: ord.name, qty: ord.qty }); toast.success("주문 추가됨 (수동입력)"); setNo(blankOrder()); onChange(); }
     catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
+    setBusy(false);
+  }
+  // ---- 품목 선택 모달 (단수: 폼에 적용 / 복수: 품목별 수량으로 일괄 추가) ----
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pitems, setPitems] = useState<Item[] | null>(null); // 첫 오픈 시 지연 로드
+  const [pq, setPq] = useState("");
+  const [pg, setPg] = useState("");                          // 구분 필터
+  const [psel, setPsel] = useState<Map<string, number>>(new Map()); // key(code|name) → 수량
+  useEffect(() => { if (pickerOpen && pitems === null) listItems().then(setPitems).catch(() => setPitems([])); }, [pickerOpen, pitems]);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPickerOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pickerOpen]);
+  const pKey = (i: { code: string; name: string }) => `${i.code}|${i.name}`;
+  const pActive = useMemo(() => (pitems || []).filter(i => i.active), [pitems]);
+  const pGubuns = useMemo(() => [...new Set(pActive.map(i => i.gubun))], [pActive]);
+  const pList = useMemo(() => {
+    let arr = pActive;
+    if (pg) arr = arr.filter(i => i.gubun === pg);
+    const s = pq.trim().toLowerCase();
+    if (s) arr = arr.filter(i => (i.code + " " + i.name + " " + i.spec).toLowerCase().includes(s));
+    return arr.slice(0, 300);
+  }, [pActive, pg, pq]);
+  const pPicks = useMemo(() => {
+    const byKey = new Map(pActive.map(i => [pKey(i), i]));
+    return [...psel.entries()].flatMap(([k, qty]) => { const it = byKey.get(k); return it ? [{ code: it.code, name: it.name, spec: it.spec, gubun: it.gubun, qty }] : []; });
+  }, [psel, pActive]);
+  const togglePick = (i: Item) => setPsel(m => {
+    const n = new Map(m);
+    const k = pKey(i);
+    if (n.has(k)) n.delete(k); else n.set(k, Number(no.qty) > 0 ? Number(no.qty) : 0);
+    return n;
+  });
+  function applyOne() {
+    const p = pPicks[0];
+    if (!p) return;
+    setNo({ ...no, item_code: p.code || "", name: p.name, spec: p.spec || "", gubun: mapItemGubun(p.gubun), qty: p.qty > 0 ? p.qty : no.qty });
+    setPsel(new Map()); setPickerOpen(false);
+  }
+  async function addMany() {
+    const missing = pPicks.filter(p => !(p.qty > 0));
+    if (missing.length) { toast.error(`수량을 입력하세요: ${missing.slice(0, 3).map(p => p.name).join(", ")}${missing.length > 3 ? " 외" : ""}`); return; }
+    setBusy(true);
+    try {
+      const rows = buildManualOrders({ ...no, ym: no.order_date.slice(0, 7) }, pPicks, () => (crypto as any).randomUUID?.() || String(Date.now() + Math.random()));
+      await appendOrders(rows);
+      await logAudit("주문 직접추가(일괄)", "order", "", { count: rows.length, names: rows.map(r => r.name).slice(0, 5) });
+      toast.success(`주문 ${rows.length}건 추가됨 (수동입력)`);
+      setPsel(new Map()); setPickerOpen(false); setNo(blankOrder()); onChange();
+    } catch (e: any) { toast.error("추가 실패: " + errMsg(e)); }
     setBusy(false);
   }
   const [pasteText, setPasteText] = useState("");
@@ -280,7 +333,13 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
               <div><label style={{ fontSize: 12, fontWeight: 700 }}>주문일자</label><input type="date" value={no.order_date} onChange={e => setNo({ ...no, order_date: e.target.value })} style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} /></div>
               <div><label style={{ fontSize: 12, fontWeight: 700 }}>구분</label><select value={no.gubun} onChange={e => setNo({ ...no, gubun: e.target.value })} style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }}><option>제품</option><option>무형상품</option><option>원재료</option></select></div>
             </div>
-            <label style={{ fontSize: 12, fontWeight: 700 }}>품목명</label><input value={no.name} onChange={e => setNo({ ...no, name: e.target.value })} placeholder="예: ACC2532-G20A" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} />
+            <label style={{ fontSize: 12, fontWeight: 700 }}>품목명 <span className="muted" style={{ fontWeight: 400, fontSize: 11 }}>— 누르면 품목 선택창이 열립니다 (복수 선택 가능)</span></label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <input value={no.name} onChange={e => setNo({ ...no, name: e.target.value })}
+                onMouseDown={e => { if (!no.name.trim()) { e.preventDefault(); setPickerOpen(true); } }}
+                placeholder="예: ACC2532-G20A (클릭하여 선택)" style={{ flex: 1, padding: 7, border: "1px solid var(--line)", borderRadius: 6 }} />
+              <button className="btn ghost" style={{ padding: "4px 10px", whiteSpace: "nowrap" }} onClick={() => setPickerOpen(true)}>📦 선택{psel.size > 0 ? ` (${psel.size})` : ""}</button>
+            </div>
             <label style={{ fontSize: 12, fontWeight: 700 }}>규격</label><input value={no.spec} onChange={e => setNo({ ...no, spec: e.target.value })} placeholder="예: 25-32um : Ni+Au(0.2um)" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div><label style={{ fontSize: 12, fontWeight: 700 }}>수량(g)</label><input type="number" inputMode="numeric" value={no.qty || ""} onChange={e => setNo({ ...no, qty: Number(e.target.value) })} placeholder="1000" style={{ width: "100%", padding: 7, border: "1px solid var(--line)", borderRadius: 6, marginBottom: 8 }} /></div>
@@ -290,6 +349,82 @@ export default function ImportOrders({ orders, onChange }: { orders: Order[]; on
             <button className="btn green" style={{ width: "100%" }} disabled={busy} onClick={addManual}>이 주문 추가</button>
             <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>추가한 주문은 목록에 ✋수동 으로 표시됩니다. 생산계획·COC에서 동일하게 사용됩니다.</p>
           </> : <p className="muted">주문 추가 권한이 없습니다.</p>}
+
+          {pickerOpen && (
+            <div onClick={() => setPickerOpen(false)}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+              <div role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}
+                style={{ background: "#fff", borderRadius: 10, padding: "16px 18px", width: "100%", maxWidth: 680, maxHeight: "84vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,.3)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <b style={{ fontSize: 14 }}>📦 품목 선택</b>
+                  <span className="muted" style={{ fontSize: 12 }}>1개 선택 → 폼에 적용 · 여러 개 선택 → 수량 입력 후 한 번에 추가</span>
+                  <button className="btn ghost" style={{ marginLeft: "auto", padding: "2px 10px", fontSize: 12 }} onClick={() => setPickerOpen(false)}>✕ 닫기</button>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                  <input autoFocus placeholder="🔍 코드/품목명/규격 검색" value={pq} onChange={e => setPq(e.target.value)}
+                    style={{ padding: 6, border: "1px solid var(--line)", borderRadius: 6, minWidth: 200 }} />
+                  {pGubuns.length > 1 && (
+                    <div className="seg">
+                      <button className={pg === "" ? "on" : ""} onClick={() => setPg("")}>전체</button>
+                      {pGubuns.map(g => <button key={g} className={pg === g ? "on" : ""} onClick={() => setPg(g)}>{g}</button>)}
+                    </div>
+                  )}
+                </div>
+                <div style={{ overflow: "auto", flex: 1, border: "1px solid var(--line)", borderRadius: 8 }}>
+                  {pitems === null ? <p className="muted" style={{ padding: 12 }}>품목 불러오는 중…</p> :
+                    pList.length === 0 ? <p className="muted" style={{ padding: 12 }}>검색 결과가 없습니다.</p> : (
+                      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5 }}>
+                        <thead><tr>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", position: "sticky", top: 0 }}>
+                            <input type="checkbox" checked={pList.length > 0 && pList.every(i => psel.has(pKey(i)))}
+                              onChange={e => setPsel(m => { const n = new Map(m); pList.forEach(i => { if (e.target.checked) { if (!n.has(pKey(i))) n.set(pKey(i), Number(no.qty) > 0 ? Number(no.qty) : 0); } else n.delete(pKey(i)); }); return n; })} />
+                          </th>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "left", position: "sticky", top: 0 }}>코드</th>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "left", position: "sticky", top: 0 }}>품목명</th>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "left", position: "sticky", top: 0 }}>규격</th>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", position: "sticky", top: 0 }}>구분</th>
+                          <th style={{ background: "#f1f3f7", padding: "6px 8px", textAlign: "right", position: "sticky", top: 0 }}>수량(g)</th>
+                        </tr></thead>
+                        <tbody>
+                          {pList.map(i => {
+                            const k = pKey(i), on = psel.has(k);
+                            const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #eef2f7" };
+                            return (
+                              <tr key={k} onClick={() => togglePick(i)} style={{ cursor: "pointer", background: on ? "var(--tint2)" : undefined }}>
+                                <td style={{ ...td, textAlign: "center" }}><input type="checkbox" checked={on} onChange={() => togglePick(i)} onClick={e => e.stopPropagation()} /></td>
+                                <td style={{ ...td, fontWeight: 700 }}>{i.code || "-"}</td>
+                                <td style={td}>{i.name}</td>
+                                <td style={{ ...td, fontSize: 11.5 }}>{i.spec}</td>
+                                <td style={{ ...td, textAlign: "center", fontSize: 11.5 }}>{i.gubun}</td>
+                                <td style={{ ...td, textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                                  {on && <input type="number" inputMode="numeric" value={psel.get(k) || ""} placeholder="수량"
+                                    onChange={e => setPsel(m => { const n = new Map(m); n.set(k, Number(e.target.value)); return n; })}
+                                    style={{ width: 80, padding: 4, border: "1px solid var(--line)", borderRadius: 5, textAlign: "right" }} />}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                </div>
+                {pq.trim() && !pActive.some(i => i.name === pq.trim()) && (
+                  <button className="btn ghost" style={{ marginTop: 8, fontSize: 12, alignSelf: "flex-start" }}
+                    onClick={() => { setNo({ ...no, name: pq.trim() }); setPickerOpen(false); }}>
+                    ✏️ 「{pq.trim()}」 직접 입력으로 사용 (품목 마스터에 없음)
+                  </button>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                  <span className="muted" style={{ fontSize: 12.5 }}>선택 <b>{psel.size}</b>건{psel.size > 1 ? " — 주문일자·거래처·적요는 폼의 값이 공통 적용됩니다" : ""}</span>
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                    {psel.size === 1 && <button className="btn green" onClick={applyOne}>폼에 적용</button>}
+                    {psel.size > 1 && <button className="btn green" disabled={busy} onClick={addMany}>➕ {psel.size}건 주문 추가</button>}
+                    {psel.size > 0 && <button className="btn ghost" onClick={() => setPsel(new Map())}>선택 해제</button>}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
