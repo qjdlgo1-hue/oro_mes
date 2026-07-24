@@ -1,4 +1,4 @@
-export type TabKey = "today" | "import" | "plan" | "coc" | "delivery" | "support" | "prodin" | "sales" | "purchase" | "stock" | "items" | "dash" | "prodcon" | "report" | "audit" | "receipt" | "bom" | "admin";
+export type TabKey = "today" | "import" | "plan" | "coc" | "delivery" | "support" | "prodin" | "sales" | "purchase" | "stock" | "items" | "dash" | "prodcon" | "report" | "audit" | "receipt" | "bom" | "finance" | "admin";
 
 // 메인 메뉴(그룹) 아이콘 — 이름 매핑, 없으면 첫 항목 아이콘 (레일·관리자 메뉴 구성 편집기 공용)
 export const GROUP_ICONS: Record<string, string> = {
@@ -27,5 +27,6 @@ export const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
   { key: "audit", label: "기록", icon: "🕘" },
   { key: "receipt", label: "증빙", icon: "🧾" },
   { key: "bom", label: "원재료", icon: "⚗️" },
+  { key: "finance", label: "자산·현금흐름", icon: "🏦" },
   { key: "admin", label: "관리자", icon: "⚙️" },
 ];
