@@ -14,6 +14,7 @@ import { usePersistState } from "../lib/usePersist";
 import { useSort } from "../lib/useSort";
 import { usePaged } from "../lib/usePaged";
 import MonthPicker from "./MonthPicker";
+import ProdReceipt from "./ProdReceipt";
 
 type Cfg = { kind: InoutKind; title: string; source: string; accent: string; audit: string };
 const CFG: Record<InoutKind, Cfg> = {
@@ -256,6 +257,8 @@ export default function DataImport({ kind }: { kind: InoutKind }) {
             </div>}
         </div>
       </div>
+
+      {kind === "in" && canEdit && <ProdReceipt inRows={rows} onChanged={load} />}
 
       <div className="card">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>

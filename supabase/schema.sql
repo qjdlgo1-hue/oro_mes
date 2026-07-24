@@ -371,3 +371,21 @@ alter table inout_rows add column if not exists ecount_slip text;
 -- 이카운트 전송 제한 보호 — 액션별 마지막 호출 시각. Edge Function이 공식 전송 기준
 -- (실서버 조회·로그인 1회/10분, 저장 1회/10초, 테스트서버 1회/10초)에 맞춰 선제 차단에 사용.
 alter table ecount_config add column if not exists last_calls jsonb not null default '{}'::jsonb;
+
+-- ===== 생산입고 전표 (이카운트 생산입고II 대응) =====
+-- 완제품 입고(+)와 BOM 전개 소모(−)를 전표 1건으로 묶고, 저장/취소는 RPC로 원자 처리.
+-- 재고 행은 기존 inout_rows(kind 'in')/prod_consume에 기록 → 재고 현황·수불부·ERP 비교와 호환.
+-- RPC: fn_save_production_receipt(payload jsonb) → uuid / fn_cancel_production_receipt(uuid)
+--      (security definer, authenticated 전용 — 본문은 migrations 'production_receipts_rpc' 참고)
+create table if not exists production_receipts (
+  id uuid primary key default gen_random_uuid(),
+  rdate date not null default current_date,
+  note text,
+  status text not null default 'CONFIRMED' check (status in ('CONFIRMED','CANCELED')),
+  created_at timestamptz not null default now()
+);
+alter table production_receipts enable row level security;
+drop policy if exists "prcpt_all" on production_receipts;
+create policy "prcpt_all" on production_receipts for all to authenticated using (true) with check (true);
+alter table inout_rows add column if not exists receipt_id uuid;
+alter table prod_consume add column if not exists receipt_id uuid;
