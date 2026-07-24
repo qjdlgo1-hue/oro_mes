@@ -5,12 +5,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Item, InoutRow, ProdConsume, StockBase, BomRow, ProductionReceipt,
-  listItems, listBomRows, listInout, listProdConsume, listStockBase,
+  listItems, listBomRows, listInout, listProdConsume, listStockBase, listOrders, listPlans,
   listProductionReceipts, saveProductionReceipt, cancelProductionReceipt, logAudit,
 } from "../lib/db";
+import { Order, PlanEntry } from "../lib/types";
 import { buildBomIndex } from "../lib/bom";
 import { buildStock, balanceOf, itemKey } from "../lib/stock";
-import { expandReceiptConsumes, buildReceiptPayload, ReceiptProdLine, ReceiptConsumeLine } from "../lib/receipt";
+import { expandReceiptConsumes, buildReceiptPayload, buildMonthCandidates, ReceiptProdLine, ReceiptConsumeLine } from "../lib/receipt";
 import { thBase, tdBase } from "../lib/styles";
 import { nf1, todayIso } from "../lib/fmt";
 import { toast } from "../lib/toast";
@@ -27,6 +28,8 @@ export default function ProdReceipt({ inRows, onChanged }: { inRows: InoutRow[];
   const [consAll, setConsAll] = useState<ProdConsume[]>([]);
   const [bases, setBases] = useState<StockBase[]>([]);
   const [receipts, setReceipts] = useState<ProductionReceipt[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [plans, setPlans] = useState<Record<string, PlanEntry>>({});
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -38,8 +41,8 @@ export default function ProdReceipt({ inRows, onChanged }: { inRows: InoutRow[];
 
   useEffect(() => {
     if (!open || loaded) return;
-    Promise.all([listItems(), listBomRows(), listInout("purchase"), listProdConsume(), listStockBase(), listProductionReceipts()])
-      .then(([it, br, pu, pc, sb, rc]) => { setItems(it); setBomRows(br); setPurchases(pu); setConsAll(pc); setBases(sb); setReceipts(rc); })
+    Promise.all([listItems(), listBomRows(), listInout("purchase"), listProdConsume(), listStockBase(), listProductionReceipts(), listOrders(), listPlans()])
+      .then(([it, br, pu, pc, sb, rc, od, pl]) => { setItems(it); setBomRows(br); setPurchases(pu); setConsAll(pc); setBases(sb); setReceipts(rc); setOrders(od); setPlans(pl); })
       .catch(e => toast.error("불러오기 실패: " + errMsg(e)))
       .finally(() => setLoaded(true));
   }, [open, loaded]);
@@ -56,10 +59,23 @@ export default function ProdReceipt({ inRows, onChanged }: { inRows: InoutRow[];
 
   // 완제품 후보(제품·반제품) — 품목 마스터에서 선택, 없으면 직접 입력
   const prodItems = useMemo(() => items.filter(i => i.active && (i.gubun === "제품" || i.gubun === "반제품")), [items]);
+  // 전표 월(입고일 기준)의 생산계획·생산 품목 — 전표 입고 완료 시 (완료) 표시
+  const ym = rdate.slice(0, 7);
+  const monthCands = useMemo(() => buildMonthCandidates(ym, orders, plans, inRows), [ym, orders, plans, inRows]);
   const setProd = (i: number, patch: Partial<ReceiptProdLine>) => setProds(ps => ps.map((p, j) => j === i ? { ...p, ...patch } : p));
-  const pickProd = (i: number, code: string) => {
-    const it = prodItems.find(x => x.code === code);
-    if (it) setProd(i, { item_code: it.code, name: it.name, spec: it.spec, gubun: it.gubun });
+  const selVal = (p: ReceiptProdLine) => {
+    const ci = monthCands.findIndex(c => c.name === p.name && (c.item_code || "") === (p.item_code || ""));
+    if (ci >= 0) return "c:" + ci;
+    return prodItems.some(it => it.code === p.item_code) ? "m:" + p.item_code : "";
+  };
+  const pickProd = (i: number, v: string) => {
+    if (v.startsWith("c:")) {
+      const c = monthCands[Number(v.slice(2))];
+      if (c) setProd(i, { item_code: c.item_code, name: c.name, spec: c.spec, gubun: c.gubun, qty: c.planQty || prods[i].qty || 0 });
+    } else if (v.startsWith("m:")) {
+      const it = prodItems.find(x => x.code === v.slice(2));
+      if (it) setProd(i, { item_code: it.code, name: it.name, spec: it.spec, gubun: it.gubun });
+    }
   };
   const setCons = (i: number, patch: Partial<ReceiptConsumeLine>) => setConsumes(cs => cs.map((c, j) => j === i ? { ...c, ...patch } : c));
 
@@ -128,6 +144,9 @@ export default function ProdReceipt({ inRows, onChanged }: { inRows: InoutRow[];
             <label>적요<br /><input value={note} onChange={e => setNote(e.target.value)} style={{ ...inp, width: 220 }} placeholder="(선택)" /></label>
             <button className="btn" onClick={expand} disabled={busy}>🧩 BOM풀기</button>
             <button className="btn green" onClick={save} disabled={busy}>💾 전표 저장</button>
+            {monthCands.length > 0 && <span className="muted" style={{ fontSize: 12, paddingBottom: 4 }}>
+              이번 달 생산계획·생산 {monthCands.length}품목 · 전표 완료 {monthCands.filter(c => c.done).length}
+            </span>}
           </div>
 
           <div className="seg" style={{ width: "fit-content" }}>
@@ -148,9 +167,20 @@ export default function ProdReceipt({ inRows, onChanged }: { inRows: InoutRow[];
                   {prods.map((p, i) => (
                     <tr key={i}>
                       <td style={tdL}>
-                        <select value={p.item_code || ""} onChange={e => pickProd(i, e.target.value)} style={{ ...inp, maxWidth: 220 }}>
+                        <select value={selVal(p)} onChange={e => pickProd(i, e.target.value)} style={{ ...inp, maxWidth: 240 }}>
                           <option value="">직접 입력…</option>
-                          {prodItems.map(it => <option key={it.code + it.name} value={it.code}>[{it.code}] {it.name}</option>)}
+                          {monthCands.length > 0 && (
+                            <optgroup label={`이번 달(${ym}) 생산계획·생산`}>
+                              {monthCands.map((c, k) => (
+                                <option key={"c" + k} value={"c:" + k}>
+                                  [{c.item_code || "-"}] {c.name}{c.planQty > 0 ? ` — 계획 ${nf1(c.planQty)}g` : ""}{c.done ? " (완료)" : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="품목 마스터">
+                            {prodItems.map(it => <option key={it.code + it.name} value={"m:" + it.code}>[{it.code}] {it.name}</option>)}
+                          </optgroup>
                         </select>
                       </td>
                       <td style={tdL}><input value={p.item_code} onChange={e => setProd(i, { item_code: e.target.value })} style={{ ...inp, width: 90 }} /></td>
