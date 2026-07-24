@@ -37,6 +37,7 @@ const MaterialBom = lazy(() => import("./components/MaterialBom"));
 const Stock = lazy(() => import("./components/Stock"));
 const Items = lazy(() => import("./components/Items"));
 const Admin = lazy(() => import("./components/Admin"));
+const Finance = lazy(() => import("./components/Finance"));
 
 // 모바일 보조 탭: 내리면 숨고, 살짝 올리면 표시 — 스크롤 상태를 여기에 가둬서 앱 전체가 스크롤마다 리렌더되지 않게 함
 function MobileSubnav({ children }: { children: React.ReactNode }) {
@@ -146,6 +147,7 @@ export default function App() {
       case "audit": return can("menu.audit");
       case "receipt": return can("menu.receipt");
       case "bom": return can("menu.bom");
+      case "finance": return can("menu.finance");
       case "admin": return role === "master";
     }
   };
@@ -206,6 +208,7 @@ export default function App() {
       case "audit": return <Audit />;
       case "receipt": return <Receipts />;
       case "bom": return <MaterialBom orders={orders} />;
+      case "finance": return <Finance />;
       case "admin": return <Admin onRoleChange={loadPerms} onMenuOrderChange={reloadMenu} onDataChange={refresh} />;
     }
   };

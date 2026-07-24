@@ -500,3 +500,52 @@ drop policy if exists "prcpt_all" on production_receipts;
 create policy "prcpt_all" on production_receipts for all to authenticated using (true) with check (true);
 alter table inout_rows add column if not exists receipt_id uuid;
 alter table prod_consume add column if not exists receipt_id uuid;
+
+-- ===== 자산·현금흐름 스냅샷 (Clobe 수집 — 조회 전용) =====
+-- 적재는 서버(service role)에서만 수행. 클라이언트는 SELECT만 가능(쓰기 정책 없음).
+create table if not exists fin_accounts (
+  id text primary key,
+  bank_code text default '',
+  name text not null,
+  alias text default '',
+  acct_type text default 'CHECKING',  -- CHECKING/LOAN/FX
+  currency text default 'KRW',
+  balance numeric default 0,
+  krw_balance numeric default 0
+);
+create table if not exists fin_trend (
+  bdate date primary key,
+  balance numeric not null
+);
+create table if not exists fin_cashflow (
+  ym text primary key,
+  inflow numeric default 0,
+  outflow numeric default 0
+);
+create table if not exists fin_revenue (
+  ym text not null,
+  channel text not null,
+  gross numeric default 0,
+  net numeric default 0,
+  primary key (ym, channel)
+);
+create table if not exists fin_meta (
+  id int primary key default 1,
+  synced_at timestamptz,
+  note text
+);
+alter table fin_accounts enable row level security;
+alter table fin_trend enable row level security;
+alter table fin_cashflow enable row level security;
+alter table fin_revenue enable row level security;
+alter table fin_meta enable row level security;
+drop policy if exists fin_accounts_read on fin_accounts;
+create policy fin_accounts_read on fin_accounts for select to authenticated using (true);
+drop policy if exists fin_trend_read on fin_trend;
+create policy fin_trend_read on fin_trend for select to authenticated using (true);
+drop policy if exists fin_cashflow_read on fin_cashflow;
+create policy fin_cashflow_read on fin_cashflow for select to authenticated using (true);
+drop policy if exists fin_revenue_read on fin_revenue;
+create policy fin_revenue_read on fin_revenue for select to authenticated using (true);
+drop policy if exists fin_meta_read on fin_meta;
+create policy fin_meta_read on fin_meta for select to authenticated using (true);

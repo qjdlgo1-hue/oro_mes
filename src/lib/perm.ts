@@ -19,6 +19,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: "menu.audit", label: "기록" },
   { key: "menu.receipt", label: "증빙(영수증)" },
   { key: "menu.bom", label: "원재료(BOM)" },
+  { key: "menu.finance", label: "자산·현금흐름" },
 ];
 
 export const CAPS: { key: string; label: string }[] = [
@@ -54,6 +55,7 @@ export const SCREEN_PERMS: ScreenPerm[] = [
   { name: "품목", group: "📥 데이터", view: ["menu.items"], acts: [{ k: "item.edit", label: "등록·수정" }] },
   { name: "대시보드", group: "📊 분석", view: ["menu.dash"], acts: [] },
   { name: "리포트", group: "📊 분석", view: ["menu.report", "report.view"], acts: [] },
+  { name: "자산·현금흐름", group: "📊 분석", view: ["menu.finance"], acts: [] },
   { name: "증빙(영수증)", group: "📁 관리", view: ["menu.receipt"], acts: [{ k: "receipt.edit", label: "입력·삭제" }] },
   { name: "지원사업", group: "📁 관리", view: ["menu.support"], acts: [{ k: "support.edit", label: "작성·과제관리" }] },
   { name: "기록(감사)", group: "📁 관리", view: ["menu.audit", "audit.view"], acts: [] },

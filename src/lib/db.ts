@@ -763,6 +763,25 @@ export async function clearProdConsume(): Promise<void> {
   lsSet("oro_prodconsume", []);
 }
 
+// ===== 자산·현금흐름 스냅샷 (Clobe 수집 — 조회 전용, 적재는 서버에서만) =====
+export type FinAccount = { id: string; bank_code: string; name: string; alias: string; acct_type: string; currency: string; balance: number; krw_balance: number };
+export type FinTrend = { bdate: string; balance: number };
+export type FinCashflow = { ym: string; inflow: number; outflow: number };
+export type FinRevenue = { ym: string; channel: string; gross: number; net: number };
+export type FinMeta = { synced_at?: string | null; note?: string | null };
+async function finList<T>(table: string, order: string, lsKey: string): Promise<T[]> {
+  if (supabase) { const { data, error } = await supabase.from(table).select("*").order(order); if (error) throw error; return (data || []) as T[]; }
+  return lsGet<T[]>(lsKey, []);
+}
+export const listFinAccounts = () => finList<FinAccount>("fin_accounts", "acct_type", "oro_fin_accounts");
+export const listFinTrend = () => finList<FinTrend>("fin_trend", "bdate", "oro_fin_trend");
+export const listFinCashflow = () => finList<FinCashflow>("fin_cashflow", "ym", "oro_fin_cashflow");
+export const listFinRevenue = () => finList<FinRevenue>("fin_revenue", "ym", "oro_fin_revenue");
+export async function getFinMeta(): Promise<FinMeta | null> {
+  if (supabase) { const { data, error } = await supabase.from("fin_meta").select("*").eq("id", 1).maybeSingle(); if (error) throw error; return (data as FinMeta) || null; }
+  return lsGet<FinMeta | null>("oro_fin_meta", null);
+}
+
 // ===== 경영분석보고서 이력 =====
 export type BizReport = {
   id?: string; period_type: string; period_key: string; title: string;
