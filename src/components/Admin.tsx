@@ -4,7 +4,7 @@ import { SCREEN_PERMS, SCREEN_PERM_KEYS, ScreenPerm, listProfiles, setRole, getM
 import { logAudit } from "../lib/db";
 import { toast } from "../lib/toast";
 import { useIsMobile } from "../lib/useIsMobile";
-import { TAB_DEFS, groupIcon } from "../lib/tabs";
+import { TAB_DEFS, groupIcon, labelOf } from "../lib/tabs";
 import { getMenuConfig, saveMenuConfig, deleteMenuGroup, MenuGroupRow, listTrash, restoreOrder, restoreReceipt, purgeOrder, purgeReceipt } from "../lib/db";
 import { confirmDialog, promptDialog } from "../lib/confirm";
 import { money } from "../lib/fmt";
@@ -13,12 +13,13 @@ import EcountSettings from "./EcountSettings";
 const ROLES = ["master", "manager", "user"];
 
 // 메뉴 구성의 현재 상태를 문자열로 요약 — 저장 시점과 비교해 '저장 안 된 변경' 표시
-type PlaceMap = Record<string, { group_id: string | null; sort: number }>;
+type PlaceMap = Record<string, { group_id: string | null; sort: number; label?: string | null }>;
 function menuSig(gs: MenuGroupRow[], pl: PlaceMap) {
   const of = (gid: string | null) => TAB_DEFS
     .filter(t => (pl[t.key]?.group_id ?? null) === gid)
     .sort((a, b) => (pl[a.key]?.sort || 0) - (pl[b.key]?.sort || 0)).map(t => t.key);
-  return JSON.stringify([gs.map(g => [g.id, g.name]), [...gs.map(g => g.id), null].map(of)]);
+  return JSON.stringify([gs.map(g => [g.id, g.name]), [...gs.map(g => g.id), null].map(of),
+    TAB_DEFS.map(t => (pl[t.key]?.label || "").trim())]);
 }
 
 // 접을 수 있는 섹션 카드 — 관리자 페이지가 길어 스크롤 부담을 줄임
@@ -40,6 +41,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
   const [place, setPlace] = useState<PlaceMap>({});
   const [selMenuG, setSelMenuG] = useState("");           // 선택된 그룹 id ("_etc" = 미분류)
   const [editingG, setEditingG] = useState<string | null>(null); // 이름 인라인 편집 중인 그룹
+  const [editingItem, setEditingItem] = useState<string | null>(null); // 이름 인라인 편집 중인 화면(항목)
   const [menuSnap, setMenuSnap] = useState<{ gs: MenuGroupRow[]; pl: PlaceMap; sig: string } | null>(null); // 저장 시점 상태
   useEffect(() => {
     getMenuConfig().then(c => {
@@ -57,7 +59,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
     if (!menuSnap) return;
     setMgroups(menuSnap.gs.map(g => ({ ...g })));
     setPlace(JSON.parse(JSON.stringify(menuSnap.pl)));
-    setEditingG(null);
+    setEditingG(null); setEditingItem(null);
     toast.success("저장 시점으로 되돌렸습니다");
   }
   // 화면별 권한에서 보기가 꺼진 역할 — 메뉴 구성 편집기에 🔒 배지로 표시
@@ -69,6 +71,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
   }
   const itemsOf = (gid: string | null) => TAB_DEFS.filter(t => (place[t.key]?.group_id ?? null) === gid).sort((a, b) => (place[a.key]?.sort || 0) - (place[b.key]?.sort || 0));
   const renameGroup = (id: string, name: string) => setMgroups(gs => gs.map(g => g.id === id ? { ...g, name } : g));
+  const renameItem = (key: string, label: string) => setPlace(p => ({ ...p, [key]: { ...p[key], label } }));
   const moveGroup = (i: number, dir: number) => { const j = i + dir; if (j < 0 || j >= mgroups.length) return; const n = [...mgroups]; [n[i], n[j]] = [n[j], n[i]]; setMgroups(n); };
   const addGroup = () => {
     const id = (crypto as any).randomUUID?.() || String(Date.now());
@@ -97,8 +100,8 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
   async function saveMenu() {
     try {
       const gs = mgroups.map((g, i) => ({ id: g.id, name: g.name, sort: i }));
-      const placements: { item_key: string; group_id: string | null; sort: number }[] = [];
-      [...gs.map(g => g.id), null].forEach(gid => { itemsOf(gid).forEach((t, idx) => placements.push({ item_key: t.key, group_id: gid, sort: idx })); });
+      const placements: { item_key: string; group_id: string | null; sort: number; label: string | null }[] = [];
+      [...gs.map(g => g.id), null].forEach(gid => { itemsOf(gid).forEach((t, idx) => placements.push({ item_key: t.key, group_id: gid, sort: idx, label: (place[t.key]?.label || "").trim() || null })); });
       await saveMenuConfig(gs, placements);
       await logAudit("메뉴 구성 변경", "menu", "", { groups: gs.length });
       setMenuSnap({ gs: mgroups.map(g => ({ ...g })), pl: JSON.parse(JSON.stringify(place)), sig: menuSig(mgroups, place) });
@@ -227,7 +230,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
           return (
             <div style={{ display: "grid", gap: 10 }}>
               <p className="muted" style={{ fontSize: 12, margin: "2px 0 0" }}>
-                왼쪽에서 <b>메인 메뉴(그룹)</b>를 선택하면 오른쪽에 그 그룹의 <b>보조탭</b>이 실제 순서대로 보입니다. 아이콘은 그룹 이름으로 자동 결정됩니다(현장 🏭 · 데이터/가져오기 📥 · 분석/대시보드 📊 · 관리/경영지원 📁 · 시스템 ⚙️ · 기록 🗂️).
+                왼쪽에서 <b>메인 메뉴(그룹)</b>를 선택하면 오른쪽에 그 그룹의 <b>보조탭</b>이 실제 순서대로 보입니다. 그룹과 화면 모두 <b>✏️ 이름</b>으로 표시 이름을 직접 바꿀 수 있습니다(화면 이름을 비우면 기본 이름으로 복원). 아이콘은 그룹 이름으로 자동 결정됩니다(현장 🏭 · 데이터/가져오기 📥 · 분석/대시보드 📊 · 관리/경영지원 📁 · 시스템 ⚙️ · 기록 🗂️).
               </p>
               <div className="medit">
                 <div className="medit-rail">
@@ -271,7 +274,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                     <div className="medit-sub">
                       {panelItems.length === 0
                         ? <span className="muted" style={{ fontSize: 12 }}>메뉴 없음</span>
-                        : panelItems.map((t, i) => <span key={t.key} className={"medit-chip" + (i === 0 ? " first" : "")}>{t.icon} {t.label}</span>)}
+                        : panelItems.map((t, i) => <span key={t.key} className={"medit-chip" + (i === 0 ? " first" : "")}>{t.icon} {labelOf(t.key, place)}</span>)}
                     </div>
                   )}
                   {panelItems.length === 0 && <div className="muted" style={{ fontSize: 12.5, padding: "10px 2px", textAlign: "center" }}>이 그룹에 화면이 없습니다. 다른 그룹에서 '이동'으로 옮기거나, 빈 그룹이면 삭제하세요.</div>}
@@ -280,12 +283,20 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                     return (
                       <div key={t.key} className={"medit-item" + (hid && hid.length >= 2 ? " dim" : "")}>
                         <span style={{ fontSize: 16 }}>{t.icon}</span>
-                        <span className="medit-lb">{t.label}
+                        <span className="medit-lb">
+                          {editingItem === t.key
+                            ? <input className="medit-rn" autoFocus value={place[t.key]?.label ?? ""} maxLength={12}
+                                placeholder={`기본: ${t.label}`}
+                                onChange={e => renameItem(t.key, e.target.value)}
+                                onBlur={() => setEditingItem(null)}
+                                onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingItem(null); }} />
+                            : <>{labelOf(t.key, place)}{(place[t.key]?.label || "").trim() && <span className="muted" style={{ fontSize: 11, marginLeft: 4 }}>(기본: {t.label})</span>}</>}
                           {t.key === "admin"
                             ? <span className="medit-lock" title="관리자 화면은 master 역할만 볼 수 있습니다">🔒 master 전용</span>
                             : hid && hid.length > 0 && <span className="medit-lock" title={`아래 '화면별 권한'에서 보기 꺼짐 — ${hid.join("·")} 역할의 메뉴에는 안 보입니다`}>🔒 {hid.join("·")} 숨김</span>}
                         </span>
                         <span className="medit-it-tools">
+                          <button className="btn ghost medit-mini" onClick={() => setEditingItem(t.key)}>✏️ 이름</button>
                           <button className="btn ghost medit-mini" disabled={ii === 0} onClick={() => moveItem(t.key, -1)}>▲</button>
                           <button className="btn ghost medit-mini" disabled={ii === arr.length - 1} onClick={() => moveItem(t.key, 1)}>▼</button>
                           <select className="medit-mv" value="" onChange={e => { if (e.target.value) setItemGroup(t.key, e.target.value); }}>
@@ -439,7 +450,7 @@ export default function Admin({ onRoleChange, onMenuOrderChange, onDataChange }:
                   grps.push({ label: "📁 관리", items: [{ tab: TAB_DEFS.find(t => t.key === "admin")! }] });
                 }
                 const screenRow = (r: PermRow) => {
-                  const label = r.tab ? `${r.tab.icon} ${r.tab.label}` : r.s!.name;
+                  const label = r.tab ? `${r.tab.icon} ${labelOf(r.tab.key, place)}` : r.s!.name;
                   if (!r.s) return (
                     <tr key={r.tab!.key}>
                       <td style={{ ...TD, fontWeight: 700, whiteSpace: "nowrap" }}>{label}</td>

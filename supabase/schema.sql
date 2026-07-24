@@ -102,7 +102,8 @@ create table if not exists menu_groups (
 create table if not exists menu_placement (
   item_key text primary key,
   group_id uuid references menu_groups(id) on delete set null,
-  sort int default 0
+  sort int default 0,
+  label text -- 사용자 지정 메뉴 이름 (null = TAB_DEFS 기본 라벨)
 );
 alter table app_settings add column if not exists format jsonb;
 alter table app_settings add column if not exists menu_order jsonb;

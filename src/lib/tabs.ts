@@ -6,6 +6,9 @@ export const GROUP_ICONS: Record<string, string> = {
   "경영지원": "📁", "관리": "📁", "시스템": "⚙️", "기록": "🗂️", "기타": "📂", "메뉴": "📂",
 };
 export const groupIcon = (name: string, fallbackIcon?: string) => GROUP_ICONS[name] || fallbackIcon || "📂";
+// 화면 표시 이름 — 메뉴 구성에서 사용자가 바꾼 이름이 있으면 우선, 없으면 TAB_DEFS 기본 라벨
+export const labelOf = (key: string, placement?: Record<string, { label?: string | null }>): string =>
+  placement?.[key]?.label || TAB_DEFS.find(t => t.key === key)?.label || key;
 export const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
   { key: "today", label: "POP", icon: "📋" },
   { key: "import", label: "주문 가져오기", icon: "📥" },
