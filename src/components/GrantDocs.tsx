@@ -22,6 +22,7 @@ import GrantForm from "./GrantForms";
 import GrantFormTD from "./GrantFormsTD";
 import GrantFormSSP from "./GrantFormsSSP";
 import GrantSettleView from "./GrantSettleView";
+import TdInspect from "./TdInspect";
 
 
 
@@ -153,7 +154,7 @@ export default function GrantDocs() {
   }, [prog]);
 
   // ---- 정산 현황 (건 data 포함 목록) ----
-  const [view, setView] = useState<"list" | "settle">("list");
+  const [view, setView] = useState<"list" | "settle" | "insp">("list"); // insp = 기술닥터 검수조서(TdInspect)
   const [settleDocs, setSettleDocs] = useState<GrantDoc[]>([]);
   useEffect(() => {
     if (view !== "settle") return;
@@ -529,6 +530,11 @@ export default function GrantDocs() {
         )}
       </div>
 
+      {/* ===== 검수조서 (기술닥터 전용 — 기존 검수조서 모드를 td 안으로 이전) ===== */}
+      {!cur && view === "insp" && prog === "td" && (
+        <TdInspect prof={prof} onBack={() => setView("list")} />
+      )}
+
       {/* ===== 정산 현황 (분리: GrantSettleView) ===== */}
       {!cur && view === "settle" && (
         <GrantSettleView prog={prog} isSsp={isSsp} progDef={progDef} progItems={progItems}
@@ -537,12 +543,13 @@ export default function GrantDocs() {
       )}
 
       {/* ===== 건 목록 ===== */}
-      {!cur && view !== "settle" && (
+      {!cur && view === "list" && (
         <div className="card grant-side">
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <h4 style={{ margin: 0 }}>📑 집행 건 목록</h4>
             <button className="btn green" onClick={newDoc}>＋ 새 건 만들기</button>
             <button className="btn ghost" onClick={() => setView("settle")}>📊 정산 현황</button>
+            {prog === "td" && <button className="btn ghost" onClick={() => setView("insp")}>🏛️ 검수조서</button>}
             <span className="muted" style={{ fontSize: 12 }}>한 건을 등록하면 필요한 서식 세트가 자동으로 채워집니다.</span>
           </div>
           <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
