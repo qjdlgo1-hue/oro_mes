@@ -316,6 +316,116 @@ alter table bom_rows enable row level security;
 drop policy if exists "bom_rows_all" on bom_rows;
 create policy "bom_rows_all" on bom_rows for all to authenticated using (true) with check (true);
 
+-- ===== BOM 리비전 (bom_revs — 불변 스냅샷, Rev 1→2→3 이력 보존) =====
+-- 원칙: 확정된 리비전은 수정하지 않고, 새 리비전을 발행(draft)해 편집 후 확정(active)한다.
+-- 품목당 active 리비전은 부분 유니크 인덱스로 1개만 강제. 상세 행은 bom_rows.rev_id로 연결.
+create table if not exists bom_revs (
+  id uuid primary key default gen_random_uuid(),
+  prod_code text default '',
+  prod_name text not null,
+  revision int not null,
+  status text not null default 'draft' check (status in ('draft','active','obsolete')),
+  description text,                       -- 변경 사유 / 메모
+  effective_from date,                    -- 확정(적용 시작)일
+  created_at timestamptz default now(),
+  unique (prod_name, revision)
+);
+create unique index if not exists bom_revs_one_active on bom_revs(prod_name) where status = 'active';
+alter table bom_revs enable row level security;
+drop policy if exists bom_revs_all on bom_revs;
+create policy bom_revs_all on bom_revs for all to authenticated using (true) with check (true);
+
+alter table bom_rows add column if not exists rev_id uuid references bom_revs(id) on delete cascade;
+-- 리비전 도입으로 4열 유니크 → (rev_id, mat_code, mat_name)로 재구성 (리비전별 같은 자재 1행)
+alter table bom_rows drop constraint if exists bom_rows_prod_code_prod_name_mat_code_mat_name_key;
+create unique index if not exists bom_rows_rev_mat_uniq on bom_rows(rev_id, mat_code, mat_name);
+create index if not exists bom_rows_rev_idx on bom_rows(rev_id);
+
+-- 활성 리비전 행 뷰 — listBomRows() 계약 유지용 (rev_id null은 승계 전 안전망)
+create or replace view v_bom_active with (security_invoker = true) as
+select r.* from bom_rows r
+left join bom_revs v on v.id = r.rev_id
+where r.rev_id is null or v.status = 'active';
+
+-- 새 리비전 발행: active(없으면 최신) 복제 → draft Rev N+1 (원자)
+create or replace function fn_bom_next_rev(p_code text, p_name text)
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_src uuid; v_next int; v_new uuid;
+begin
+  if auth.uid() is null then raise exception '로그인이 필요합니다'; end if;
+  if p_name is null or btrim(p_name) = '' then raise exception '생산품목명이 필요합니다'; end if;
+  select id into v_src from bom_revs where prod_name = p_name and status = 'active';
+  if v_src is null then
+    select id into v_src from bom_revs where prod_name = p_name order by revision desc limit 1;
+  end if;
+  select coalesce(max(revision), 0) + 1 into v_next from bom_revs where prod_name = p_name;
+  insert into bom_revs (prod_code, prod_name, revision, status)
+  values (coalesce(p_code, ''), p_name, v_next, 'draft')
+  returning id into v_new;
+  if v_src is not null then
+    insert into bom_rows (prod_code, prod_name, process, version, mat_code, mat_name, batch_qty, qty, rev_id)
+    select prod_code, prod_name, process, version, mat_code, mat_name, batch_qty, qty, v_new
+    from bom_rows where rev_id = v_src;
+  end if;
+  return v_new;
+end $$;
+revoke all on function fn_bom_next_rev(text, text) from public;
+revoke execute on function fn_bom_next_rev(text, text) from anon;
+grant execute on function fn_bom_next_rev(text, text) to authenticated;
+
+-- 리비전 확정: 기존 active → obsolete, draft → active (한 트랜잭션 — active 0개/2개인 순간이 없다)
+create or replace function fn_bom_publish(p_rev uuid, p_desc text default null)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare v_name text; v_status text;
+begin
+  if auth.uid() is null then raise exception '로그인이 필요합니다'; end if;
+  select prod_name, status into v_name, v_status from bom_revs where id = p_rev;
+  if v_name is null then raise exception 'BOM 리비전을 찾을 수 없습니다'; end if;
+  if v_status <> 'draft' then raise exception 'draft 리비전만 확정할 수 있습니다'; end if;
+  update bom_revs set status = 'obsolete' where prod_name = v_name and status = 'active';
+  update bom_revs set status = 'active', effective_from = current_date,
+    description = coalesce(p_desc, description) where id = p_rev;
+end $$;
+revoke all on function fn_bom_publish(uuid, text) from public;
+revoke execute on function fn_bom_publish(uuid, text) from anon;
+grant execute on function fn_bom_publish(uuid, text) to authenticated;
+
+-- 이카운트 가져오기: 파일에 포함된 제품마다 새 리비전 발행 후 즉시 active (전체 교체 대신 이력 보존)
+create or replace function fn_bom_import(payload jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare rec record; v_new uuid; v_next int; n_prod int := 0; n_rows int := 0; v_cnt int;
+begin
+  if auth.uid() is null then raise exception '로그인이 필요합니다'; end if;
+  for rec in (
+    select x.prod_name, max(coalesce(x.prod_code, '')) as prod_code
+    from jsonb_to_recordset(payload) as x(prod_code text, prod_name text)
+    where x.prod_name is not null and btrim(x.prod_name) <> ''
+    group by x.prod_name
+  ) loop
+    select coalesce(max(revision), 0) + 1 into v_next from bom_revs where prod_name = rec.prod_name;
+    update bom_revs set status = 'obsolete' where prod_name = rec.prod_name and status = 'active';
+    insert into bom_revs (prod_code, prod_name, revision, status, description, effective_from)
+    values (rec.prod_code, rec.prod_name, v_next, 'active', '이카운트 가져오기', current_date)
+    returning id into v_new;
+    insert into bom_rows (prod_code, prod_name, process, version, mat_code, mat_name, batch_qty, qty, rev_id)
+    select coalesce(y.prod_code, ''), y.prod_name, coalesce(y.process, ''), coalesce(y.version, '기본'),
+           coalesce(y.mat_code, ''), y.mat_name, coalesce(y.batch_qty, 50), coalesce(y.qty, 0), v_new
+    from jsonb_to_recordset(payload) as y(prod_code text, prod_name text, process text, version text, mat_code text, mat_name text, batch_qty numeric, qty numeric)
+    where y.prod_name = rec.prod_name and y.mat_name is not null and btrim(y.mat_name) <> ''
+    on conflict (rev_id, mat_code, mat_name) do update set qty = excluded.qty, batch_qty = excluded.batch_qty;
+    get diagnostics v_cnt = row_count;
+    n_rows := n_rows + v_cnt;
+    n_prod := n_prod + 1;
+  end loop;
+  return jsonb_build_object('products', n_prod, 'rows', n_rows);
+end $$;
+revoke all on function fn_bom_import(jsonb) from public;
+revoke execute on function fn_bom_import(jsonb) from anon;
+grant execute on function fn_bom_import(jsonb) to authenticated;
+
 -- ===== 품목 마스터 (items) =====
 -- 이카운트 품목등록 대응 — 코드/명/규격/구분/단위. '품목' 탭에서 자동 수집·붙여넣기 가져오기·수동 등록.
 create table if not exists items (

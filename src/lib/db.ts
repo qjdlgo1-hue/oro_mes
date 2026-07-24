@@ -453,41 +453,138 @@ export type BomRow = {
   mat_code: string; mat_name: string;
   batch_qty: number;               // 생산수량(기준수량)
   qty: number;                     // 소요량(기준수량당)
+  rev_id?: string | null;          // BOM 리비전(bom_revs) 링크
+  created_at?: string;
+};
+// 리비전 헤더 — 불변 스냅샷. draft만 편집 가능, 품목당 active 1개.
+export type BomRev = {
+  id: string;
+  prod_code: string; prod_name: string;
+  revision: number;
+  status: "draft" | "active" | "obsolete";
+  description?: string | null;
+  effective_from?: string | null;
   created_at?: string;
 };
 const LS_BOM_ROWS = "oro_bom_rows";
+const LS_BOM_REVS = "oro_bom_revs";
+const lsUid = (p: string) => p + "-" + Date.now() + Math.random().toString(36).slice(2);
+// 로컬 모드: 리비전 없이 쌓인 기존 행이 있으면 제품별 Rev 1 active로 승계 (클라우드 마이그레이션과 동일)
+function lsEnsureBomRevs(): { rows: BomRow[]; revs: BomRev[] } {
+  const rows = lsGet<BomRow[]>(LS_BOM_ROWS, []);
+  const revs = lsGet<BomRev[]>(LS_BOM_REVS, []);
+  const orphan = rows.filter(r => !r.rev_id);
+  if (!orphan.length) return { rows, revs };
+  const byProd = new Map<string, BomRow[]>();
+  orphan.forEach(r => { const a = byProd.get(r.prod_name) || []; a.push(r); byProd.set(r.prod_name, a); });
+  byProd.forEach((list, name) => {
+    let rev = revs.find(v => v.prod_name === name);
+    if (!rev) { rev = { id: lsUid("rv"), prod_code: list[0].prod_code || "", prod_name: name, revision: 1, status: "active", description: "기존 데이터 승계" }; revs.push(rev); }
+    list.forEach(r => { r.rev_id = rev!.id; });
+  });
+  lsSet(LS_BOM_ROWS, rows); lsSet(LS_BOM_REVS, revs);
+  return { rows, revs };
+}
+// 활성 리비전 행만 반환 — 전개 엔진·소비처 공통 계약 (rev_id null은 승계 전 안전망)
 export async function listBomRows(): Promise<BomRow[]> {
   if (supabase) {
-    const { data, error } = await supabase.from("bom_rows").select("*").order("prod_code");
+    const { data, error } = await supabase.from("v_bom_active").select("*").order("prod_code");
     if (error) throw error;
     return (data || []) as BomRow[];
   }
-  return lsGet<BomRow[]>(LS_BOM_ROWS, []);
+  const { rows, revs } = lsEnsureBomRevs();
+  const active = new Set(revs.filter(v => v.status === "active").map(v => v.id));
+  return rows.filter(r => !r.rev_id || active.has(r.rev_id));
 }
-// 가져오기 = 전체 교체 (이카운트가 원본이므로 마스터 성격 — 호출부에서 확인 모달 필수)
-export async function replaceBomRows(rows: BomRow[]): Promise<void> {
+export async function listBomRevs(): Promise<BomRev[]> {
   if (supabase) {
-    const { error: de } = await supabase.from("bom_rows").delete().neq("prod_name", "");
-    if (de) throw de;
-    // 대량 insert는 500행씩 분할
-    for (let i = 0; i < rows.length; i += 500) {
-      const { error } = await supabase.from("bom_rows").insert(rows.slice(i, i + 500));
-      if (error) throw error;
-    }
+    const { data, error } = await supabase.from("bom_revs").select("*").order("prod_name").order("revision", { ascending: false });
+    if (error) throw error;
+    return (data || []) as BomRev[];
+  }
+  return [...lsEnsureBomRevs().revs].sort((a, b) => a.prod_name === b.prod_name ? b.revision - a.revision : a.prod_name.localeCompare(b.prod_name));
+}
+export async function listBomRowsByRev(revId: string): Promise<BomRow[]> {
+  if (supabase) {
+    const { data, error } = await supabase.from("bom_rows").select("*").eq("rev_id", revId).order("mat_code");
+    if (error) throw error;
+    return (data || []) as BomRow[];
+  }
+  return lsEnsureBomRevs().rows.filter(r => r.rev_id === revId);
+}
+// 새 리비전 발행: active(없으면 최신) 복제 → draft Rev N+1. 반환: 새 rev id
+export async function bomNextRev(prodCode: string, prodName: string): Promise<string> {
+  if (supabase) {
+    const { data, error } = await supabase.rpc("fn_bom_next_rev", { p_code: prodCode, p_name: prodName });
+    if (error) throw error;
+    return data as string;
+  }
+  const { rows, revs } = lsEnsureBomRevs();
+  const mine = revs.filter(v => v.prod_name === prodName);
+  const src = mine.find(v => v.status === "active") || [...mine].sort((a, b) => b.revision - a.revision)[0];
+  const rev: BomRev = { id: lsUid("rv"), prod_code: prodCode || "", prod_name: prodName, revision: Math.max(0, ...mine.map(v => v.revision)) + 1, status: "draft" };
+  revs.push(rev);
+  if (src) rows.push(...rows.filter(r => r.rev_id === src.id).map(r => ({ ...r, id: lsUid("br"), rev_id: rev.id })));
+  lsSet(LS_BOM_ROWS, rows); lsSet(LS_BOM_REVS, revs);
+  return rev.id;
+}
+// 리비전 확정: 기존 active → obsolete, draft → active (클라우드는 RPC 한 트랜잭션)
+export async function bomPublish(revId: string, desc?: string): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.rpc("fn_bom_publish", { p_rev: revId, p_desc: desc ?? null });
+    if (error) throw error;
     return;
   }
-  lsSet(LS_BOM_ROWS, rows);
+  const { revs } = lsEnsureBomRevs();
+  const rev = revs.find(v => v.id === revId);
+  if (!rev || rev.status !== "draft") throw new Error("draft 리비전만 확정할 수 있습니다");
+  revs.forEach(v => { if (v.prod_name === rev.prod_name && v.status === "active") v.status = "obsolete"; });
+  rev.status = "active"; rev.effective_from = new Date().toISOString().slice(0, 10);
+  if (desc) rev.description = desc;
+  lsSet(LS_BOM_REVS, revs);
 }
+// draft 폐기: 리비전 + 그 행 삭제 (active/obsolete는 이력 보존 원칙상 삭제 안 함)
+export async function discardBomRev(revId: string): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("bom_revs").delete().eq("id", revId).eq("status", "draft");
+    if (error) throw error;
+    return;
+  }
+  const { rows, revs } = lsEnsureBomRevs();
+  const rev = revs.find(v => v.id === revId);
+  if (!rev || rev.status !== "draft") throw new Error("draft 리비전만 폐기할 수 있습니다");
+  lsSet(LS_BOM_REVS, revs.filter(v => v.id !== revId));
+  lsSet(LS_BOM_ROWS, rows.filter(r => r.rev_id !== revId));
+}
+// 이카운트 가져오기: 파일에 포함된 제품마다 새 리비전 발행 후 즉시 active (이력 보존)
+export async function importBomRevs(rows: BomRow[]): Promise<{ products: number }> {
+  if (supabase) {
+    const payload = rows.map(r => ({ prod_code: r.prod_code || "", prod_name: r.prod_name, process: r.process || "", version: r.version || "기본", mat_code: r.mat_code || "", mat_name: r.mat_name, batch_qty: r.batch_qty, qty: r.qty }));
+    const { data, error } = await supabase.rpc("fn_bom_import", { payload });
+    if (error) throw error;
+    return { products: (data as any)?.products ?? 0 };
+  }
+  const prods = new Map<string, BomRow[]>();
+  rows.forEach(r => { const a = prods.get(r.prod_name) || []; a.push(r); prods.set(r.prod_name, a); });
+  for (const [name, list] of prods) {
+    const revId = await bomNextRev(list[0].prod_code || "", name);
+    const all = lsGet<BomRow[]>(LS_BOM_ROWS, []);
+    lsSet(LS_BOM_ROWS, [...all.filter(r => r.rev_id !== revId), ...list.map(r => ({ ...r, id: lsUid("br"), rev_id: revId }))]);
+    await bomPublish(revId, "이카운트 가져오기");
+  }
+  return { products: prods.size };
+}
+// draft 리비전 행 편집 (rev_id 필수 — 리비전별 같은 자재 1행)
 export async function upsertBomRow(row: BomRow): Promise<void> {
   if (supabase) {
-    const { error } = await supabase.from("bom_rows").upsert(row, { onConflict: "prod_code,prod_name,mat_code,mat_name" });
+    const { error } = await supabase.from("bom_rows").upsert(row, { onConflict: "rev_id,mat_code,mat_name" });
     if (error) throw error;
     return;
   }
   const all = lsGet<BomRow[]>(LS_BOM_ROWS, []);
-  const key = (r: BomRow) => `${r.prod_code}|${r.prod_name}|${r.mat_code}|${r.mat_name}`;
+  const key = (r: BomRow) => `${r.rev_id || ""}|${r.mat_code}|${r.mat_name}`;
   const i = all.findIndex(r => key(r) === key(row));
-  if (i >= 0) all[i] = { ...all[i], ...row }; else all.push({ ...row, id: "br-" + Date.now() + Math.random().toString(36).slice(2) });
+  if (i >= 0) all[i] = { ...all[i], ...row }; else all.push({ ...row, id: lsUid("br") });
   lsSet(LS_BOM_ROWS, all);
 }
 export async function deleteBomRow(id: string): Promise<void> {
