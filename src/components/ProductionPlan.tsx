@@ -1,7 +1,7 @@
 import { errMsg } from "../lib/errmsg";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Order, PlanEntry } from "../lib/types";
-import { listPlans, upsertPlan, updateOrder, logAudit, listBomRows, BomRow } from "../lib/db";
+import { listPlans, upsertPlan, updateOrder, logAudit, listBomRows, BomRow, appendInout, inoutSig, appendProdConsume, pcSig } from "../lib/db";
 import { buildBomIndex, resolveProd, explodeByItem } from "../lib/bom";
 import { daysInMonth, weekBuckets, completionDate } from "../lib/plan";
 import { nextBusinessDay } from "../lib/holidays";
@@ -96,7 +96,34 @@ export default function ProductionPlan({ orders, onChange }: { orders: Order[]; 
   function nextM() { setSelDay(null); setCur(c => c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 }); }
   const pqty = (o: Order, p: PlanEntry) => (p.qty != null ? Number(p.qty) : o.qty);
   function dayQty(o: Order, p: PlanEntry, day: number) { const sd = dayOf(p.start_date), ed = sd + p.span - 1; return (day >= sd && day <= ed) ? pqty(o, p) / p.span : 0; }
-  function toggleDone(o: Order, p: PlanEntry) { if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name }); }
+  function toggleDone(o: Order, p: PlanEntry) {
+    if (!canEdit) return; const nd = !p.done; commit({ ...p, done: nd }); logAudit(nd ? "생산 완료" : "완료 해제", "plan", o.id, { name: o.name });
+    if (nd) recordProduction(o, { ...p, done: true }); // 완료 시 재고 기록 제안 (거절해도 완료 상태는 유지)
+  }
+  // 생산 완료 → 재고 자동 기록: 생산입고(in) 1건 + BOM 전개 원재료 소모(prod_consume).
+  // sig 중복은 자동 무시되므로 완료를 다시 눌러도 이중 기록되지 않는다.
+  async function recordProduction(o: Order, p: PlanEntry) {
+    const date = completionDate(p) || p.start_date;
+    const qty = pqty(o, p);
+    const mats = explodeByItem(bomIdx, { code: o.item_code, name: o.name }, qty);
+    const ok = await confirmDialog({
+      title: "재고 기록 추가", confirmLabel: "기록",
+      message: `생산입고 ${Math.round(qty).toLocaleString()}g (${o.name}, ${date})을 재고에 기록할까요?\n${mats.length ? `BOM 연동으로 원재료 소모 ${mats.length}건도 함께 기록됩니다.` : "BOM 미연결 품목이라 생산입고만 기록됩니다."}\n(수불부·재고 현황에 바로 반영 — 이카운트 전송과는 별개)`,
+    });
+    if (!ok) return;
+    try {
+      const base = { kind: "in" as const, ym: date.slice(0, 7), idate: date, item_code: o.item_code || "", name: o.name, spec: o.spec, qty, gubun: o.gubun || "제품", note: "생산완료 자동기록" };
+      await appendInout([{ ...base, sig: inoutSig(base) }]);
+      if (mats.length) {
+        await appendProdConsume(mats.map(m => {
+          const b = { ym: date.slice(0, 7), idate: date, prod_code: o.item_code || "", prod_name: o.name, mat_code: m.code || "", mat_name: m.name, prod_qty: qty, act_qty: m.qty };
+          return { ...b, sig: pcSig(b) };
+        }));
+      }
+      logAudit("생산완료 재고기록", "plan", o.id, { name: o.name, qty, mats: mats.length });
+      toast.success(`재고 기록됨 — 생산입고 1건${mats.length ? ` + 원재료 소모 ${mats.length}건` : ""}`);
+    } catch (e: any) { toast.error("재고 기록 실패: " + errMsg(e)); }
+  }
   function openQty(o: Order) { if (!canEdit) return; const p = planOf(o); setQtyDraft(String(pqty(o, p))); setStartDraft(p.start_date); setSpanDraft(p.span); setSyncOrder(false); setEditId(o.id); }
   async function saveQty() {
     const o = orders.find(x => x.id === editId); if (!o) return;
